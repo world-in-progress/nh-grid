@@ -26,7 +26,7 @@ export default class GridLayer {
         this.canvasHeight = 0
 
         // Update set
-        /** @type {Set<{level: number, globalId: number}>} */
+        /** @type { Set<{level: number, globalId: number, hitOrNot: boolean}> } */
         this.hitSet = new Set()
 
         // Subdivide rule
@@ -85,28 +85,6 @@ export default class GridLayer {
         this.isInitialized = false
     }
 
-    hit(lon, lat) {
-
-        const maxLevel = this.subdivideRules.length - 1
-        const { width, height } = this.gridRecoder[maxLevel]
-
-        const normalizedX = (lon - this.boundaryCondition.xMin) / (this.boundaryCondition.xMax - this.boundaryCondition.xMin)
-        const normalizedY = (lat - this.boundaryCondition.yMin) / (this.boundaryCondition.yMax - this.boundaryCondition.yMin)
-
-        if (normalizedX < 0 || normalizedX > 1 || normalizedY < 0 || normalizedY > 1) {
-            return
-        }
-        const col = Math.floor(normalizedX * width)
-        const row = Math.floor(normalizedY * height)
-
-        this.hitSet.add({
-            level: maxLevel,
-            globalId: row * width + col
-        })
-
-        this.map.triggerRepaint()
-    }
-
     /**
      * @param { WebGL2RenderingContext } gl
      * @param { number } level Level of hitted grid
@@ -152,8 +130,9 @@ export default class GridLayer {
      * @param { WebGL2RenderingContext } gl
      * @param { number } level Level of hitted grid
      * @param { number } globalId Global id of Hitted grid
+     * @param { boolean } hitOrNot Hit or not
     */
-    hitGrid(gl, level, globalId) {
+    hitGrid(gl, level, globalId, hitOrNot) {
 
         // Subdivide parent first (to create this grid if it does not exist)
         const parentGlobalId = this.getParentGlobalId(level, globalId)
@@ -170,7 +149,7 @@ export default class GridLayer {
         }
 
         // Hit
-        grid.hit = true
+        grid.hit = hitOrNot
     }
 
     /** 
@@ -190,7 +169,9 @@ export default class GridLayer {
         fillSubTexture2DByArray(gl, this.yTexture, 0, storageU, storageV, 1, 1, gl.RG, gl.FLOAT, vertices.slice(2, 4))
     }
 
-    /** @param { WebGL2RenderingContext } gl */
+    /**
+     * @param { WebGL2RenderingContext } gl
+    */
     tickGridRenderList(gl) {
 
         this.renderList = []
@@ -213,6 +194,7 @@ export default class GridLayer {
         const blockHeight = Math.ceil(renderListLength / this.storageTextureSize)
         const blockData = new Uint32Array(blockWidth * blockHeight) // TODO: can be made as pool
         blockData.set(this.renderList, 0)
+
         fillSubTexture2DByArray(gl, this.indexTexture, 0, 0, 0, blockWidth, blockHeight, gl.RED_INTEGER, gl.UNSIGNED_INT, blockData)
     }
 
@@ -223,15 +205,17 @@ export default class GridLayer {
         
         if (this.hitSet.size === 0) return
 
-        this.hitSet.forEach(({level, globalId}) => {
-            this.hitGrid(gl, level, globalId)
+        this.hitSet.forEach(({ level, globalId, hitOrNot }) => {
+            this.hitGrid(gl, level, globalId, hitOrNot === undefined ? true : hitOrNot)
         })
         this.tickGridRenderList(gl)
 
         this.hitSet.clear()
     }
 
-    /** @param { WebGL2RenderingContext } gl */
+    /**
+     * @param { WebGL2RenderingContext } gl
+    */
     async init(gl) {
 
         enableAllExtensions(gl)
@@ -239,7 +223,6 @@ export default class GridLayer {
         this.canvasWidth = gl.canvas.width
         this.canvasHeight = gl.canvas.height
 
-        // this.registerGridsInLevel1(gl) // create storage texture (xTexture, yTexture)
         this.terrainMeshShader = await createShader(gl, '/shaders/gridMesh.glsl')
         this.terrainLineShader = await createShader(gl, '/shaders/gridLine.glsl')
         this.xTexture = createTexture2D(gl, 1, this.storageTextureSize, this.storageTextureSize, gl.RG32F)
@@ -247,36 +230,16 @@ export default class GridLayer {
         this.indexTexture = createTexture2D(gl, 1, this.storageTextureSize, this.storageTextureSize, gl.R32UI)
 
         for (let globalId = 0; globalId < this.gridRecoder[1].width * this.gridRecoder[1].height; globalId++) {
+            
+            // Just for initialization and not hit
             this.hitSet.add({
                 level: 1,
-                globalId
+                globalId,
+                hitOrNot: false
             })
         }
 
         this.isInitialized = true
-    }
-
-    /**
-     * @param { WebGL2RenderingContext } gl
-     * @param { [number] } matrix  
-     */
-    render(gl, matrix) {
-
-        // Skip if not ready
-        if (!this.isInitialized) return
-
-        //// Tick logic //////////////////////////////////////////////////////////////////////////////////////////
-        this.hitGrids(gl)
-
-        //// Tick render: Mesh Pass///////////////////////////////////////////////////////////////////////////////
-        /**/ this.drawGridMesh(gl) /**/////////////////////////////////////////////////////////////////////////
-        
-        //// Tick render: Line Pass //////////////////////////////////////////////////////////////////////////////
-        /**/ this.drawGridLine(gl) /**////////////////////////////////////////////////////////////////////////////
-
-        //////////////////////////////////////////////////////////////////////////////////////////////////////////
-        /**/ errorCheck(gl) //////////////////////////////////////////////////////////////////////////////////////
-        
     }
 
     /**
@@ -367,6 +330,58 @@ export default class GridLayer {
 
         this.map = map
         this.init(gl)
+    }
+
+    /**
+     * @param { WebGL2RenderingContext } gl
+     * @param { [number] } matrix  
+     */
+    render(gl, matrix) {
+
+        // Skip if not ready
+        if (!this.isInitialized) return
+
+        //// Tick logic //////////////////////////////////////////////////////////////////////////////////////////
+        /**/ this.map.update()      /**///////////////////////////////////////////////////////////////////////////
+        /**/ this.hitGrids(gl)      /**///////////////////////////////////////////////////////////////////////////
+
+        //// Tick render: Mesh Pass //////////////////////////////////////////////////////////////////////////////
+        /**/ this.drawGridMesh(gl)  /**///////////////////////////////////////////////////////////////////////////
+        
+        //// Tick render: Line Pass //////////////////////////////////////////////////////////////////////////////
+        /**/ this.drawGridLine(gl)  /**///////////////////////////////////////////////////////////////////////////
+
+        //// Last check //////////////////////////////////////////////////////////////////////////////////////////
+        /**/ errorCheck(gl)         /**///////////////////////////////////////////////////////////////////////////
+    }
+
+    /**
+     * @param { number } lon
+     * @param { number } lat
+     * @param { number } level
+    */
+    hit(lon, lat, level) {
+
+        const maxLevel = this.subdivideRules.length - 1
+
+        if (level === undefined || level > maxLevel) return 
+
+        const { width, height } = this.gridRecoder[level]
+        const normalizedX = (lon - this.boundaryCondition.xMin) / (this.boundaryCondition.xMax - this.boundaryCondition.xMin)
+        const normalizedY = (lat - this.boundaryCondition.yMin) / (this.boundaryCondition.yMax - this.boundaryCondition.yMin)
+
+        if (normalizedX < 0 || normalizedX > 1 || normalizedY < 0 || normalizedY > 1) return
+
+        const col = Math.floor(normalizedX * width)
+        const row = Math.floor(normalizedY * height)
+
+        this.hitSet.add({
+            level,
+            hitOrNot: true,
+            globalId: row * width + col
+        })
+
+        this.map.triggerRepaint()
     }
     
 }
@@ -594,6 +609,7 @@ async function loadImage(url) {
         throw error
     }
 }
+
 function getMaxMipLevel(width, height) {
     return Math.floor(Math.log2(Math.max(width, height)));
 }
@@ -634,27 +650,4 @@ async function loadF32Image(url) {
         height: bitmap.height,
         buffer: new Float32Array(pixelData.buffer)
     }
-}
-
-const RAD_TO_DEG = 180.0 / Math.PI
-
-function tile2lon(x, z) {
-
-    return x / Math.pow(2.0, z) * 360.0 - 180.0
-}
-
-function tile2lat(y, z) {
-
-    const n = Math.PI - 2.0 * Math.PI * y / Math.pow(2.0, z)
-    return RAD_TO_DEG * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)))
-}
-
-function tileToBBox(tile) {
-
-    const w = tile2lon(tile[0], tile[2])
-    const e = tile2lon(tile[0] + 1.0, tile[2])
-    const n = tile2lat(tile[1], tile[2])
-    const s = tile2lat(tile[1] + 1.0, tile[2])
-
-    return [w, s, e, n]
 }

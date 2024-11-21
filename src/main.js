@@ -2,15 +2,27 @@ import GridLayer from './gridLayer.js'
 import { vec3, mat4 } from 'gl-matrix'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import mapboxgl from 'mapbox-gl'
+import { GUI } from 'dat.gui'
 
 // DOM Configuration //////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// Map
 const mapDiv = document.createElement('div')
 mapDiv.style.height = '100%'
 mapDiv.style.width = '100%'
 mapDiv.style.zIndex = '1'
 mapDiv.id = 'map'
 document.body.appendChild(mapDiv)
+
+const brushOption = {
+    level: 5
+}
+
+// dat.GUI
+const gui = new GUI()
+const brushFolder = gui.addFolder('Brush')
+brushFolder.add(brushOption, 'level', 1, 5, 1)
+brushFolder.open()
 
 // Map //////////////////////////////////////////////////////////////////////////////////////////////////////
 class NHMap extends mapboxgl.Map {
@@ -65,10 +77,10 @@ const gridLayer = new GridLayer({
     srcCS: 4326,
     targetCS: 4326,
     subdivideRules: [
-        [16, 16],
-        [16, 16],
-        [8, 8],
         [4, 4],
+        [4, 4],
+        [2, 2],
+        [2, 2],
         [2, 2],
         [1, 1]
     ],
@@ -79,8 +91,8 @@ const gridLayer = new GridLayer({
         32.08401085804678130
     ]
 })
-
 let isShiftClick = false
+
 const map = new NHMap({
     style: "mapbox://styles/ycsoku/cldjl0d2m000501qlpmmex490",
     center: [ 120.980697, 31.684162 ],
@@ -95,12 +107,6 @@ const map = new NHMap({
     map.boxZoom.disable()
     map.addLayer(gridLayer)
 
-}).on('renderstart', () => {
-    map.update()
-
-    if (gridLayer.isInitialized) {
-        gridLayer.hitSet.add({ level: 3, globalId: 4 })
-    }
 }).on('mousedown', e => {
     if (e.originalEvent.shiftKey && e.originalEvent.button === 0) {
         isShiftClick = true
@@ -108,7 +114,7 @@ const map = new NHMap({
         map.dragPan.disable()
 
         const lngLat = map.unproject([e.point.x, e.point.y])
-        gridLayer.hit(lngLat.lng, lngLat.lat)
+        gridLayer.hit(lngLat.lng, lngLat.lat, brushOption.level)
     }
 }).on('mouseup', () => {
     if (isShiftClick) {
@@ -119,7 +125,7 @@ const map = new NHMap({
     if (isShiftClick) {
         map.dragPan.disable()
         const lngLat = map.unproject([e.point.x, e.point.y])
-        gridLayer.hit(lngLat.lng, lngLat.lat)
+        gridLayer.hit(lngLat.lng, lngLat.lat, brushOption.level)
     }
 })
 
