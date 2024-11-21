@@ -75,7 +75,6 @@ mapboxgl.accessToken = 'pk.eyJ1IjoieWNzb2t1IiwiYSI6ImNrenozdWdodDAza3EzY3BtdHh4c
 const gridLayer = new GridLayer({
     maxGridNum: 4096 * 4096,
     srcCS: 4326,
-    targetCS: 4326,
     subdivideRules: [
         [4, 4],
         [4, 4],
