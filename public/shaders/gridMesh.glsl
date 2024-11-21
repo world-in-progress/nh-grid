@@ -2,12 +2,15 @@
 
 precision highp float;
 precision highp sampler2D;
+precision highp usampler2D;
 
 uniform mat4 uMatrix;
 uniform vec2 centerLow;
 uniform vec2 centerHigh;
 uniform sampler2D xTexture;
 uniform sampler2D yTexture;
+uniform usampler2D indexTexture;
+
 const float PI = 3.141592653;
 
 vec2 calcWebMercatorCoord(vec2 coord) {
@@ -74,16 +77,20 @@ void main() {
         ivec2(1, 1)
     );
 
-    ivec2 dim = textureSize(xTexture, 0).xy;
-    int u = gl_InstanceID % dim.x;
-    int v = gl_InstanceID / dim.x;
+    ivec2 dim = textureSize(indexTexture, 0).xy;
+    int index_u = gl_InstanceID % dim.x;
+    int index_v = gl_InstanceID / dim.x;
+    int storageId = int(texelFetch(indexTexture, ivec2(index_u, index_v), 0).r);
 
-    vec2 x_WNES = texelFetch(xTexture, ivec2(u, v), 0).rg;
-    vec2 y_WNES = texelFetch(yTexture, ivec2(u, v), 0).rg;
+    int storage_u = storageId % dim.x;
+    int storage_v = storageId / dim.x;
+
+    vec2 xs = texelFetch(xTexture, ivec2(storage_u, storage_v), 0).rg;
+    vec2 ys = texelFetch(yTexture, ivec2(storage_u, storage_v), 0).rg;
 
     ivec2 xyIndex = indexMap[gl_VertexID];
-    float x = x_WNES[xyIndex.x];
-    float y = y_WNES[xyIndex.y];
+    float x = xs[xyIndex.x];
+    float y = ys[xyIndex.y];
 
     gl_Position = uMatrix * vec4(translateRelativeToEye(vec2(x, y), vec2(0.0)), 0.0, 1.0);
 }

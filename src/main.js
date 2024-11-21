@@ -1,11 +1,7 @@
-import { BoundingBox2D } from './boundingBox2D.js'
-import mapboxgl from 'mapbox-gl'
-import 'mapbox-gl/dist/mapbox-gl.css'
 import GridLayer from './gridLayer.js'
-import { MercatorCoordinate } from './mercatorCoordinate.js'
 import { vec3, mat4 } from 'gl-matrix'
-
-mapboxgl.accessToken = 'pk.eyJ1IjoieWNzb2t1IiwiYSI6ImNrenozdWdodDAza3EzY3BtdHh4cm5pangifQ.ZigfygDi2bK4HXY1pWh-wg'
+import 'mapbox-gl/dist/mapbox-gl.css'
+import mapboxgl from 'mapbox-gl'
 
 // DOM Configuration //////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -17,7 +13,7 @@ mapDiv.id = 'map'
 document.body.appendChild(mapDiv)
 
 // Map //////////////////////////////////////////////////////////////////////////////////////////////////////
-class ScratchMap extends mapboxgl.Map {
+class NHMap extends mapboxgl.Map {
 
     constructor(options) {
 
@@ -26,8 +22,6 @@ class ScratchMap extends mapboxgl.Map {
 
         // Attributes
         this.mercatorCenter = new mapboxgl.MercatorCoordinate(...this.transform._computeCameraPosition().slice(0, 3))
-        this.cameraBounds = new BoundingBox2D(...this.getBounds().toArray())
-        this.mercatorBounds = new BoundingBox2D()
         this.centerHigh = [ 0.0, 0.0 ]
         this.centerLow = [ 0.0, 0.0 ]
 
@@ -41,7 +35,7 @@ class ScratchMap extends mapboxgl.Map {
 
     update() {
 
-        this.worldCamera = updateWorldCamera(this.transform, this.WORLD_SIZE, -80.06899999999999)
+        this.worldCamera = updateWorldCamera(this.transform, this.WORLD_SIZE, 0.0)
         const viewMatrix = this.worldCamera.view
         const projectionMatrix = makePerspectiveMatrix(this.worldCamera.fov, this.worldCamera.aspect, this.worldCamera.nearZ, this.worldCamera.farZ)
         mat4.multiply(this.vpMatrix, projectionMatrix, viewMatrix)
@@ -57,23 +51,39 @@ class ScratchMap extends mapboxgl.Map {
         this.centerHigh[0] = mercatorCenterX[0]
         this.centerHigh[1] = mercatorCenterY[0]
 
-        const { _sw, _ne } = this.getBounds()
-        const m_sw = MercatorCoordinate.fromLonLat(_sw.toArray())
-        const m_ne = MercatorCoordinate.fromLonLat(_ne.toArray())
-
-        this.mercatorBounds.reset(...m_sw, ...m_ne)
-        this.cameraBounds.reset(...this.getBounds().toArray().flat())
-
         this.mercatorMatrix = getMercatorMatrix(this.transform)
         this.relativeEyeMatrix = mat4.multiply([], this.mercatorMatrix, mat4.translate([], mat4.identity([]), vec3.set([], this.centerHigh[0], this.centerHigh[1], 0.0)))
     }
 }
 
-// StartDash //////////////////////////////////////////////////////////////////////////////////////////////////////
+// Start Dash /////////////////////////////////////////////////////////////////////////////////////////////////////
 
-const map = new ScratchMap({
+mapboxgl.accessToken = 'pk.eyJ1IjoieWNzb2t1IiwiYSI6ImNrenozdWdodDAza3EzY3BtdHh4cm5pangifQ.ZigfygDi2bK4HXY1pWh-wg'
+
+const gridLayer = new GridLayer({
+    maxGridNum: 4096 * 4096,
+    srcCS: 4326,
+    targetCS: 4326,
+    subdivideRules: [
+        [16, 16],
+        [16, 16],
+        [8, 8],
+        [4, 4],
+        [2, 2],
+        [1, 1]
+    ],
+    boundaryCondition: [
+        120.0437360613468201,
+        31.17390195220948710,
+        121.9662324011692220,
+        32.08401085804678130
+    ]
+})
+
+let isShiftClick = false
+const map = new NHMap({
     style: "mapbox://styles/ycsoku/cldjl0d2m000501qlpmmex490",
-    center: [ 120.980697, 31.684162 ], // [ 120.556596, 32.042607 ], //[ 120.53525158459905, 31.94879239156117 ], // 120.980697, 31.684162
+    center: [ 120.980697, 31.684162 ],
     projection: 'mercator',
     GPUFrame: GPUFrame,
     container: 'map',
@@ -82,22 +92,35 @@ const map = new ScratchMap({
     zoom: 9
 
 }).on('load', () => {
-    map.addLayer(new GridLayer({
-        maxGridNum: 4096 * 4096,
-        srcCS: 4326,
-        targetCS: 4326,
-        subdivideRules: [
-            [20, 20],
-            [4, 4],
-            [1, 1]
-        ],
-        boundaryCondition: [
-            120.0437360613468201,
-            31.17390195220948710,
-            121.9662324011692220,
-            32.08401085804678130
-        ]
-    }))
+    map.boxZoom.disable()
+    map.addLayer(gridLayer)
+
+}).on('renderstart', () => {
+    map.update()
+
+    if (gridLayer.isInitialized) {
+        gridLayer.hitSet.add({ level: 3, globalId: 4 })
+    }
+}).on('mousedown', e => {
+    if (e.originalEvent.shiftKey && e.originalEvent.button === 0) {
+        isShiftClick = true
+
+        map.dragPan.disable()
+
+        const lngLat = map.unproject([e.point.x, e.point.y])
+        gridLayer.hit(lngLat.lng, lngLat.lat)
+    }
+}).on('mouseup', () => {
+    if (isShiftClick) {
+        map.dragPan.enable()
+        isShiftClick = false
+    }
+}).on('mousemove', (e) => {
+    if (isShiftClick) {
+        map.dragPan.disable()
+        const lngLat = map.unproject([e.point.x, e.point.y])
+        gridLayer.hit(lngLat.lng, lngLat.lat)
+    }
 })
 
 // Helpers //////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -124,21 +147,19 @@ function getMercatorMatrix(t) {
         t._mercatorScaleRatio = mercatorZfromAltitude(1, t.center.lat) / mercatorZfromAltitude(1, GLOBE_SCALE_MATCH_LATITUDE);
     }
 
-    const projectionT = getProjectionInterpolationT(t.projection, t.zoom, t.width, t.height, 1024);
+    const projectionT = getProjectionInterpolationT(t.projection, t.zoom, t.width, t.height, 1024)
 
     // 'this._pixelsPerMercatorPixel' is the ratio between pixelsPerMeter in the current projection relative to Mercator.
     // This is useful for converting e.g. camera position between pixel spaces as some logic
     // such as raycasting expects the scale to be in mercator pixels
-    t._pixelsPerMercatorPixel = t.projection.pixelSpaceConversion(t.center.lat, t.worldSize, projectionT);
+    t._pixelsPerMercatorPixel = t.projection.pixelSpaceConversion(t.center.lat, t.worldSize, projectionT)
 
-    t.cameraToCenterDistance = 0.5 / Math.tan(t._fov * 0.5) * t.height * t._pixelsPerMercatorPixel;
+    t.cameraToCenterDistance = 0.5 / Math.tan(t._fov * 0.5) * t.height * t._pixelsPerMercatorPixel
 
-    t._updateCameraState();
+    t._updateCameraState()
 
-    // t._farZ = t.projection.farthestPixelDistance(t);
-    // t._farZ = farthestPixelDistanceOnPlane(t, -80.06899999999999 * 30.0, pixelsPerMeter)
-    // t._farZ = farthestPixelDistanceOnPlane(t, -80.06899999999999 * 100.0, pixelsPerMeter)
-    t._farZ = farthestPixelDistanceOnPlane(t, -500 * 100.0, pixelsPerMeter)
+    t._farZ = t.projection.farthestPixelDistance(t)
+    // t._farZ = farthestPixelDistanceOnPlane(t, -500 * 100.0, pixelsPerMeter)
 
     // The larger the value of nearZ is
     // - the more depth precision is available for features (good)
@@ -147,11 +168,7 @@ function getMercatorMatrix(t) {
     // Smaller values worked well for mapbox-gl-js but deckgl was encountering precision issues
     // when rendering it's layers using custom layers. This value was experimentally chosen and
     // seems to solve z-fighting issues in deckgl while not clipping buildings too close to the camera.
-    t._nearZ = t.height / 50;
-
-    // let _farZ = Math.max(Math.pow(2, t.tileZoom), 5000000.0)
-    // let _farZ = Math.min(Math.pow(2, t.tileZoom + 5), 50000.0)
-    // let _nearZ = Math.max(Math.pow(2, t.tileZoom - 8), 0.0)
+    t._nearZ = t.height / 50
 
     const zUnit = t.projection.zAxisUnit === "meters" ? pixelsPerMeter : 1.0;
     const worldToCamera = t._camera.getWorldToCamera(t.worldSize, zUnit);

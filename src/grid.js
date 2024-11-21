@@ -14,31 +14,39 @@ export class GridNode {
      */
     constructor(options) {
 
-        this.id = options.localId
-        this.parent = options.parent
-        this.subdivideRule = options.subdivideRule
+        const [subWidth, subHeight] = options.subdivideRule
 
-        /**  @type {GridNode[]} */
+        this.level = 0
+        this.hit = false
+        this.storageId = 0
+        this.parent = options.parent
+        this.localId = options.localId
+
+        /** @type {GridNode[]} */
         this.children = []
 
         /** @type {BoundingBox2D} */
         this.bBox = new BoundingBox2D( 180.0, 90.0, -180.0, -90.0 )
 
-        // Calculate bBox if parent exists
+        // update bBox and level if parent exists
         if (options.parent !== undefined) {
 
-            const wIndex = this.id % (this.parent.subdivideRule[0])
-            const sIndex = Math.floor(this.id / this.parent.subdivideRule[0])
+            // Bbox
+            const wIndex = this.localId % (subWidth)
+            const sIndex = Math.floor(this.localId / subWidth)
             const eIndex = wIndex + 1
             const nIndex = sIndex + 1
 
-            const xMin = lerp(this.parent.bBox.xMin, this.parent.bBox.xMax, wIndex / this.parent.subdivideRule[0])
-            const yMin = lerp(this.parent.bBox.yMin, this.parent.bBox.yMax, sIndex / this.parent.subdivideRule[1])
-            const xMax = lerp(this.parent.bBox.xMin, this.parent.bBox.xMax, eIndex / this.parent.subdivideRule[0])
-            const yMax = lerp(this.parent.bBox.yMin, this.parent.bBox.yMax, nIndex / this.parent.subdivideRule[1]) 
+            const xMin = lerp(this.parent.bBox.xMin, this.parent.bBox.xMax, wIndex / subWidth)
+            const yMin = lerp(this.parent.bBox.yMin, this.parent.bBox.yMax, sIndex / subHeight)
+            const xMax = lerp(this.parent.bBox.xMin, this.parent.bBox.xMax, eIndex / subWidth)
+            const yMax = lerp(this.parent.bBox.yMin, this.parent.bBox.yMax, nIndex / subHeight) 
 
             this.bBox.update(xMin, yMin)
             this.bBox.update(xMax, yMax)
+
+            // Level
+            this.level = options.parent.level + 1
         }
 
         // Update bBox if provided
@@ -62,8 +70,8 @@ export class GridNode {
         const renderBR = MercatorCoordinate.fromLonLat(targetBR)
 
         vertices[0] = renderTL[0]  // min x
-        vertices[1] = renderTL[1]  // min y
-        vertices[2] = renderBR[0]  // max x
+        vertices[1] = renderBR[0]  // max x
+        vertices[2] = renderTL[1]  // min y
         vertices[3] = renderBR[1]  // max y
 
         return vertices
@@ -75,7 +83,7 @@ export class GridNode {
         this.children = null
         this.parent = null
         this.level = null
-        this.id = null
+        this.localId = null
         return null
     }
     

@@ -25,6 +25,10 @@ export default class GridLayer {
         this.canvasWidth = 0
         this.canvasHeight = 0
 
+        // Update set
+        /** @type {Set<{level: number, globalId: number}>} */
+        this.hitSet = new Set()
+
         // Subdivide rule
         this.srcCS = options.srcCS
         this.subdivideRules = options.subdivideRules || [[1, 1]]
@@ -34,19 +38,8 @@ export default class GridLayer {
         this.maxGridNum = options.maxGridNum
         this.boundaryCondition = new BoundingBox2D(...options.boundaryCondition)
 
-        /** @type {{totalNum: number, count: number, grids: GridNode[]}[]} */
+        /** @type {{width: number, height: number, count: number, grids: GridNode[]}[]} */
         this.gridRecoder = new Array(this.subdivideRules.length)
-
-        // Init gridRecoder
-        let totalNum = 1
-        this.subdivideRules.forEach((rule, index) => {
-            this.gridRecoder[index] = {
-                totalNum,
-                count: 0,
-                grids: new Array(totalNum)
-            }
-            totalNum *= rule[0] * rule[1]
-        })
 
         // Add rootGrid to gridRecoder
         const rootGrid = new GridNode({
@@ -54,8 +47,31 @@ export default class GridLayer {
             bBox: this.boundaryCondition,
             subdivideRule: this.subdivideRules[0]
         })
-        this.gridRecoder[0].count = 1
-        this.gridRecoder[0].grids = [ rootGrid ]
+        this.gridRecoder[0] = {
+            width: 1,
+            height: 1,
+            count: 1,
+            grids: [ rootGrid ]
+        }
+
+        // Init gridRecoder
+        this.subdivideRules.forEach((_, ruleLevel, rules) => {
+            if (ruleLevel === 0) return
+
+            const width = this.gridRecoder[ruleLevel - 1].width * rules[ruleLevel - 1][0]
+            const height = this.gridRecoder[ruleLevel - 1].height * rules[ruleLevel - 1][1]
+
+            this.gridRecoder[ruleLevel] = {
+                width,
+                height,
+                count: 0,
+                grids: undefined,
+            }
+            this.gridRecoder[ruleLevel].grids = new Array(width * height)
+        })
+
+        // Grid render list
+        this.renderList = undefined
 
         // Storage texture memory
         this.storageTextureSize = Math.ceil(Math.sqrt(options.maxGridNum))
@@ -69,43 +85,150 @@ export default class GridLayer {
         this.isInitialized = false
     }
 
-    // TODO: transfer to registerGrid
-    /** @param { WebGL2RenderingContext } gl */
-    registerGridsInLevel1(gl) {
-        
-        const globalSize =  this.gridRecoder[1].totalNum
-        const localSize = this.subdivideRules[0][0] * this.subdivideRules[0][1]
-        for (let globalId = 0; globalId < globalSize; globalId++) {
-            
-            const localId = globalId - /* parent globalId */ Math.floor(globalId / localSize) * localSize
-            this.gridRecoder[1].grids[globalId] = new GridNode({
-                localId: localId,
-                parent: this.gridRecoder[0].grids[0],
-                subdivideRule: this.subdivideRules[1]
-            })
-        }
-        this.gridRecoder[1].count = globalSize;
-        this.registeredGridCount = this.gridRecoder[1].count
+    hit(lon, lat) {
 
-        // Init storage texture data
-        const xArray = new Float32Array(this.storageTextureSize * this.storageTextureSize * 2)
-        const yArray = new Float32Array(this.storageTextureSize * this.storageTextureSize * 2)
-        this.gridRecoder[1].grids.forEach((grid, index) => {
-            const vertices = grid.getVertices(this.srcCS)
-            xArray[2 * index + 0] = vertices[0]; yArray[2 * index + 0] = vertices[1]
-            xArray[2 * index + 1] = vertices[2]; yArray[2 * index + 1] = vertices[3]
+        const maxLevel = this.subdivideRules.length - 1
+        const { width, height } = this.gridRecoder[maxLevel]
+
+        const normalizedX = (lon - this.boundaryCondition.xMin) / (this.boundaryCondition.xMax - this.boundaryCondition.xMin)
+        const normalizedY = (lat - this.boundaryCondition.yMin) / (this.boundaryCondition.yMax - this.boundaryCondition.yMin)
+
+        if (normalizedX < 0 || normalizedX > 1 || normalizedY < 0 || normalizedY > 1) {
+            return
+        }
+        const col = Math.floor(normalizedX * width)
+        const row = Math.floor(normalizedY * height)
+
+        this.hitSet.add({
+            level: maxLevel,
+            globalId: row * width + col
         })
 
-        // Fill storage texture
-        this.xTexture = createTexture2D(gl, this.storageTextureSize, this.storageTextureSize, gl.RG32F, gl.RG, gl.FLOAT, xArray)
-        this.yTexture = createTexture2D(gl, this.storageTextureSize, this.storageTextureSize, gl.RG32F, gl.RG, gl.FLOAT, yArray)
+        this.map.triggerRepaint()
     }
 
-    onAdd(map, gl) {
+    /**
+     * @param { WebGL2RenderingContext } gl
+     * @param { number } level Level of hitted grid
+     * @param { number } globalId Global id of Hitted grid
+    */
+    subdivideGrid(gl, level, globalId) {
 
-        this.map = map
+        // Subdivide parent if this grid does not exist
+        if (this.gridRecoder[level].grids[globalId] === undefined) this.subdivideGrid(gl, level - 1, this.getParentGlobalId(level, globalId))
 
-        this.init(gl)
+        const grid = this.gridRecoder[level].grids[globalId]
+
+        // Return if has been subdivided
+        if (grid.children.length !== 0) return
+
+        // Subdivide
+        const [subWidth, subHeight] = this.subdivideRules[level]
+        const globalU = globalId % this.gridRecoder[level].width
+        const globalV = Math.floor(globalId / this.gridRecoder[level].width)
+
+        for (let localId = 0; localId < subWidth * subHeight; localId++) {
+
+            const subU = localId % subWidth
+            const subV = Math.floor(localId / subWidth)
+            
+            const subGlobalU = globalU * subWidth + subU
+            const subGlobalV = globalV * subHeight + subV
+            const subGlobalId = subGlobalV * (this.gridRecoder[level].width * subWidth) + subGlobalU
+
+            const subGrid = new GridNode({
+                localId,
+                parent: grid,
+                subdivideRule: this.subdivideRules[level]
+            })
+            
+            grid.children.push(subGrid)
+            this.gridRecoder[level + 1].grids[subGlobalId] = subGrid
+            this.writeGridInfoToTexture(gl, this.registeredGridCount++, subGrid)
+        }
+    }
+
+    /**
+     * @param { WebGL2RenderingContext } gl
+     * @param { number } level Level of hitted grid
+     * @param { number } globalId Global id of Hitted grid
+    */
+    hitGrid(gl, level, globalId) {
+
+        // Subdivide parent first (to create this grid if it does not exist)
+        const parentGlobalId = this.getParentGlobalId(level, globalId)
+        this.subdivideGrid(gl, level - 1, parentGlobalId)
+        
+        // Skip if grid has been hitted
+        const grid = this.gridRecoder[level].grids[globalId]
+        if (grid.hit) return
+
+        // Remove parent hit if it has been hitted
+        const parent = this.gridRecoder[level - 1].grids[parentGlobalId]
+        if (parent.hit) {
+            parent.hit = false
+        }
+
+        // Hit
+        grid.hit = true
+    }
+
+    /** 
+     * @param {WebGL2RenderingContext} gl 
+     * @param {number} storageId
+     * @param {GridNode} grid
+    */
+    writeGridInfoToTexture(gl, storageId, grid) {
+
+        grid.storageId = storageId
+
+        const vertices = grid.getVertices(this.srcCS)
+        const storageU = storageId % this.storageTextureSize
+        const storageV = Math.floor(storageId / this.storageTextureSize)
+
+        fillSubTexture2DByArray(gl, this.xTexture, 0, storageU, storageV, 1, 1, gl.RG, gl.FLOAT, vertices.slice(0, 2))
+        fillSubTexture2DByArray(gl, this.yTexture, 0, storageU, storageV, 1, 1, gl.RG, gl.FLOAT, vertices.slice(2, 4))
+    }
+
+    /** @param { WebGL2RenderingContext } gl */
+    tickGridRenderList(gl) {
+
+        this.renderList = []
+
+        const stack = [this.gridRecoder[0].grids[0]]
+        while(stack.length > 0) {
+
+            const grid = stack.pop()
+
+            // Add hitted grid to render list
+            if (grid.children.length === 0 && grid.hit) {
+                this.renderList.push(grid.storageId)
+            } else {
+                stack.push(...grid.children)
+            }
+        }
+        
+        const renderListLength = this.renderList.length
+        const blockWidth = this.storageTextureSize
+        const blockHeight = Math.ceil(renderListLength / this.storageTextureSize)
+        const blockData = new Uint32Array(blockWidth * blockHeight) // TODO: can be made as pool
+        blockData.set(this.renderList, 0)
+        fillSubTexture2DByArray(gl, this.indexTexture, 0, 0, 0, blockWidth, blockHeight, gl.RED_INTEGER, gl.UNSIGNED_INT, blockData)
+    }
+
+    /**
+     * @param { WebGL2RenderingContext } gl
+    */
+    hitGrids(gl) {
+        
+        if (this.hitSet.size === 0) return
+
+        this.hitSet.forEach(({level, globalId}) => {
+            this.hitGrid(gl, level, globalId)
+        })
+        this.tickGridRenderList(gl)
+
+        this.hitSet.clear()
     }
 
     /** @param { WebGL2RenderingContext } gl */
@@ -116,9 +239,19 @@ export default class GridLayer {
         this.canvasWidth = gl.canvas.width
         this.canvasHeight = gl.canvas.height
 
-        this.registerGridsInLevel1(gl) // create storage texture (xTexture, yTexture)
+        // this.registerGridsInLevel1(gl) // create storage texture (xTexture, yTexture)
         this.terrainMeshShader = await createShader(gl, '/shaders/gridMesh.glsl')
         this.terrainLineShader = await createShader(gl, '/shaders/gridLine.glsl')
+        this.xTexture = createTexture2D(gl, 1, this.storageTextureSize, this.storageTextureSize, gl.RG32F)
+        this.yTexture = createTexture2D(gl, 1, this.storageTextureSize, this.storageTextureSize, gl.RG32F)
+        this.indexTexture = createTexture2D(gl, 1, this.storageTextureSize, this.storageTextureSize, gl.R32UI)
+
+        for (let globalId = 0; globalId < this.gridRecoder[1].width * this.gridRecoder[1].height; globalId++) {
+            this.hitSet.add({
+                level: 1,
+                globalId
+            })
+        }
 
         this.isInitialized = true
     }
@@ -132,13 +265,11 @@ export default class GridLayer {
         // Skip if not ready
         if (!this.isInitialized) return
 
-        console.log(this.gridRecoder)
-
         //// Tick logic //////////////////////////////////////////////////////////////////////////////////////////
-        this.map.update()
+        this.hitGrids(gl)
 
         //// Tick render: Mesh Pass///////////////////////////////////////////////////////////////////////////////
-        /**/ this.drawGridMesh(gl, 1) /**/////////////////////////////////////////////////////////////////////////
+        /**/ this.drawGridMesh(gl) /**/////////////////////////////////////////////////////////////////////////
         
         //// Tick render: Line Pass //////////////////////////////////////////////////////////////////////////////
         /**/ this.drawGridLine(gl) /**////////////////////////////////////////////////////////////////////////////
@@ -148,11 +279,42 @@ export default class GridLayer {
         
     }
 
+    /**
+     * @param { number } level Level of hitted grid
+     * @param { number } globalId Global id of Hitted grid
+    */
+    getGridLocalId(level, globalId) {
+        if (level === 0) return 0
+    
+        const { width } = this.gridRecoder[level]
+        const [subWidth, subHeight] = this.subdivideRules[level - 1]
+    
+        const u = globalId % width
+        const v = Math.floor(globalId / width)
+    
+        return ((v % subHeight) * subWidth) + (u % subWidth);
+    }
+
+    /**
+     * @param { number } level Level of hitted grid
+     * @param { number } globalId Global id of Hitted grid
+    */
+    getParentGlobalId(level, globalId) {
+        if (level === 0) return 0
+
+        const { width } = this.gridRecoder[level]
+        const [subWidth, subHeight] = this.subdivideRules[level - 1]
+
+        const u = globalId % width
+        const v = Math.floor(globalId / width)
+
+        return Math.floor(v / subHeight) * this.gridRecoder[level - 1].width + Math.floor(u / subWidth)
+    }
+
     /** 
      * @param {WebGL2RenderingContext} gl 
-     * @param {number} level
     */
-    drawGridMesh(gl, level) {
+    drawGridMesh(gl) {
 
         gl.enable(gl.BLEND)
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -166,14 +328,17 @@ export default class GridLayer {
         gl.bindTexture(gl.TEXTURE_2D, this.xTexture)
         gl.activeTexture(gl.TEXTURE1)
         gl.bindTexture(gl.TEXTURE_2D, this.yTexture)
+        gl.activeTexture(gl.TEXTURE2)
+        gl.bindTexture(gl.TEXTURE_2D, this.indexTexture)
 
         gl.uniform1i(gl.getUniformLocation(this.terrainMeshShader, 'xTexture'), 0)
         gl.uniform1i(gl.getUniformLocation(this.terrainMeshShader, 'yTexture'), 1)
+        gl.uniform1i(gl.getUniformLocation(this.terrainMeshShader, 'indexTexture'), 2)
         gl.uniform2fv(gl.getUniformLocation(this.terrainMeshShader, 'centerLow'), this.map.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this.terrainMeshShader, 'centerHigh'), this.map.centerHigh)
         gl.uniformMatrix4fv(gl.getUniformLocation(this.terrainMeshShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
 
-        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.gridRecoder[level].totalNum)
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.renderList.length)
     }
 
     /** @param {WebGL2RenderingContext} gl */
@@ -196,6 +361,12 @@ export default class GridLayer {
         gl.uniformMatrix4fv(gl.getUniformLocation(this.terrainLineShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
 
         gl.drawArraysInstanced(gl.LINE_LOOP, 0, 4, this.registeredGridCount)
+    }
+
+    onAdd(map, gl) {
+
+        this.map = map
+        this.init(gl)
     }
     
 }
@@ -306,7 +477,7 @@ function createFrameBuffer(gl, textures, depthTexture, renderBuffer) {
  * @param { number } type 
  * @param { ArrayBufferTypes | ImageBitmap } [ resource ]
  */
-function createTexture2D(gl, width, height, internalFormat, format, type, resource, generateMips = false) {
+function createTexture2D(gl, level, width, height, internalFormat, format = undefined, type = undefined, resource = undefined, generateMips = false) {
     
     const texture = gl.createTexture()
     gl.bindTexture(gl.TEXTURE_2D, texture)
@@ -317,13 +488,36 @@ function createTexture2D(gl, width, height, internalFormat, format, type, resour
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, generateMips ? gl.LINEAR_MIPMAP_LINEAR : gl.NEAREST)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
 
-    gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, width, height, 0, format, type, resource ? resource : null)
+    resource ? 
+    gl.texImage2D(gl.TEXTURE_2D, level, internalFormat, width, height, 0, format, type, resource)
+    : 
+    gl.texStorage2D(gl.TEXTURE_2D, level, internalFormat, width, height) 
 
     gl.bindTexture(gl.TEXTURE_2D, null)
 
     return texture
 }
 
+/**
+ * @param { WebGL2RenderingContext } gl 
+ * @param { number } width 
+ * @param { number } height 
+ * @param { number } internalFormat 
+ * @param { number } format 
+ * @param { number } type 
+ * @param { ArrayBufferTypes } array
+ */
+function fillSubTexture2DByArray(gl, texture, level, xOffset, yOffset, width, height, format, type, array) {
+    
+    // Bind the texture
+    gl.bindTexture(gl.TEXTURE_2D, texture)
+
+    // Upload texture data
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, xOffset, yOffset, width, height, format, type, array)
+
+    // Unbind the texture
+    gl.bindTexture(gl.TEXTURE_2D, null);
+}
 
 /**
  * @param { WebGL2RenderingContext } gl 
@@ -339,14 +533,8 @@ function fillTexture2DByArray(gl, texture, width, height, internalFormat, format
     // Bind the texture
     gl.bindTexture(gl.TEXTURE_2D, texture)
 
-    // Set texture parameters
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
-
     // Upload texture data
-    gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, width, height, 0, format, type, array);
+    gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, width, height, 0, format, type, array)
 
     // Unbind the texture
     gl.bindTexture(gl.TEXTURE_2D, null);
