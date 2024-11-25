@@ -1,8 +1,8 @@
 import proj4 from 'proj4'
-import { BoundingBox2D } from './boundingBox2D.js'
-import { MercatorCoordinate } from './mercatorCoordinate.js'
+import { BoundingBox2D } from './BoundingBox2D.js'
+import { MercatorCoordinate } from './MercatorCoordinate.js'
 
-export class GridNode {
+export class GridNode extends BoundingBox2D {
 
     /**
      * @param {{
@@ -13,23 +13,22 @@ export class GridNode {
      * }} options
      */
     constructor(options) {
-
-        const [subWidth, subHeight] = options.subdivideRule
+        
+        super(180.0, 90.0, -180.0, -90.0)
 
         this.level = 0
         this.hit = false
         this.storageId = 0
-        this.parent = options.parent
         this.localId = options.localId
 
         /** @type {GridNode[]} */
         this.children = []
-
-        /** @type {BoundingBox2D} */
-        this.bBox = new BoundingBox2D( 180.0, 90.0, -180.0, -90.0 )
+        this.parent = options.parent
 
         // update bBox and level if parent exists
         if (options.parent !== undefined) {
+
+            const [subWidth, subHeight] = options.subdivideRule
 
             // Bbox
             const wIndex = this.localId % (subWidth)
@@ -37,22 +36,22 @@ export class GridNode {
             const eIndex = wIndex + 1
             const nIndex = sIndex + 1
 
-            const xMin = lerp(this.parent.bBox.xMin, this.parent.bBox.xMax, wIndex / subWidth)
-            const yMin = lerp(this.parent.bBox.yMin, this.parent.bBox.yMax, sIndex / subHeight)
-            const xMax = lerp(this.parent.bBox.xMin, this.parent.bBox.xMax, eIndex / subWidth)
-            const yMax = lerp(this.parent.bBox.yMin, this.parent.bBox.yMax, nIndex / subHeight) 
+            const xMin = lerp(this.parent.xMin, this.parent.xMax, wIndex / subWidth)
+            const yMin = lerp(this.parent.yMin, this.parent.yMax, sIndex / subHeight)
+            const xMax = lerp(this.parent.xMin, this.parent.xMax, eIndex / subWidth)
+            const yMax = lerp(this.parent.yMin, this.parent.yMax, nIndex / subHeight) 
 
-            this.bBox.update(xMin, yMin)
-            this.bBox.update(xMax, yMax)
+            this.update(xMin, yMin)
+            this.update(xMax, yMax)
 
             // Level
             this.level = options.parent.level + 1
         }
 
-        // Update bBox if provided
+        // Update space range if provided
         if (options.bBox !== undefined) {
             
-            this.bBox.updateByBox(options.bBox)
+            this.updateByBox(options.bBox)
         }
     }
 
@@ -60,8 +59,8 @@ export class GridNode {
 
         const vertices = new Float32Array(4)
 
-        const srcTL = [ this.bBox.xMin, this.bBox.yMax ]
-        const srcBR = [ this.bBox.xMax, this.bBox.yMin ]
+        const srcTL = [ this.xMin, this.yMax ]
+        const srcBR = [ this.xMax, this.yMin ]
         
         const targetTL = proj4(`EPSG:${srcCS}`, `EPSG:${4326}`, srcTL)
         const targetBR = proj4(`EPSG:${srcCS}`, `EPSG:${4326}`, srcBR)
@@ -78,8 +77,7 @@ export class GridNode {
     }
 
     release() {
-        
-        this.bBox = this.bBox.release()
+        super.release()
         this.children = null
         this.parent = null
         this.level = null

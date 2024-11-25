@@ -1,14 +1,13 @@
-import { vec4f } from './vec4f.js'
+import { vec4f, Vec4f } from './Vec4f.js'
 
-export class BoundingBox2D {
+export class BoundingBox2D extends Vec4f {
 
     constructor(xMin, yMin, xMax, yMax) {
-
-        this._boundary = vec4f()
-        this._boundary.x = xMin !== undefined ? xMin : Infinity
-        this._boundary.y = yMin !== undefined ? yMin : Infinity
-        this._boundary.z = xMax !== undefined ? xMax : -Infinity
-        this._boundary.w = yMax !== undefined ? yMax : -Infinity
+        super(xMin, yMin, xMax, yMax)
+        this.x = xMin !== undefined ? xMin : Infinity
+        this.y = yMin !== undefined ? yMin : Infinity
+        this.z = xMax !== undefined ? xMax : -Infinity
+        this.w = yMax !== undefined ? yMax : -Infinity
     }
 
     static create(xMin, yMin, xMax, yMax) {
@@ -18,21 +17,21 @@ export class BoundingBox2D {
 
     get boundary() {
 
-        return this._boundary
+        return this.xyzw
     }
 
     update(x, y) {
         
-        this._boundary.x = x < this._boundary.x ? x : this._boundary.x
-        this._boundary.y = y < this._boundary.y ? y : this._boundary.y
-        this._boundary.z = x > this._boundary.z ? x : this._boundary.z
-        this._boundary.w = y > this._boundary.w ? y : this._boundary.w
+        this.data[0] = x < this.data[0] ? x : this.data[0]
+        this.data[1] = y < this.data[1] ? y : this.data[1]
+        this.data[2] = x > this.data[2] ? x : this.data[2]
+        this.data[3] = y > this.data[3] ? y : this.data[3]
     }
 
     updateByBox(box) {
 
-        this.update(box._boundary.x, box._boundary.y)
-        this.update(box._boundary.z, box._boundary.w)
+        this.update(box.x, box.y)
+        this.update(box.z, box.w)
     }
 
     /**
@@ -40,8 +39,8 @@ export class BoundingBox2D {
      */
     overlap(bBox) {
 
-        if (this._boundary.x > bBox._boundary.z || this._boundary.z < bBox._boundary.x) return false
-        if (this._boundary.y > bBox._boundary.w || this._boundary.w < bBox._boundary.y) return false
+        if (this.data[0] > bBox.data[2] || this.data[2] < bBox.data[0]) return false
+        if (this.data[1] > bBox.data[3] || this.data[3] < bBox.data[1]) return false
 
         return true
     }
@@ -49,50 +48,50 @@ export class BoundingBox2D {
     get center() {
 
         return [
-            (this._boundary.x + this._boundary.z) / 2,
-            (this._boundary.y + this._boundary.w) / 2,
+            (this.data[0] + this.data[2]) / 2,
+            (this.data[1] + this.data[3]) / 2,
         ]
     }
 
     get size() {
         
         return [
-            this._boundary.z - this._boundary.x,
-            this._boundary.w - this._boundary.y,
+            this.data[2] - this.data[0],
+            this.data[3] - this.data[1],
         ]
     }
 
     get xMin() {
 
-        return this._boundary.x
+        return this.data[0]
     }
 
     get yMin() {
 
-        return this._boundary.y
+        return this.data[1]
     }
 
     get xMax() {
 
-        return this._boundary.z
+        return this.data[2]
     }
 
     get yMax() {
 
-        return this._boundary.w
+        return this.data[3]
     }
 
     reset(xMin, yMin, xMax, yMax) {
         
-        this._boundary.x = xMin !== undefined ? xMin : Infinity
-        this._boundary.y = yMin !== undefined ? yMin : Infinity
-        this._boundary.z = xMax !== undefined ? xMax : -Infinity
-        this._boundary.w = yMax !== undefined ? yMax : -Infinity
+        this.data[0] = xMin !== undefined ? xMin : Infinity
+        this.data[1] = yMin !== undefined ? yMin : Infinity
+        this.data[2] = xMax !== undefined ? xMax : -Infinity
+        this.data[3] = yMax !== undefined ? yMax : -Infinity
     }
 
     release() {
 
-        this._boundary = null
+        this.data = null
         return null
     }
 }

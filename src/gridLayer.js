@@ -1,6 +1,6 @@
 import axios from 'axios'
-import { GridNode } from './grid'
-import { BoundingBox2D } from './boundingBox2D'
+import { GridNode } from './GridNode'
+import { BoundingBox2D } from './BoundingBox2D'
 
 export default class GridLayer {
 
@@ -20,10 +20,11 @@ export default class GridLayer {
         this.map = undefined
         this.id = 'GridLayer'
         this.renderingMode = '3d'
-
-        // Screen properties
-        this.canvasWidth = 0
-        this.canvasHeight = 0
+        this.isShiftClick = false
+        
+        this.brushOption = {
+            level: 8
+        }
 
         // Update set
         /** @type { Set<{level: number, globalId: number, hitOrNot: boolean}> } */
@@ -217,11 +218,8 @@ export default class GridLayer {
      * @param { WebGL2RenderingContext } gl
     */
     async init(gl) {
-
+        
         enableAllExtensions(gl)
-
-        this.canvasWidth = gl.canvas.width
-        this.canvasHeight = gl.canvas.height
 
         this.terrainMeshShader = await createShader(gl, '/shaders/gridMesh.glsl')
         this.terrainLineShader = await createShader(gl, '/shaders/gridLine.glsl')
@@ -238,6 +236,32 @@ export default class GridLayer {
                 hitOrNot: false
             })
         }
+
+        this.map.boxZoom.disable()
+        this.map.on('mousedown', e => {
+
+            if (e.originalEvent.shiftKey && e.originalEvent.button === 0) {
+                this.isShiftClick = true
+        
+                this.map.dragPan.disable()
+        
+                const lngLat = this.map.unproject([e.point.x, e.point.y])
+                this.hit(lngLat.lng, lngLat.lat, this.brushOption.level)
+            }
+        })
+        .on('mouseup', () => {
+            if (this.isShiftClick) {
+                this.map.dragPan.enable()
+                this.isShiftClick = false
+            }
+        })
+        .on('mousemove', (e) => {
+            if (this.isShiftClick) {
+                this.map.dragPan.disable()
+                const lngLat = this.map.unproject([e.point.x, e.point.y])
+                this.hit(lngLat.lng, lngLat.lat, this.brushOption.level)
+            }
+        })
 
         this.isInitialized = true
     }
@@ -383,7 +407,6 @@ export default class GridLayer {
 
         this.map.triggerRepaint()
     }
-    
 }
 
 // Helpers //////////////////////////////////////////////////////////////////////////////////////////////////////

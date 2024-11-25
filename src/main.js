@@ -1,4 +1,5 @@
-import GridLayer from './gridLayer.js'
+
+import GridLayer from './GridLayer.js'
 import { vec3, mat4 } from 'gl-matrix'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import mapboxgl from 'mapbox-gl'
@@ -13,16 +14,6 @@ mapDiv.style.width = '100%'
 mapDiv.style.zIndex = '1'
 mapDiv.id = 'map'
 document.body.appendChild(mapDiv)
-
-const brushOption = {
-    level: 5
-}
-
-// dat.GUI
-const gui = new GUI()
-const brushFolder = gui.addFolder('Brush')
-brushFolder.add(brushOption, 'level', 1, 5, 1)
-brushFolder.open()
 
 // Map //////////////////////////////////////////////////////////////////////////////////////////////////////
 class NHMap extends mapboxgl.Map {
@@ -40,20 +31,11 @@ class NHMap extends mapboxgl.Map {
         this.WORLD_SIZE = 1024000 // TILE_SIZE * 2000
         this.worldCamera = undefined
         this.vpMatrix = []
-
-        this.on('renderstart', () => {
-        })
     }
 
     update() {
 
-        this.worldCamera = updateWorldCamera(this.transform, this.WORLD_SIZE, 0.0)
-        const viewMatrix = this.worldCamera.view
-        const projectionMatrix = makePerspectiveMatrix(this.worldCamera.fov, this.worldCamera.aspect, this.worldCamera.nearZ, this.worldCamera.farZ)
-        mat4.multiply(this.vpMatrix, projectionMatrix, viewMatrix)
-
         this.mercatorCenter = new mapboxgl.MercatorCoordinate(...this.transform._computeCameraPosition().slice(0, 3))
-        this.zoom = this.getZoom()
 
         const mercatorCenterX = encodeFloatToDouble(this.mercatorCenter.x)
         const mercatorCenterY = encodeFloatToDouble(this.mercatorCenter.y)
@@ -63,8 +45,8 @@ class NHMap extends mapboxgl.Map {
         this.centerHigh[0] = mercatorCenterX[0]
         this.centerHigh[1] = mercatorCenterY[0]
 
-        this.mercatorMatrix = getMercatorMatrix(this.transform)
-        this.relativeEyeMatrix = mat4.multiply([], this.mercatorMatrix, mat4.translate([], mat4.identity([]), vec3.set([], this.centerHigh[0], this.centerHigh[1], 0.0)))
+        // this.mercatorMatrix = getMercatorMatrix(this.transform)
+        this.relativeEyeMatrix = mat4.multiply([], this.transform.mercatorMatrix, mat4.translate([], mat4.identity([]), vec3.set([], this.centerHigh[0], this.centerHigh[1], 0.0)))
     }
 }
 
@@ -81,51 +63,35 @@ const gridLayer = new GridLayer({
         [2, 2],
         [2, 2],
         [2, 2],
+        [2, 2],
+        [2, 2],
+        [2, 2],
         [1, 1]
     ],
     boundaryCondition: [
-        120.0437360613468201,
-        31.17390195220948710,
-        121.9662324011692220,
-        32.08401085804678130
+        113.9031065683563781, 22.3574937445505597, 114.1999667438311548, 22.5363807916184804
     ]
 })
-let isShiftClick = false
+
+// dat.GUI
+const gui = new GUI()
+const brushFolder = gui.addFolder('Brush')
+brushFolder.add(gridLayer.brushOption, 'level', 1, 8, 1)
+brushFolder.open()
 
 const map = new NHMap({
     style: "mapbox://styles/ycsoku/cldjl0d2m000501qlpmmex490",
-    center: [ 120.980697, 31.684162 ],
+    center: [ 114.051537, 22.446937 ],
     projection: 'mercator',
     GPUFrame: GPUFrame,
     container: 'map',
     antialias: true,
     maxZoom: 22,
-    zoom: 9
+    zoom: 11
 
 }).on('load', () => {
-    map.boxZoom.disable()
     map.addLayer(gridLayer)
 
-}).on('mousedown', e => {
-    if (e.originalEvent.shiftKey && e.originalEvent.button === 0) {
-        isShiftClick = true
-
-        map.dragPan.disable()
-
-        const lngLat = map.unproject([e.point.x, e.point.y])
-        gridLayer.hit(lngLat.lng, lngLat.lat, brushOption.level)
-    }
-}).on('mouseup', () => {
-    if (isShiftClick) {
-        map.dragPan.enable()
-        isShiftClick = false
-    }
-}).on('mousemove', (e) => {
-    if (isShiftClick) {
-        map.dragPan.disable()
-        const lngLat = map.unproject([e.point.x, e.point.y])
-        gridLayer.hit(lngLat.lng, lngLat.lat, brushOption.level)
-    }
 })
 
 // Helpers //////////////////////////////////////////////////////////////////////////////////////////////////////
