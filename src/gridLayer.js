@@ -1,6 +1,6 @@
 import axios from 'axios'
-import { GridNode } from './GridNode'
-import { BoundingBox2D } from './BoundingBox2D'
+import { GridNode } from './gridNode'
+import { BoundingBox2D } from './boundingBox2D'
 
 export default class GridLayer {
 
@@ -21,10 +21,6 @@ export default class GridLayer {
         this.id = 'GridLayer'
         this.renderingMode = '3d'
         this.isShiftClick = false
-        
-        this.brushOption = {
-            level: 8
-        }
 
         // Update set
         /** @type { Set<{level: number, globalId: number, hitOrNot: boolean}> } */
@@ -36,6 +32,7 @@ export default class GridLayer {
 
         // Grid properties
         this.registeredGridCount = 0
+        this.storageIdGridMap = new Map()
         this.maxGridNum = options.maxGridNum
         this.boundaryCondition = new BoundingBox2D(...options.boundaryCondition)
 
@@ -45,9 +42,11 @@ export default class GridLayer {
         // Add rootGrid to gridRecoder
         const rootGrid = new GridNode({
             localId: 0,
+            globalId: 0,
             bBox: this.boundaryCondition,
             subdivideRule: this.subdivideRules[0]
         })
+        rootGrid.storageId = this.registeredGridCount++
         this.gridRecoder[0] = {
             width: 1,
             height: 1,
@@ -71,8 +70,14 @@ export default class GridLayer {
             this.gridRecoder[ruleLevel].grids = new Array(width * height)
         })
 
+        // Interaction option
+        this.brushOption = {
+            level: this.subdivideRules.length - 1
+        }
+
         // Grid render list
-        this.renderList = undefined
+        this.fillList = undefined
+        this.showList = undefined
 
         // Storage texture memory
         this.storageTextureSize = Math.ceil(Math.sqrt(options.maxGridNum))
@@ -80,7 +85,8 @@ export default class GridLayer {
         // GPU resource
         this.xTexture = undefined
         this.yTexture = undefined
-        this.indexTexture = undefined
+        this.fillIndexTexture = undefined
+        this.lineIndexTexture = undefined
 
         // Init flag
         this.isInitialized = false
@@ -94,11 +100,11 @@ export default class GridLayer {
     subdivideGrid(gl, level, globalId) {
 
         // Subdivide parent if this grid does not exist
-        if (this.gridRecoder[level].grids[globalId] === undefined) this.subdivideGrid(gl, level - 1, this.getParentGlobalId(level, globalId))
+        if (!this.gridRecoder[level].grids[globalId]) this.subdivideGrid(gl, level - 1, this.getParentGlobalId(level, globalId))
 
         const grid = this.gridRecoder[level].grids[globalId]
 
-        // Return if has been subdivided
+        // Return if grid has been subdivided
         if (grid.children.length !== 0) return
 
         // Subdivide
@@ -118,12 +124,18 @@ export default class GridLayer {
             const subGrid = new GridNode({
                 localId,
                 parent: grid,
+                globalId: subGlobalId,
                 subdivideRule: this.subdivideRules[level]
             })
             
+            subGrid.storageId = this.registeredGridCount++
+            this.writeGridInfoToTexture(gl, subGrid)
+
             grid.children.push(subGrid)
+            this.gridRecoder[level + 1].count += 1
             this.gridRecoder[level + 1].grids[subGlobalId] = subGrid
-            this.writeGridInfoToTexture(gl, this.registeredGridCount++, subGrid)
+
+            this.storageIdGridMap.set(subGrid.storageId, subGrid)
         }
     }
 
@@ -143,28 +155,85 @@ export default class GridLayer {
         const grid = this.gridRecoder[level].grids[globalId]
         if (grid.hit) return
 
-        // Remove parent hit if it has been hitted
-        const parent = this.gridRecoder[level - 1].grids[parentGlobalId]
-        if (parent.hit) {
+        // Remove parent hitting if it has been hitted
+        let parent = grid.parent
+        while (parent) {
             parent.hit = false
+            parent = parent.parent
         }
+        
+        // Remove children if they have existed
+        const stack = [...grid.children]
+        while (stack.length > 0) {
+            const currentGrid = stack.pop()
+            if (!currentGrid) continue
+
+            stack.push(...currentGrid.children)
+            this.removeGrid(gl, currentGrid)
+        }
+        grid.children = []
 
         // Hit
         grid.hit = hitOrNot
     }
 
+    /**
+     * @param { WebGL2RenderingContext } gl 
+     * @param { GridNode } grid 
+     */
+    removeGrid(gl, grid) {
+
+        if (grid === undefined) return
+
+        // Find last valid grid
+        const lastValidGrid = this.storageIdGridMap.get(this.registeredGridCount - 1)
+
+        // Overwrite the texture data of the grid to the valid one
+        if (lastValidGrid && !lastValidGrid.equal(grid)) {
+
+            this.storageIdGridMap.delete(lastValidGrid.storageId)
+            this.storageIdGridMap.set(grid.storageId, lastValidGrid)
+            
+            lastValidGrid.storageId = grid.storageId
+            this.writeGridInfoToTexture(gl, lastValidGrid)
+        }
+
+        // Remove
+        this.gridRecoder[grid.level].grids[grid.globalId] = undefined
+        this.registeredGridCount--
+        grid.release()
+    }
+
+    removeGridAndChildren(grid) {
+
+        const stack = [grid]
+        const gridsToRemove = []
+
+        while (stack.length > 0) {
+            const currentGrid = stack.pop()
+            if (!currentGrid) continue
+
+            currentGrid.children.forEach(child => stack.push(child))
+
+            gridsToRemove.push(currentGrid)
+        }
+
+        this.registeredGridCount -= gridsToRemove.length
+        gridsToRemove.forEach(gridToRemove => {
+            this.gridRecoder[gridToRemove.level].grids[gridToRemove.globalId] = undefined
+            gridToRemove.release()
+        })
+    }
+
     /** 
      * @param {WebGL2RenderingContext} gl 
-     * @param {number} storageId
      * @param {GridNode} grid
     */
-    writeGridInfoToTexture(gl, storageId, grid) {
-
-        grid.storageId = storageId
+    writeGridInfoToTexture(gl, grid) {
 
         const vertices = grid.getVertices(this.srcCS)
-        const storageU = storageId % this.storageTextureSize
-        const storageV = Math.floor(storageId / this.storageTextureSize)
+        const storageU = grid.storageId % this.storageTextureSize
+        const storageV = Math.floor(grid.storageId / this.storageTextureSize)
 
         fillSubTexture2DByArray(gl, this.xTexture, 0, storageU, storageV, 1, 1, gl.RG, gl.FLOAT, vertices.slice(0, 2))
         fillSubTexture2DByArray(gl, this.yTexture, 0, storageU, storageV, 1, 1, gl.RG, gl.FLOAT, vertices.slice(2, 4))
@@ -172,10 +241,27 @@ export default class GridLayer {
 
     /**
      * @param { WebGL2RenderingContext } gl
+     * @param { ArrayLike } list 
+     * @param { WebGLTexture } texture 
+    */
+    writeIndicesToTexture(gl, list, texture) {
+        
+        const listLength = list.length
+        const blockWidth = this.storageTextureSize
+        const blockHeight = Math.ceil(listLength / this.storageTextureSize)
+        const blockData = new Uint32Array(blockWidth * blockHeight) // TODO: can be made as pool
+        blockData.set(list, 0)
+
+        fillSubTexture2DByArray(gl, texture, 0, 0, 0, blockWidth, blockHeight, gl.RED_INTEGER, gl.UNSIGNED_INT, blockData)
+    }
+
+    /**
+     * @param { WebGL2RenderingContext } gl
     */
     tickGridRenderList(gl) {
 
-        this.renderList = []
+        this.fillList = []
+        this.showList = []
 
         const stack = [this.gridRecoder[0].grids[0]]
         while(stack.length > 0) {
@@ -183,20 +269,16 @@ export default class GridLayer {
             const grid = stack.pop()
 
             // Add hitted grid to render list
-            if (grid.children.length === 0 && grid.hit) {
-                this.renderList.push(grid.storageId)
+            if (grid.hit || grid.children.length === 0) {
+                
+                this.showList.push(grid.storageId)
+                grid.hit && this.fillList.push(grid.storageId)
             } else {
                 stack.push(...grid.children)
             }
         }
-        
-        const renderListLength = this.renderList.length
-        const blockWidth = this.storageTextureSize
-        const blockHeight = Math.ceil(renderListLength / this.storageTextureSize)
-        const blockData = new Uint32Array(blockWidth * blockHeight) // TODO: can be made as pool
-        blockData.set(this.renderList, 0)
-
-        fillSubTexture2DByArray(gl, this.indexTexture, 0, 0, 0, blockWidth, blockHeight, gl.RED_INTEGER, gl.UNSIGNED_INT, blockData)
+        this.writeIndicesToTexture(gl, this.fillList, this.fillIndexTexture)
+        this.writeIndicesToTexture(gl, this.showList, this.lineIndexTexture)
     }
 
     /**
@@ -214,18 +296,30 @@ export default class GridLayer {
         this.hitSet.clear()
     }
 
+    deserialize() {
+        return {
+            key: 'haha'
+        }
+    }
+
     /**
      * @param { WebGL2RenderingContext } gl
     */
     async init(gl) {
-        
+
         enableAllExtensions(gl)
 
         this.terrainMeshShader = await createShader(gl, '/shaders/gridMesh.glsl')
         this.terrainLineShader = await createShader(gl, '/shaders/gridLine.glsl')
         this.xTexture = createTexture2D(gl, 1, this.storageTextureSize, this.storageTextureSize, gl.RG32F)
         this.yTexture = createTexture2D(gl, 1, this.storageTextureSize, this.storageTextureSize, gl.RG32F)
-        this.indexTexture = createTexture2D(gl, 1, this.storageTextureSize, this.storageTextureSize, gl.R32UI)
+        this.fillIndexTexture = createTexture2D(gl, 1, this.storageTextureSize, this.storageTextureSize, gl.R32UI)
+        this.lineIndexTexture = createTexture2D(gl, 1, this.storageTextureSize, this.storageTextureSize, gl.R32UI)
+        
+        // Init root grid
+        const rootGrid = this.gridRecoder[0].grids[0]
+        this.writeGridInfoToTexture(gl, rootGrid)
+        this.storageIdGridMap.set(rootGrid.storageId, rootGrid)
 
         for (let globalId = 0; globalId < this.gridRecoder[1].width * this.gridRecoder[1].height; globalId++) {
             
@@ -237,6 +331,7 @@ export default class GridLayer {
             })
         }
 
+        // Add interaction event
         this.map.boxZoom.disable()
         this.map.on('mousedown', e => {
 
@@ -263,12 +358,25 @@ export default class GridLayer {
             }
         })
 
+        document.addEventListener('keydown', e => {
+
+            if (e.shiftKey && e.key === 'S') {
+                let data = this.deserialize()
+                let jsonData = JSON.stringify(data)
+                let blob = new Blob([jsonData], { type: 'application/json' })
+                let link = document.createElement('a')
+                link.href = URL.createObjectURL(blob)
+                link.download = 'gridInfo.json'
+                link.click()
+            }
+        })
+
         this.isInitialized = true
     }
 
     /**
-     * @param { number } level Level of hitted grid
-     * @param { number } globalId Global id of Hitted grid
+     * @param { number } level Level of grid
+     * @param { number } globalId Global id of grid
     */
     getGridLocalId(level, globalId) {
         if (level === 0) return 0
@@ -316,7 +424,7 @@ export default class GridLayer {
         gl.activeTexture(gl.TEXTURE1)
         gl.bindTexture(gl.TEXTURE_2D, this.yTexture)
         gl.activeTexture(gl.TEXTURE2)
-        gl.bindTexture(gl.TEXTURE_2D, this.indexTexture)
+        gl.bindTexture(gl.TEXTURE_2D, this.fillIndexTexture)
 
         gl.uniform1i(gl.getUniformLocation(this.terrainMeshShader, 'xTexture'), 0)
         gl.uniform1i(gl.getUniformLocation(this.terrainMeshShader, 'yTexture'), 1)
@@ -325,7 +433,7 @@ export default class GridLayer {
         gl.uniform2fv(gl.getUniformLocation(this.terrainMeshShader, 'centerHigh'), this.map.centerHigh)
         gl.uniformMatrix4fv(gl.getUniformLocation(this.terrainMeshShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
 
-        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.renderList.length)
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.fillList.length)
     }
 
     /** @param {WebGL2RenderingContext} gl */
@@ -340,14 +448,17 @@ export default class GridLayer {
         gl.bindTexture(gl.TEXTURE_2D, this.xTexture)
         gl.activeTexture(gl.TEXTURE1)
         gl.bindTexture(gl.TEXTURE_2D, this.yTexture)
+        gl.activeTexture(gl.TEXTURE2)
+        gl.bindTexture(gl.TEXTURE_2D, this.lineIndexTexture)
 
         gl.uniform1i(gl.getUniformLocation(this.terrainLineShader, 'xTexture'), 0)
         gl.uniform1i(gl.getUniformLocation(this.terrainLineShader, 'yTexture'), 1)
+        gl.uniform1i(gl.getUniformLocation(this.terrainLineShader, 'indexTexture'), 2)
         gl.uniform2fv(gl.getUniformLocation(this.terrainLineShader, 'centerLow'), this.map.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this.terrainLineShader, 'centerHigh'), this.map.centerHigh)
         gl.uniformMatrix4fv(gl.getUniformLocation(this.terrainLineShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
 
-        gl.drawArraysInstanced(gl.LINE_LOOP, 0, 4, this.registeredGridCount)
+        gl.drawArraysInstanced(gl.LINE_LOOP, 0, 4, this.showList.length)
     }
 
     onAdd(map, gl) {
@@ -377,6 +488,8 @@ export default class GridLayer {
 
         //// Last check //////////////////////////////////////////////////////////////////////////////////////////
         /**/ errorCheck(gl)         /**///////////////////////////////////////////////////////////////////////////
+
+        console.log(this.storageIdGridMap.size)
     }
 
     /**

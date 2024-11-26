@@ -1,12 +1,13 @@
 import proj4 from 'proj4'
-import { BoundingBox2D } from './BoundingBox2D.js'
-import { MercatorCoordinate } from './MercatorCoordinate.js'
+import { BoundingBox2D } from './boundingBox2D.js'
+import { MercatorCoordinate } from './mercatorCoordinate.js'
 
 export class GridNode extends BoundingBox2D {
 
     /**
      * @param {{
      *      localId: number,
+     *      globalId: number,
      *      parent: GridNode,
      *      bBox: BoundingBox2D,
      *      subdivideRule: [number, number]
@@ -20,6 +21,7 @@ export class GridNode extends BoundingBox2D {
         this.hit = false
         this.storageId = 0
         this.localId = options.localId
+        this.globalId = options.globalId
 
         /** @type {GridNode[]} */
         this.children = []
@@ -77,12 +79,27 @@ export class GridNode extends BoundingBox2D {
     }
 
     release() {
+
         super.release()
+
+        this.storageId = null
         this.children = null
+        this.globalId = null
+        this.localId = null
         this.parent = null
         this.level = null
-        this.localId = null
+        this.hit = false
+
         return null
+    }
+
+    /**
+     * 
+     * @param {GridNode} grid 
+     */
+    equal(grid) {
+
+        return (this.level === grid.level) && (this.globalId === grid.globalId)
     }
     
     isSubdividable() {

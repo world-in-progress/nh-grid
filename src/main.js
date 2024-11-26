@@ -1,5 +1,5 @@
 
-import GridLayer from './GridLayer.js'
+import GridLayer from './gridLayer.js'
 import { vec3, mat4 } from 'gl-matrix'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import mapboxgl from 'mapbox-gl'
@@ -66,6 +66,8 @@ const gridLayer = new GridLayer({
         [2, 2],
         [2, 2],
         [2, 2],
+        [2, 2],
+        [2, 2],
         [1, 1]
     ],
     boundaryCondition: [
@@ -76,7 +78,7 @@ const gridLayer = new GridLayer({
 // dat.GUI
 const gui = new GUI()
 const brushFolder = gui.addFolder('Brush')
-brushFolder.add(gridLayer.brushOption, 'level', 1, 8, 1)
+brushFolder.add(gridLayer.brushOption, 'level', 1, gridLayer.subdivideRules.length - 1, 1)
 brushFolder.open()
 
 const map = new NHMap({
