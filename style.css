@@ -13,6 +13,37 @@ body, html {
 }
 
 .dg.ac {
-    position: absolute;
+    position: fixed;
     z-index: 10000;
+    right: 10px;
+}
+
+.dg.main.a {
+    margin: 0px;
+}
+
+button {
+    z-index: 1000;
+    width: 64px;
+    height: 64px;
+    background: transparent;
+    cursor: pointer;
+    position: fixed;
+    border: none;
+    padding: 0px 0px;
+    right: 10px;
+    translate: translateY(-50%);
+}
+
+button.active {
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.6);
+    transition: all 0.3s ease;
+}
+
+button:active {
+    box-shadow: 0 0 20px rgba(255, 255, 255, 1);
+}
+
+button:focus {
+    outline: none;
 }

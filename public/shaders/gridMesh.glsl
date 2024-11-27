@@ -9,7 +9,11 @@ uniform vec2 centerLow;
 uniform vec2 centerHigh;
 uniform sampler2D xTexture;
 uniform sampler2D yTexture;
+uniform sampler2D paletteTexture;
+uniform usampler2D levelTexture;
 uniform usampler2D indexTexture;
+
+out vec3 v_color;
 
 const float PI = 3.141592653;
 
@@ -87,11 +91,13 @@ void main() {
 
     vec2 xs = texelFetch(xTexture, ivec2(storage_u, storage_v), 0).rg;
     vec2 ys = texelFetch(yTexture, ivec2(storage_u, storage_v), 0).rg;
+    int level = int(texelFetch(levelTexture, ivec2(storage_u, storage_v), 0).r);
 
     ivec2 xyIndex = indexMap[gl_VertexID];
     float x = xs[xyIndex.x];
     float y = ys[xyIndex.y];
 
+    v_color = texelFetch(paletteTexture, ivec2(level, 0), 0).rgb;
     gl_Position = uMatrix * vec4(translateRelativeToEye(vec2(x, y), vec2(0.0)), 0.0, 1.0);
 }
 
@@ -101,10 +107,11 @@ void main() {
 
 precision highp float;
 
+in vec3 v_color;
 out vec4 fragColor;
 
 void main() {
-    fragColor = vec4(0.0, 0.5, 0.5, 0.3);
+    fragColor = vec4(v_color, 0.3);
 }
 
 #endif

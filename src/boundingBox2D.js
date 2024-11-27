@@ -45,6 +45,12 @@ export class BoundingBox2D extends Vec4f {
         return true
     }
 
+    within(x, y) {
+
+        if (x < this.data[0] || y < this.data[1] || x > this.data[2] || y > this.data[3]) return false
+        return true
+    }
+
     get center() {
 
         return [
@@ -94,6 +100,8 @@ export class BoundingBox2D extends Vec4f {
         this.data = null
         return null
     }
+
+    
 }
 
 export function boundingBox2D(xMin, yMin, xMax, yMax) {

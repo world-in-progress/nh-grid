@@ -3,7 +3,6 @@ import GridLayer from './gridLayer.js'
 import { vec3, mat4 } from 'gl-matrix'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import mapboxgl from 'mapbox-gl'
-import { GUI } from 'dat.gui'
 
 // DOM Configuration //////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -75,14 +74,8 @@ const gridLayer = new GridLayer({
     ]
 })
 
-// dat.GUI
-const gui = new GUI()
-const brushFolder = gui.addFolder('Brush')
-brushFolder.add(gridLayer.brushOption, 'level', 1, gridLayer.subdivideRules.length - 1, 1)
-brushFolder.open()
-
 const map = new NHMap({
-    style: "mapbox://styles/ycsoku/cldjl0d2m000501qlpmmex490",
+    style: 'mapbox://styles/ycsoku/cm3zhjxbs00pa01sd6hx7grtr',
     center: [ 114.051537, 22.446937 ],
     projection: 'mercator',
     GPUFrame: GPUFrame,
