@@ -1,0 +1,1090 @@
+{
+    "extent": [
+        113.90310656835638,
+        22.35749374455056,
+        114.19996674383115,
+        22.53638079161848
+    ],
+    "grids": [
+        {
+            "id": 0,
+            "xMinPercent": [
+                0,
+                1
+            ],
+            "yMinPercent": [
+                0,
+                1
+            ],
+            "xMaxPercent": [
+                1,
+                3
+            ],
+            "yMaxPercent": [
+                1,
+                3
+            ]
+        },
+        {
+            "id": 1,
+            "xMinPercent": [
+                1,
+                3
+            ],
+            "yMinPercent": [
+                0,
+                1
+            ],
+            "xMaxPercent": [
+                2,
+                3
+            ],
+            "yMaxPercent": [
+                1,
+                3
+            ]
+        },
+        {
+            "id": 2,
+            "xMinPercent": [
+                2,
+                3
+            ],
+            "yMinPercent": [
+                0,
+                1
+            ],
+            "xMaxPercent": [
+                1,
+                1
+            ],
+            "yMaxPercent": [
+                1,
+                3
+            ]
+        },
+        {
+            "id": 3,
+            "xMinPercent": [
+                0,
+                1
+            ],
+            "yMinPercent": [
+                1,
+                3
+            ],
+            "xMaxPercent": [
+                1,
+                3
+            ],
+            "yMaxPercent": [
+                2,
+                3
+            ]
+        },
+        {
+            "id": 4,
+            "xMinPercent": [
+                0,
+                1
+            ],
+            "yMinPercent": [
+                2,
+                3
+            ],
+            "xMaxPercent": [
+                1,
+                3
+            ],
+            "yMaxPercent": [
+                1,
+                1
+            ]
+        },
+        {
+            "id": 5,
+            "xMinPercent": [
+                2,
+                3
+            ],
+            "yMinPercent": [
+                2,
+                3
+            ],
+            "xMaxPercent": [
+                1,
+                1
+            ],
+            "yMaxPercent": [
+                1,
+                1
+            ]
+        },
+        {
+            "id": 6,
+            "xMinPercent": [
+                1,
+                3
+            ],
+            "yMinPercent": [
+                2,
+                3
+            ],
+            "xMaxPercent": [
+                1,
+                2
+            ],
+            "yMaxPercent": [
+                5,
+                6
+            ]
+        },
+        {
+            "id": 7,
+            "xMinPercent": [
+                1,
+                2
+            ],
+            "yMinPercent": [
+                2,
+                3
+            ],
+            "xMaxPercent": [
+                2,
+                3
+            ],
+            "yMaxPercent": [
+                5,
+                6
+            ]
+        },
+        {
+            "id": 8,
+            "xMinPercent": [
+                1,
+                3
+            ],
+            "yMinPercent": [
+                5,
+                6
+            ],
+            "xMaxPercent": [
+                1,
+                2
+            ],
+            "yMaxPercent": [
+                1,
+                1
+            ]
+        },
+        {
+            "id": 9,
+            "xMinPercent": [
+                1,
+                2
+            ],
+            "yMinPercent": [
+                5,
+                6
+            ],
+            "xMaxPercent": [
+                2,
+                3
+            ],
+            "yMaxPercent": [
+                1,
+                1
+            ]
+        },
+        {
+            "id": 10,
+            "xMinPercent": [
+                1,
+                3
+            ],
+            "yMinPercent": [
+                1,
+                3
+            ],
+            "xMaxPercent": [
+                1,
+                2
+            ],
+            "yMaxPercent": [
+                1,
+                2
+            ]
+        },
+        {
+            "id": 11,
+            "xMinPercent": [
+                1,
+                2
+            ],
+            "yMinPercent": [
+                1,
+                3
+            ],
+            "xMaxPercent": [
+                2,
+                3
+            ],
+            "yMaxPercent": [
+                1,
+                2
+            ]
+        },
+        {
+            "id": 12,
+            "xMinPercent": [
+                1,
+                3
+            ],
+            "yMinPercent": [
+                1,
+                2
+            ],
+            "xMaxPercent": [
+                1,
+                2
+            ],
+            "yMaxPercent": [
+                2,
+                3
+            ]
+        },
+        {
+            "id": 13,
+            "xMinPercent": [
+                1,
+                2
+            ],
+            "yMinPercent": [
+                1,
+                2
+            ],
+            "xMaxPercent": [
+                2,
+                3
+            ],
+            "yMaxPercent": [
+                2,
+                3
+            ]
+        },
+        {
+            "id": 14,
+            "xMinPercent": [
+                2,
+                3
+            ],
+            "yMinPercent": [
+                1,
+                3
+            ],
+            "xMaxPercent": [
+                5,
+                6
+            ],
+            "yMaxPercent": [
+                1,
+                2
+            ]
+        },
+        {
+            "id": 15,
+            "xMinPercent": [
+                5,
+                6
+            ],
+            "yMinPercent": [
+                1,
+                3
+            ],
+            "xMaxPercent": [
+                1,
+                1
+            ],
+            "yMaxPercent": [
+                1,
+                2
+            ]
+        },
+        {
+            "id": 16,
+            "xMinPercent": [
+                2,
+                3
+            ],
+            "yMinPercent": [
+                1,
+                2
+            ],
+            "xMaxPercent": [
+                5,
+                6
+            ],
+            "yMaxPercent": [
+                2,
+                3
+            ]
+        },
+        {
+            "id": 17,
+            "xMinPercent": [
+                5,
+                6
+            ],
+            "yMinPercent": [
+                1,
+                2
+            ],
+            "xMaxPercent": [
+                1,
+                1
+            ],
+            "yMaxPercent": [
+                2,
+                3
+            ]
+        }
+    ],
+    "edges": [
+        {
+            "id": 0,
+            "adjGrids": [
+                3,
+                0
+            ],
+            "minPercent": [
+                0,
+                1
+            ],
+            "maxPercent": [
+                1,
+                3
+            ],
+            "edgeCode": 2
+        },
+        {
+            "id": 1,
+            "adjGrids": [
+                0,
+                null
+            ],
+            "minPercent": [
+                0,
+                1
+            ],
+            "maxPercent": [
+                1,
+                3
+            ],
+            "edgeCode": 1
+        },
+        {
+            "id": 2,
+            "adjGrids": [
+                0,
+                null
+            ],
+            "minPercent": [
+                0,
+                1
+            ],
+            "maxPercent": [
+                1,
+                3
+            ],
+            "edgeCode": 2
+        },
+        {
+            "id": 3,
+            "adjGrids": [
+                0,
+                1
+            ],
+            "minPercent": [
+                0,
+                1
+            ],
+            "maxPercent": [
+                1,
+                3
+            ],
+            "edgeCode": 3
+        },
+        {
+            "id": 4,
+            "adjGrids": [
+                11,
+                1
+            ],
+            "minPercent": [
+                1,
+                2
+            ],
+            "maxPercent": [
+                2,
+                3
+            ],
+            "edgeCode": 2
+        },
+        {
+            "id": 5,
+            "adjGrids": [
+                10,
+                1
+            ],
+            "minPercent": [
+                1,
+                3
+            ],
+            "maxPercent": [
+                1,
+                2
+            ],
+            "edgeCode": 2
+        },
+        {
+            "id": 6,
+            "adjGrids": [
+                1,
+                null
+            ],
+            "minPercent": [
+                1,
+                3
+            ],
+            "maxPercent": [
+                2,
+                3
+            ],
+            "edgeCode": 2
+        },
+        {
+            "id": 7,
+            "adjGrids": [
+                1,
+                2
+            ],
+            "minPercent": [
+                0,
+                1
+            ],
+            "maxPercent": [
+                1,
+                3
+            ],
+            "edgeCode": 3
+        },
+        {
+            "id": 8,
+            "adjGrids": [
+                15,
+                2
+            ],
+            "minPercent": [
+                5,
+                6
+            ],
+            "maxPercent": [
+                1,
+                1
+            ],
+            "edgeCode": 2
+        },
+        {
+            "id": 9,
+            "adjGrids": [
+                14,
+                2
+            ],
+            "minPercent": [
+                2,
+                3
+            ],
+            "maxPercent": [
+                5,
+                6
+            ],
+            "edgeCode": 2
+        },
+        {
+            "id": 10,
+            "adjGrids": [
+                2,
+                null
+            ],
+            "minPercent": [
+                2,
+                3
+            ],
+            "maxPercent": [
+                1,
+                1
+            ],
+            "edgeCode": 2
+        },
+        {
+            "id": 11,
+            "adjGrids": [
+                2,
+                null
+            ],
+            "minPercent": [
+                0,
+                1
+            ],
+            "maxPercent": [
+                1,
+                3
+            ],
+            "edgeCode": 3
+        },
+        {
+            "id": 12,
+            "adjGrids": [
+                4,
+                3
+            ],
+            "minPercent": [
+                0,
+                1
+            ],
+            "maxPercent": [
+                1,
+                3
+            ],
+            "edgeCode": 2
+        },
+        {
+            "id": 13,
+            "adjGrids": [
+                3,
+                null
+            ],
+            "minPercent": [
+                1,
+                3
+            ],
+            "maxPercent": [
+                2,
+                3
+            ],
+            "edgeCode": 1
+        },
+        {
+            "id": 14,
+            "adjGrids": [
+                10,
+                3
+            ],
+            "minPercent": [
+                1,
+                3
+            ],
+            "maxPercent": [
+                1,
+                2
+            ],
+            "edgeCode": 1
+        },
+        {
+            "id": 15,
+            "adjGrids": [
+                12,
+                3
+            ],
+            "minPercent": [
+                1,
+                2
+            ],
+            "maxPercent": [
+                2,
+                3
+            ],
+            "edgeCode": 1
+        },
+        {
+            "id": 16,
+            "adjGrids": [
+                4,
+                null
+            ],
+            "minPercent": [
+                0,
+                1
+            ],
+            "maxPercent": [
+                1,
+                3
+            ],
+            "edgeCode": 0
+        },
+        {
+            "id": 17,
+            "adjGrids": [
+                4,
+                null
+            ],
+            "minPercent": [
+                2,
+                3
+            ],
+            "maxPercent": [
+                1,
+                1
+            ],
+            "edgeCode": 1
+        },
+        {
+            "id": 18,
+            "adjGrids": [
+                8,
+                4
+            ],
+            "minPercent": [
+                5,
+                6
+            ],
+            "maxPercent": [
+                1,
+                1
+            ],
+            "edgeCode": 1
+        },
+        {
+            "id": 19,
+            "adjGrids": [
+                6,
+                4
+            ],
+            "minPercent": [
+                2,
+                3
+            ],
+            "maxPercent": [
+                5,
+                6
+            ],
+            "edgeCode": 1
+        },
+        {
+            "id": 20,
+            "adjGrids": [
+                5,
+                null
+            ],
+            "minPercent": [
+                2,
+                3
+            ],
+            "maxPercent": [
+                1,
+                1
+            ],
+            "edgeCode": 0
+        },
+        {
+            "id": 21,
+            "adjGrids": [
+                9,
+                5
+            ],
+            "minPercent": [
+                5,
+                6
+            ],
+            "maxPercent": [
+                1,
+                1
+            ],
+            "edgeCode": 3
+        },
+        {
+            "id": 22,
+            "adjGrids": [
+                7,
+                5
+            ],
+            "minPercent": [
+                2,
+                3
+            ],
+            "maxPercent": [
+                5,
+                6
+            ],
+            "edgeCode": 3
+        },
+        {
+            "id": 23,
+            "adjGrids": [
+                5,
+                16
+            ],
+            "minPercent": [
+                2,
+                3
+            ],
+            "maxPercent": [
+                5,
+                6
+            ],
+            "edgeCode": 2
+        },
+        {
+            "id": 24,
+            "adjGrids": [
+                5,
+                17
+            ],
+            "minPercent": [
+                5,
+                6
+            ],
+            "maxPercent": [
+                1,
+                1
+            ],
+            "edgeCode": 2
+        },
+        {
+            "id": 25,
+            "adjGrids": [
+                5,
+                null
+            ],
+            "minPercent": [
+                2,
+                3
+            ],
+            "maxPercent": [
+                1,
+                1
+            ],
+            "edgeCode": 3
+        },
+        {
+            "id": 26,
+            "adjGrids": [
+                8,
+                6
+            ],
+            "minPercent": [
+                1,
+                3
+            ],
+            "maxPercent": [
+                1,
+                2
+            ],
+            "edgeCode": 2
+        },
+        {
+            "id": 27,
+            "adjGrids": [
+                6,
+                12
+            ],
+            "minPercent": [
+                1,
+                3
+            ],
+            "maxPercent": [
+                1,
+                2
+            ],
+            "edgeCode": 2
+        },
+        {
+            "id": 28,
+            "adjGrids": [
+                6,
+                7
+            ],
+            "minPercent": [
+                2,
+                3
+            ],
+            "maxPercent": [
+                5,
+                6
+            ],
+            "edgeCode": 3
+        },
+        {
+            "id": 29,
+            "adjGrids": [
+                9,
+                7
+            ],
+            "minPercent": [
+                1,
+                2
+            ],
+            "maxPercent": [
+                2,
+                3
+            ],
+            "edgeCode": 2
+        },
+        {
+            "id": 30,
+            "adjGrids": [
+                7,
+                13
+            ],
+            "minPercent": [
+                1,
+                2
+            ],
+            "maxPercent": [
+                2,
+                3
+            ],
+            "edgeCode": 2
+        },
+        {
+            "id": 31,
+            "adjGrids": [
+                8,
+                null
+            ],
+            "minPercent": [
+                1,
+                3
+            ],
+            "maxPercent": [
+                1,
+                2
+            ],
+            "edgeCode": 0
+        },
+        {
+            "id": 32,
+            "adjGrids": [
+                8,
+                9
+            ],
+            "minPercent": [
+                5,
+                6
+            ],
+            "maxPercent": [
+                1,
+                1
+            ],
+            "edgeCode": 3
+        },
+        {
+            "id": 33,
+            "adjGrids": [
+                9,
+                null
+            ],
+            "minPercent": [
+                1,
+                2
+            ],
+            "maxPercent": [
+                2,
+                3
+            ],
+            "edgeCode": 0
+        },
+        {
+            "id": 34,
+            "adjGrids": [
+                10,
+                12
+            ],
+            "minPercent": [
+                1,
+                3
+            ],
+            "maxPercent": [
+                1,
+                2
+            ],
+            "edgeCode": 0
+        },
+        {
+            "id": 35,
+            "adjGrids": [
+                11,
+                10
+            ],
+            "minPercent": [
+                1,
+                3
+            ],
+            "maxPercent": [
+                1,
+                2
+            ],
+            "edgeCode": 1
+        },
+        {
+            "id": 36,
+            "adjGrids": [
+                11,
+                13
+            ],
+            "minPercent": [
+                1,
+                2
+            ],
+            "maxPercent": [
+                2,
+                3
+            ],
+            "edgeCode": 0
+        },
+        {
+            "id": 37,
+            "adjGrids": [
+                14,
+                11
+            ],
+            "minPercent": [
+                1,
+                3
+            ],
+            "maxPercent": [
+                1,
+                2
+            ],
+            "edgeCode": 1
+        },
+        {
+            "id": 38,
+            "adjGrids": [
+                12,
+                13
+            ],
+            "minPercent": [
+                1,
+                2
+            ],
+            "maxPercent": [
+                2,
+                3
+            ],
+            "edgeCode": 3
+        },
+        {
+            "id": 39,
+            "adjGrids": [
+                16,
+                13
+            ],
+            "minPercent": [
+                1,
+                2
+            ],
+            "maxPercent": [
+                2,
+                3
+            ],
+            "edgeCode": 1
+        },
+        {
+            "id": 40,
+            "adjGrids": [
+                16,
+                14
+            ],
+            "minPercent": [
+                2,
+                3
+            ],
+            "maxPercent": [
+                5,
+                6
+            ],
+            "edgeCode": 2
+        },
+        {
+            "id": 41,
+            "adjGrids": [
+                15,
+                14
+            ],
+            "minPercent": [
+                1,
+                3
+            ],
+            "maxPercent": [
+                1,
+                2
+            ],
+            "edgeCode": 1
+        },
+        {
+            "id": 42,
+            "adjGrids": [
+                17,
+                15
+            ],
+            "minPercent": [
+                5,
+                6
+            ],
+            "maxPercent": [
+                1,
+                1
+            ],
+            "edgeCode": 2
+        },
+        {
+            "id": 43,
+            "adjGrids": [
+                15,
+                null
+            ],
+            "minPercent": [
+                1,
+                3
+            ],
+            "maxPercent": [
+                1,
+                2
+            ],
+            "edgeCode": 3
+        },
+        {
+            "id": 44,
+            "adjGrids": [
+                16,
+                17
+            ],
+            "minPercent": [
+                1,
+                2
+            ],
+            "maxPercent": [
+                2,
+                3
+            ],
+            "edgeCode": 3
+        },
+        {
+            "id": 45,
+            "adjGrids": [
+                17,
+                null
+            ],
+            "minPercent": [
+                1,
+                2
+            ],
+            "maxPercent": [
+                2,
+                3
+            ],
+            "edgeCode": 3
+        }
+    ]
+}
