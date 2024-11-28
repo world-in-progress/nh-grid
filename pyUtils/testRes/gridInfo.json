@@ -353,8 +353,8 @@
         {
             "id": 0,
             "adjGrids": [
-                3,
-                0
+                0,
+                3
             ],
             "minPercent": [
                 0,
@@ -364,7 +364,7 @@
                 1,
                 3
             ],
-            "edgeCode": 2
+            "edgeCode": 0
         },
         {
             "id": 1,
@@ -417,8 +417,24 @@
         {
             "id": 4,
             "adjGrids": [
-                11,
-                1
+                1,
+                10
+            ],
+            "minPercent": [
+                1,
+                3
+            ],
+            "maxPercent": [
+                1,
+                2
+            ],
+            "edgeCode": 0
+        },
+        {
+            "id": 5,
+            "adjGrids": [
+                1,
+                11
             ],
             "minPercent": [
                 1,
@@ -428,23 +444,7 @@
                 2,
                 3
             ],
-            "edgeCode": 2
-        },
-        {
-            "id": 5,
-            "adjGrids": [
-                10,
-                1
-            ],
-            "minPercent": [
-                1,
-                3
-            ],
-            "maxPercent": [
-                1,
-                2
-            ],
-            "edgeCode": 2
+            "edgeCode": 0
         },
         {
             "id": 6,
@@ -481,24 +481,8 @@
         {
             "id": 8,
             "adjGrids": [
-                15,
-                2
-            ],
-            "minPercent": [
-                5,
-                6
-            ],
-            "maxPercent": [
-                1,
-                1
-            ],
-            "edgeCode": 2
-        },
-        {
-            "id": 9,
-            "adjGrids": [
-                14,
-                2
+                2,
+                14
             ],
             "minPercent": [
                 2,
@@ -508,7 +492,23 @@
                 5,
                 6
             ],
-            "edgeCode": 2
+            "edgeCode": 0
+        },
+        {
+            "id": 9,
+            "adjGrids": [
+                2,
+                15
+            ],
+            "minPercent": [
+                5,
+                6
+            ],
+            "maxPercent": [
+                1,
+                1
+            ],
+            "edgeCode": 0
         },
         {
             "id": 10,
@@ -545,8 +545,8 @@
         {
             "id": 12,
             "adjGrids": [
-                4,
-                3
+                3,
+                4
             ],
             "minPercent": [
                 0,
@@ -556,7 +556,7 @@
                 1,
                 3
             ],
-            "edgeCode": 2
+            "edgeCode": 0
         },
         {
             "id": 13,
@@ -577,8 +577,8 @@
         {
             "id": 14,
             "adjGrids": [
-                10,
-                3
+                3,
+                10
             ],
             "minPercent": [
                 1,
@@ -588,13 +588,13 @@
                 1,
                 2
             ],
-            "edgeCode": 1
+            "edgeCode": 3
         },
         {
             "id": 15,
             "adjGrids": [
-                12,
-                3
+                3,
+                12
             ],
             "minPercent": [
                 1,
@@ -604,7 +604,7 @@
                 2,
                 3
             ],
-            "edgeCode": 1
+            "edgeCode": 3
         },
         {
             "id": 16,
@@ -641,24 +641,8 @@
         {
             "id": 18,
             "adjGrids": [
-                8,
-                4
-            ],
-            "minPercent": [
-                5,
+                4,
                 6
-            ],
-            "maxPercent": [
-                1,
-                1
-            ],
-            "edgeCode": 1
-        },
-        {
-            "id": 19,
-            "adjGrids": [
-                6,
-                4
             ],
             "minPercent": [
                 2,
@@ -668,7 +652,23 @@
                 5,
                 6
             ],
-            "edgeCode": 1
+            "edgeCode": 3
+        },
+        {
+            "id": 19,
+            "adjGrids": [
+                4,
+                8
+            ],
+            "minPercent": [
+                5,
+                6
+            ],
+            "maxPercent": [
+                1,
+                1
+            ],
+            "edgeCode": 3
         },
         {
             "id": 20,
@@ -689,24 +689,8 @@
         {
             "id": 21,
             "adjGrids": [
-                9,
-                5
-            ],
-            "minPercent": [
                 5,
-                6
-            ],
-            "maxPercent": [
-                1,
-                1
-            ],
-            "edgeCode": 3
-        },
-        {
-            "id": 22,
-            "adjGrids": [
-                7,
-                5
+                7
             ],
             "minPercent": [
                 2,
@@ -716,7 +700,23 @@
                 5,
                 6
             ],
-            "edgeCode": 3
+            "edgeCode": 1
+        },
+        {
+            "id": 22,
+            "adjGrids": [
+                5,
+                9
+            ],
+            "minPercent": [
+                5,
+                6
+            ],
+            "maxPercent": [
+                1,
+                1
+            ],
+            "edgeCode": 1
         },
         {
             "id": 23,
@@ -769,8 +769,8 @@
         {
             "id": 26,
             "adjGrids": [
-                8,
-                6
+                6,
+                8
             ],
             "minPercent": [
                 1,
@@ -780,7 +780,7 @@
                 1,
                 2
             ],
-            "edgeCode": 2
+            "edgeCode": 0
         },
         {
             "id": 27,
@@ -817,8 +817,8 @@
         {
             "id": 29,
             "adjGrids": [
-                9,
-                7
+                7,
+                9
             ],
             "minPercent": [
                 1,
@@ -828,7 +828,7 @@
                 2,
                 3
             ],
-            "edgeCode": 2
+            "edgeCode": 0
         },
         {
             "id": 30,
@@ -913,8 +913,8 @@
         {
             "id": 35,
             "adjGrids": [
-                11,
-                10
+                10,
+                11
             ],
             "minPercent": [
                 1,
@@ -924,7 +924,7 @@
                 1,
                 2
             ],
-            "edgeCode": 1
+            "edgeCode": 3
         },
         {
             "id": 36,
@@ -945,8 +945,8 @@
         {
             "id": 37,
             "adjGrids": [
-                14,
-                11
+                11,
+                14
             ],
             "minPercent": [
                 1,
@@ -956,7 +956,7 @@
                 1,
                 2
             ],
-            "edgeCode": 1
+            "edgeCode": 3
         },
         {
             "id": 38,
@@ -977,8 +977,8 @@
         {
             "id": 39,
             "adjGrids": [
-                16,
-                13
+                13,
+                16
             ],
             "minPercent": [
                 1,
@@ -988,13 +988,13 @@
                 2,
                 3
             ],
-            "edgeCode": 1
+            "edgeCode": 3
         },
         {
             "id": 40,
             "adjGrids": [
-                16,
-                14
+                14,
+                16
             ],
             "minPercent": [
                 2,
@@ -1004,13 +1004,13 @@
                 5,
                 6
             ],
-            "edgeCode": 2
+            "edgeCode": 0
         },
         {
             "id": 41,
             "adjGrids": [
-                15,
-                14
+                14,
+                15
             ],
             "minPercent": [
                 1,
@@ -1020,13 +1020,13 @@
                 1,
                 2
             ],
-            "edgeCode": 1
+            "edgeCode": 3
         },
         {
             "id": 42,
             "adjGrids": [
-                17,
-                15
+                15,
+                17
             ],
             "minPercent": [
                 5,
@@ -1036,7 +1036,7 @@
                 1,
                 1
             ],
-            "edgeCode": 2
+            "edgeCode": 0
         },
         {
             "id": 43,

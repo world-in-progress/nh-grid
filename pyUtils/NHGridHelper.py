@@ -207,7 +207,7 @@ class NHGridHelper:
 
 if __name__ == '__main__':
     
-    gridHelper = NHGridHelper('./resource/gridInfo.json')
+    gridHelper = NHGridHelper('./testRes/gridInfo.json')
     
     grid_0 = gridHelper.get_grid_by_id(0)
     edges = gridHelper.get_edges_by_grid(grid_0)
