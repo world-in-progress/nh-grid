@@ -136,9 +136,6 @@ export class GridEdge {
     _getKeyArray() {
 
         return this.key.split('-').map((value, index) => {
-            if (index === 8) {
-                return GridEdge.toggleEdgeCode(Number(value));
-            }
             return value === 'null' ? 'null' : Number(value);
         })
     }
