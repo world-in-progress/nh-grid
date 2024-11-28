@@ -116,6 +116,8 @@ class NHGridEdge:
         else:
             return EDGE_CODE_WEST
 
+# NHGridHelper ##################################################################################################
+
 class NHGridHelper:
     
     def __init__(self, path: str):
@@ -200,6 +202,8 @@ class NHGridHelper:
                 edges.append(self.edges[edge_id])
             
         return edges
+
+# Demo ##########################################################################################################
 
 if __name__ == '__main__':
     

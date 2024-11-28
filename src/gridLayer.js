@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { GUI } from 'dat.gui'
 import { VibrantColorGenerator } from './VibrantColorGenerator'
-import { GridEdge, GridEdgeRecoder, GridNode } from './GridNode'
+import { EDGE_CODE_EAST, EDGE_CODE_NORTH, EDGE_CODE_SOUTH, EDGE_CODE_WEST, GridEdge, GridEdgeRecoder, GridNode } from './GridNode'
 import { BoundingBox2D } from './BoundingBox2D'
 
 export default class GridLayer {
@@ -282,8 +282,8 @@ export default class GridLayer {
                 }
 
                 adjChildren.filter(childGrid => childGrid.hit).forEach(childGrid => {
-                    grid.neighbours[0b00].add(childGrid)
-                    childGrid.neighbours[0b10].add(grid)
+                    grid.neighbours[EDGE_CODE_NORTH].add(childGrid)
+                    childGrid.neighbours[EDGE_CODE_SOUTH].add(grid)
                 })
             }
 
@@ -308,8 +308,8 @@ export default class GridLayer {
                 }
 
                 adjChildren.filter(childGrid => childGrid.hit).forEach(childGrid => {
-                    grid.neighbours[0b01].add(childGrid)
-                    childGrid.neighbours[0b11].add(grid)
+                    grid.neighbours[EDGE_CODE_WEST].add(childGrid)
+                    childGrid.neighbours[EDGE_CODE_EAST].add(grid)
                 })
             }
 
@@ -334,8 +334,8 @@ export default class GridLayer {
                 }
 
                 adjChildren.filter(childGrid => childGrid.hit).forEach(childGrid => {
-                    grid.neighbours[0b10].add(childGrid)
-                    childGrid.neighbours[0b00].add(grid)
+                    grid.neighbours[EDGE_CODE_SOUTH].add(childGrid)
+                    childGrid.neighbours[EDGE_CODE_NORTH].add(grid)
                 })
             }
 
@@ -360,8 +360,8 @@ export default class GridLayer {
                 }
 
                 adjChildren.filter(childGrid => childGrid.hit).forEach(childGrid => {
-                    grid.neighbours[0b11].add(childGrid)
-                    childGrid.neighbours[0b01].add(grid)
+                    grid.neighbours[EDGE_CODE_EAST].add(childGrid)
+                    childGrid.neighbours[EDGE_CODE_WEST].add(grid)
                 })
             }
 

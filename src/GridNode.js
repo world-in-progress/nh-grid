@@ -106,10 +106,10 @@ import { MercatorCoordinate } from './MercatorCoordinate.js'
 //     }
 // }
 
-const EDGE_CODE_NORTH   = 0b00
-const EDGE_CODE_WEST    = 0b01
-const EDGE_CODE_SOUTH   = 0b10
-const EDGE_CODE_EAST    = 0b11
+export const EDGE_CODE_NORTH   = 0b00
+export const EDGE_CODE_WEST    = 0b01
+export const EDGE_CODE_SOUTH   = 0b10
+export const EDGE_CODE_EAST    = 0b11
 
 export class GridEdge {
 
