@@ -11,9 +11,10 @@ EDGE_CODE_EAST  = 0b11
 
 def lerp(a: float, b: float, t: float):
     
+    t = min(max(t, 0.0), 1.0)
     return (1.0 - t) * a + t * b
 
-# NHGridNode ####################################################################################################
+# NHGridNode ###################################################################################################
 
 class NHGridNode:
     
@@ -92,13 +93,13 @@ class NHGridEdge:
             self.y1 = lerp(extent[1], extent[3], min_percent[0] / min_percent[1])
             self.y2 = lerp(extent[1], extent[3], max_percent[0] / max_percent[1])
             
-    def get_x1(self) -> list[float]:
+    def get_p1(self) -> list[float]:
         return [ self.x1, self.y1 ]
     
-    def get_x2(self) -> list[float]:
+    def get_p2(self) -> list[float]:
         return [ self.x2, self.y2 ]
     
-    def get_x1_x2(self) -> list[float]:
+    def get_p1_p2(self) -> list[float]:
         return [ self.x1, self.y1, self.x2, self.y2 ]
     
     @staticmethod
@@ -126,10 +127,10 @@ class NHGridHelper:
         with open(path, 'r', encoding='utf-8') as file:
             data = json.load(file)
         
-        # Parse extent
+        # Deserialize extent
         self.extent = data['extent']
         
-        # Parse grid
+        # Deserialize grids
         self.grids: dict[int, NHGridNode] = {}
         for grid_info in data['grids']:
             
@@ -147,7 +148,7 @@ class NHGridHelper:
             )
             self.grids[grid_id] = grid
             
-        # Parse edge
+        # Deserialize edges
         self.edges: dict[int, NHGridEdge] = {}
         for edge_info in data['edges']:
             
