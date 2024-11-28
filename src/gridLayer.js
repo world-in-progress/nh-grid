@@ -1,8 +1,8 @@
 import axios from 'axios'
 import { GUI } from 'dat.gui'
-import { GridEdge, GridEdgeRecoder, GridNode } from './gridNode'
-import { BoundingBox2D } from './boundingBox2D'
-import { VibrantColorGenerator } from './vibrantColorGenerator'
+import { VibrantColorGenerator } from './VibrantColorGenerator'
+import { GridEdge, GridEdgeRecoder, GridNode } from './GridNode'
+import { BoundingBox2D } from './BoundingBox2D'
 
 export default class GridLayer {
 
@@ -18,17 +18,15 @@ export default class GridLayer {
      */
     constructor(options) {
 
-        // Layer
+        // Layer-related //////////////////////////////////////////////////
+
         this.type = 'custom'
         this.map = undefined
         this.id = 'GridLayer'
         this.renderingMode = '3d'
-        this.isShiftClick = false
+        this.isInitialized = false
 
-        /**
-         * @type { WebGL2RenderingContext }
-         */
-        this._gl = undefined
+        // Function-related //////////////////////////////////////////////////
 
         /** Update set
          * @type { Set<{level: number, globalId: number, hitOrNot: boolean} | {lon: number, lat: number}> } 
@@ -49,7 +47,7 @@ export default class GridLayer {
         /** @type { Map<number, GridNode> } */
         this.storageIdGridMap = new Map()
         this.maxGridNum = options.maxGridNum
-        this.boundaryCondition = new BoundingBox2D(...options.boundaryCondition)
+        this.bBox = new BoundingBox2D(...options.boundaryCondition)
 
         /** @type {{width: number, height: number, count: number, grids: GridNode[]}[]} */
         this.gridRecoder = new Array(this.subdivideRules.length)
@@ -59,9 +57,9 @@ export default class GridLayer {
         // Add rootGrid to gridRecoder
         const rootGrid = new GridNode({
             localId: 0,
-            globalId: 0
+            globalId: 0,
+            storageId: this.registeredGridCount++
         })
-        rootGrid.storageId = this.registeredGridCount++
         this.gridRecoder[0] = {
             width: 1,
             height: 1,
@@ -100,7 +98,12 @@ export default class GridLayer {
             this.paletteColorList.set(color, i * 3)
         }
 
-        // GPU resource
+        // GPU-related //////////////////////////////////////////////////
+
+        /** @type { WebGL2RenderingContext } */
+        this._gl = undefined
+
+        // Texture resource
         this.xTexture = undefined
         this.yTexture = undefined
         this.levelTexture = undefined
@@ -108,16 +111,20 @@ export default class GridLayer {
         this.fillIndexTexture = undefined
         this.lineIndexTexture = undefined
 
+        // Interaction-related //////////////////////////////////////////////////
+
+        this.isShiftClick = false
+
+        // Event handler
+        this.mouseupHandler = this._mouseupHandler.bind(this)
+        this.mousedownHandler = this._mousedownHandler.bind(this)
+        this.mousemoveHandler = this._mousemoveHandler.bind(this)
+
         // Mode
         this.typeChanged = false
         this.EDITOR_TYPE = 0b01
         this.SUBDIVIDER_TYPE = 0b11
         this._currentType = this.SUBDIVIDER_TYPE
-
-        // UI handlers
-        this.mouseupHandler = undefined
-        this.mousedownHandler = undefined
-        this.mousemoveHandler = undefined
 
         // Interaction option
         this.uiOption = {
@@ -136,8 +143,6 @@ export default class GridLayer {
         this.capacityController.setValue(0.0)
         this.capacityController.domElement.style.pointerEvents = 'none'
 
-        // Init flag
-        this.isInitialized = false
     }
 
     /**
@@ -152,7 +157,11 @@ export default class GridLayer {
 
         if (type === this.EDITOR_TYPE) {
 
-            this.parseEdges()
+            // Change event handlers
+            this.addEditorUIHandler()
+
+            // Find neighbours for all grids
+            this.findNeighbours()
 
             // Generate hit list
             this.storageIdGridMap.forEach(grid => {
@@ -170,6 +179,9 @@ export default class GridLayer {
 
         } else {
 
+            // Change event handlers
+            this.addSubdividerUIHandler()
+
             // Release cache
             this.hitGridList.forEach(grid => grid.hit = true)
             this.hitGridList = []
@@ -186,9 +198,9 @@ export default class GridLayer {
     }
 
     /**
-     * When changing into Editor Type, edges around nodes need to be determined.
+     * When changing into Editor Type, neighbours of each grid need to be determined.
      */
-    parseEdges() {
+    findNeighbours() {
 
         const that = this
         /**
@@ -224,7 +236,7 @@ export default class GridLayer {
         /** 
          * Get all valid grids.  
          * 
-         * Features:
+         * Features about so-called VALID:
          * 1. Is always hit
          * 2. Level is never 0
          * 3. Is always a leaf grid
@@ -235,7 +247,7 @@ export default class GridLayer {
             if (grid.hit) validGrids.push(grid)
         })
 
-        // Get all neighbour for each grid
+        // Iterate all valid grids and find their neighbours
         validGrids.forEach(grid => {
             
             const level = grid.level
@@ -253,10 +265,13 @@ export default class GridLayer {
             if (tGrid) {
                 
                 // Get all children of tGrid, adjacent to grid
+
                 /** @type { GridNode[] } */
                 const adjChildren = []
 
+                /** @type { GridNode[] } */
                 const stack = [ tGrid ]
+
                 while (stack.length) {
                     const _grid = stack.pop()
 
@@ -267,8 +282,8 @@ export default class GridLayer {
                 }
 
                 adjChildren.filter(childGrid => childGrid.hit).forEach(childGrid => {
-                    grid.neighbours[0].add(childGrid)
-                    childGrid.neighbours[2].add(grid)
+                    grid.neighbours[0b00].add(childGrid)
+                    childGrid.neighbours[0b10].add(grid)
                 })
             }
 
@@ -276,10 +291,13 @@ export default class GridLayer {
             if (lGrid) {
                     
                 // Get all children of lGrid, adjacent to grid
+
                 /** @type { GridNode[] } */
                 const adjChildren = []
     
+                /** @type { GridNode[] } */
                 const stack = [ lGrid ]
+
                 while (stack.length) {
                     const _grid = stack.pop()
     
@@ -290,8 +308,8 @@ export default class GridLayer {
                 }
 
                 adjChildren.filter(childGrid => childGrid.hit).forEach(childGrid => {
-                    grid.neighbours[1].add(childGrid)
-                    childGrid.neighbours[3].add(grid)
+                    grid.neighbours[0b01].add(childGrid)
+                    childGrid.neighbours[0b11].add(grid)
                 })
             }
 
@@ -299,10 +317,13 @@ export default class GridLayer {
             if (bGrid) {
                     
                 // Get all children of bGrid, adjacent to grid
+
                 /** @type { GridNode[] } */
                 const adjChildren = []
     
+                /** @type { GridNode[] } */
                 const stack = [ bGrid ]
+
                 while (stack.length) {
                     const _grid = stack.pop()
     
@@ -313,8 +334,8 @@ export default class GridLayer {
                 }
 
                 adjChildren.filter(childGrid => childGrid.hit).forEach(childGrid => {
-                    grid.neighbours[2].add(childGrid)
-                    childGrid.neighbours[0].add(grid)
+                    grid.neighbours[0b10].add(childGrid)
+                    childGrid.neighbours[0b00].add(grid)
                 })
             }
 
@@ -322,10 +343,13 @@ export default class GridLayer {
             if (rGrid) {
                     
                 // Get all children of rGrid, adjacent to grid
+
                 /** @type { GridNode[] } */
                 const adjChildren = []
     
+                /** @type { GridNode[] } */
                 const stack = [ rGrid ]
+
                 while (stack.length) {
                     const _grid = stack.pop()
     
@@ -336,8 +360,8 @@ export default class GridLayer {
                 }
 
                 adjChildren.filter(childGrid => childGrid.hit).forEach(childGrid => {
-                    grid.neighbours[3].add(childGrid)
-                    childGrid.neighbours[1].add(grid)
+                    grid.neighbours[0b11].add(childGrid)
+                    childGrid.neighbours[0b01].add(grid)
                 })
             }
 
@@ -375,22 +399,14 @@ export default class GridLayer {
             const subGlobalU = globalU * subWidth + subU
             const subGlobalV = globalV * subHeight + subV
             const subGlobalId = subGlobalV * (this.gridRecoder[level].width * subWidth) + subGlobalU
-
-            // const subGrid = new GridNode({
-            //     localId,
-            //     // parent: grid,
-            //     level: grid.level + 1,
-            //     globalId: subGlobalId,
-            //     subdivideRule: this.subdivideRules[level]
-            // })
+            
             const subGrid = new GridNode({
                 localId,
                 parent: grid,
                 globalId: subGlobalId,
+                storageId: this.registeredGridCount++,
                 globalRange: [ subGlobalWidth, subGlobalHeight ]
             })
-            
-            subGrid.storageId = this.registeredGridCount++
             this.writeGridInfoToTexture(gl, subGrid)
 
             grid.children.push(subGrid)
@@ -447,7 +463,7 @@ export default class GridLayer {
     hitEditor(gl, lon, lat) {
 
         this.hitGridList.forEach(grid => {
-            if (grid.within(this.boundaryCondition, lon, lat)) {
+            if (grid.within(this.bBox, lon, lat)) {
                 grid.hit = true
                 grid.calcEdges(this.edgeRecoder)
                 console.log(grid.edges)
@@ -465,11 +481,11 @@ export default class GridLayer {
 
         // Find last valid grid
         const lastValidGrid = this.storageIdGridMap.get(this.registeredGridCount - 1)
+        this.storageIdGridMap.delete(lastValidGrid.storageId)
 
         // Overwrite the texture data of the grid to the valid one
-        if (lastValidGrid && !lastValidGrid.equal(grid)) {
+        if (!lastValidGrid.equal(grid)) {
 
-            this.storageIdGridMap.delete(lastValidGrid.storageId)
             this.storageIdGridMap.set(grid.storageId, lastValidGrid)
             
             lastValidGrid.storageId = grid.storageId
@@ -488,7 +504,7 @@ export default class GridLayer {
     */
     writeGridInfoToTexture(gl, grid) {
 
-        const vertices = grid.getVertices(this.srcCS, this.boundaryCondition)
+        const vertices = grid.getVertices(this.srcCS, this.bBox)
         const storageU = grid.storageId % this.storageTextureSize
         const storageV = Math.floor(grid.storageId / this.storageTextureSize)
 
@@ -577,89 +593,165 @@ export default class GridLayer {
         this.hitSet.clear()
         this.typeChanged = false
 
+        // Update display of capacity
         this.uiOption.capacity = this.storageIdGridMap.size
         this.capacityController.updateDisplay()
     }
 
-    deserialize() {
-        return {
-            key: 'haha'
+    serialize() {
+
+        /**
+         * @type {{
+         *      extent: [ number, number, number, number ],
+         *      grids: { id: number, xMinPercent: [ number, number ], yMinPercent: [ number, number ], xMaxPercent: [ number, number ], yMaxPercent: [ number, number ] }[]
+         *      edges: { id: number, adjGrids: [ number | null, number | null ], minPercent: [ number, number ], maxPercent: [ number, number ], edgeCode: number }[]
+         * }}
+         */
+        const serializedData = {
+            extent: this.bBox.boundary,
+            grids: [],
+            edges: []
+        }
+        const grids = serializedData.grids
+        const edges = serializedData.edges
+
+        /** @type { Map<string, number> } */
+        const levelGlobalId_serializedId_Map = new Map()
+
+        // Serialized edge recoder used to record valid edges
+        const sEdgeRecoder = new GridEdgeRecoder()
+
+        // Serialize grids //////////////////////////////////////////////////
+
+        // Iterate hit grids in Editor Type
+        if (this._currentType === this.EDITOR_TYPE) {
+            this.hitGridList.forEach((grid, index) => {
+
+                grids.push({
+                    id: index,
+                    xMinPercent: grid._xMinPercent,
+                    yMinPercent: grid._yMinPercent,
+                    xMaxPercent: grid._xMaxPercent,
+                    yMaxPercent: grid._yMaxPercent
+                })
+                const key = [ grid.level, grid.globalId ].join('-')
+                levelGlobalId_serializedId_Map.set(key, index)
+
+                // Avoid edge miss and record valid key
+                grid.calcEdges(this.edgeRecoder)
+                grid.edgeKeys.forEach(key => {
+                    const edge = this.edgeRecoder.getEdgeByKey(key)
+                    sEdgeRecoder.addEdge(edge)
+                })
+            })
+        }
+        // Iterate hit grids in Subdivider Type
+        else {
+
+            // Find neighbours for all grids
+            this.findNeighbours()
+            
+            let index = 0
+            this.storageIdGridMap.forEach(grid => {
+                if (grid.hit) {
+
+                    grids.push({
+                        id: index,
+                        xMinPercent: grid._xMinPercent,
+                        yMinPercent: grid._yMinPercent,
+                        xMaxPercent: grid._xMaxPercent,
+                        yMaxPercent: grid._yMaxPercent
+                    })
+
+                    const key = [ grid.level, grid.globalId ].join('-')
+                    levelGlobalId_serializedId_Map.set(key, index)
+                    index++
+
+                    // Avoid edge miss and record valid key
+                    grid.calcEdges(this.edgeRecoder)
+                    grid.edgeKeys.forEach(key => {
+                        const edge = this.edgeRecoder.getEdgeByKey(key)
+                        sEdgeRecoder.addEdge(edge)
+                    })
+                }
+            })
+        }
+
+        // Serialize edges //////////////////////////////////////////////////
+
+        let index = 0
+        sEdgeRecoder._edgeMap.forEach(edge => {
+
+            const { adjGrids, minPercent, maxPercent, edgeCode } = edge.serialization
+            const grid1 = adjGrids[0] !== 'null-null' ? levelGlobalId_serializedId_Map.get(adjGrids[0]) : null
+            const grid2 = adjGrids[1] !== 'null-null' ? levelGlobalId_serializedId_Map.get(adjGrids[1]) : null
+
+            edges.push({
+                id: index++,
+                adjGrids: [ grid1, grid2 ],
+                minPercent,
+                maxPercent,
+                edgeCode
+            })
+        })
+
+        return serializedData
+    }
+    
+    _mousedownHandler(e) {
+        
+        if (e.originalEvent.shiftKey && e.originalEvent.button === 0) {
+            this.isShiftClick = true
+            this.map.dragPan.disable()
+        }
+    }
+
+    _mouseupHandler(e) {
+
+        if (this.isShiftClick) {
+            this.map.dragPan.enable()
+            this.isShiftClick = false
+
+            const lngLat = this.map.unproject([e.point.x, e.point.y])
+            this.hit(lngLat.lng, lngLat.lat, this.uiOption.level)
+        }
+    }
+
+    _mousemoveHandler(e) {
+
+        if (this.isShiftClick) {
+            this.map.dragPan.disable()
+
+            const lngLat = this.map.unproject([e.point.x, e.point.y])
+            this.hit(lngLat.lng, lngLat.lat, this.uiOption.level)
         }
     }
 
     removeUIHandler() {
     
-        this.map.off('mousedown', this.mousedownHandler)
-            .off('mousemove', this.mousemoveHandler)
-            .off('mouseup', this.mouseupHandler)
-    }
-
-    addEditorUIHandler() {
-
-        this.removeUIHandler()
-    
-        this.mousedownHandler = (e) => {
-            if (e.originalEvent.shiftKey && e.originalEvent.button === 0) {
-                this.isShiftClick = true
-                this.map.dragPan.disable()
-    
-                const lngLat = this.map.unproject([e.point.x, e.point.y])
-                this.hit(lngLat.lng, lngLat.lat, this.uiOption.level)
-            }
-        }
-    
-        this.mouseupHandler = () => {
-            if (this.isShiftClick) {
-                this.map.dragPan.enable()
-                this.isShiftClick = false
-            }
-        }
-    
-        this.mousemoveHandler = (e) => {
-            if (this.isShiftClick) {
-                this.map.dragPan.disable()
-                const lngLat = this.map.unproject([e.point.x, e.point.y])
-                this.hit(lngLat.lng, lngLat.lat, this.brushOption.level)
-            }
-        }
-    
-        this.map.on('mousedown', this.mousedownHandler)
-            .on('mouseup', this.mouseupHandler)
-            // .on('mousemove', this.mousemoveHandler)
+        this.map
+        .off('mouseup', this.mouseupHandler)
+        .off('mousedown', this.mousedownHandler)
+        .off('mousemove', this.mousemoveHandler)
     }
 
     addSubdividerUIHandler() {
 
         this.removeUIHandler()
     
-        this.mousedownHandler = (e) => {
-            if (e.originalEvent.shiftKey && e.originalEvent.button === 0) {
-                this.isShiftClick = true
-                this.map.dragPan.disable()
+        this.map
+        .on('mouseup', this.mouseupHandler)
+        .on('mousedown', this.mousedownHandler)
+        .on('mousemove', this.mousemoveHandler)
+    }
+
+    addEditorUIHandler() {
+
+        this.removeUIHandler()
     
-                const lngLat = this.map.unproject([e.point.x, e.point.y])
-                this.hit(lngLat.lng, lngLat.lat, this.uiOption.level)
-            }
-        }
-    
-        this.mouseupHandler = () => {
-            if (this.isShiftClick) {
-                this.map.dragPan.enable()
-                this.isShiftClick = false
-            }
-        }
-    
-        this.mousemoveHandler = (e) => {
-            if (this.isShiftClick) {
-                this.map.dragPan.disable()
-                const lngLat = this.map.unproject([e.point.x, e.point.y])
-                this.hit(lngLat.lng, lngLat.lat, this.uiOption.level)
-            }
-        }
-    
-        this.map.on('mousedown', this.mousedownHandler)
-            .on('mouseup', this.mouseupHandler)
-            .on('mousemove', this.mousemoveHandler)
+        this.map
+        .on('mouseup', this.mouseupHandler)
+        .on('mousedown', this.mousedownHandler)
     }
     
     async init() {
@@ -774,7 +866,7 @@ export default class GridLayer {
         document.addEventListener('keydown', e => {
 
             if (e.shiftKey && e.key === 'S') {
-                let data = this.deserialize()
+                let data = this.serialize()
                 let jsonData = JSON.stringify(data)
                 let blob = new Blob([jsonData], { type: 'application/json' })
                 let link = document.createElement('a')
@@ -785,6 +877,7 @@ export default class GridLayer {
         })
 
         // All done ////////////////////////////////////////////////////////////
+
         this.isInitialized = true
     }
 
@@ -897,18 +990,18 @@ export default class GridLayer {
         // Skip if not ready
         if (!this.isInitialized) return
 
-        //// Tick logic //////////////////////////////////////////////////////////////////////////////////////////
-        /**/ this.map.update()      /**///////////////////////////////////////////////////////////////////////////
-        /**/ this.hitGrids(gl)      /**///////////////////////////////////////////////////////////////////////////
+        // Tick logic
+        this.map.update()
+        this.hitGrids(gl)
 
-        //// Tick render: Mesh Pass //////////////////////////////////////////////////////////////////////////////
-        /**/ this.drawGridMesh(gl)  /**///////////////////////////////////////////////////////////////////////////
+        // Tick render: Mesh Pass
+        this.drawGridMesh(gl)
         
-        //// Tick render: Line Pass //////////////////////////////////////////////////////////////////////////////
-        /**/ this.drawGridLine(gl)  /**///////////////////////////////////////////////////////////////////////////
+        // Tick render: Line Pass
+        this.drawGridLine(gl)
 
-        //// Last check //////////////////////////////////////////////////////////////////////////////////////////
-        /**/ errorCheck(gl)         /**///////////////////////////////////////////////////////////////////////////
+        // WebGL check
+        errorCheck(gl)
     }
 
     /**
@@ -927,8 +1020,8 @@ export default class GridLayer {
             if (hitLevel === undefined || hitLevel > maxLevel) return 
     
             const { width, height } = this.gridRecoder[hitLevel]
-            const normalizedX = (lon - this.boundaryCondition.xMin) / (this.boundaryCondition.xMax - this.boundaryCondition.xMin)
-            const normalizedY = (lat - this.boundaryCondition.yMin) / (this.boundaryCondition.yMax - this.boundaryCondition.yMin)
+            const normalizedX = (lon - this.bBox.xMin) / (this.bBox.xMax - this.bBox.xMin)
+            const normalizedY = (lat - this.bBox.yMin) / (this.bBox.yMax - this.bBox.yMin)
     
             if (normalizedX < 0 || normalizedX > 1 || normalizedY < 0 || normalizedY > 1) return
     

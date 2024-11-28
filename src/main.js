@@ -1,5 +1,5 @@
 
-import GridLayer from './gridLayer.js'
+import GridLayer from './GridLayer.js'
 import { vec3, mat4 } from 'gl-matrix'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import mapboxgl from 'mapbox-gl'
@@ -57,15 +57,17 @@ const gridLayer = new GridLayer({
     maxGridNum: 4096 * 4096,
     srcCS: 4326,
     subdivideRules: [
-        [4, 4],
-        [4, 4],
-        [2, 2],
-        [2, 2],
-        [2, 2],
-        [2, 2],
-        [2, 2],
-        [2, 2],
-        [2, 2],
+        // [4, 4],
+        // [4, 4],
+        // [2, 2],
+        // [2, 2],
+        // [2, 2],
+        // [2, 2],
+        // [2, 2],
+        // [2, 2],
+        // [2, 2],
+        // [2, 2],
+        [3, 3],
         [2, 2],
         [1, 1]
     ],
