@@ -187,7 +187,7 @@ class NHGridHelper:
         
         return self.edges.get(id, None)
     
-    def get_grids_by_edge(self, edge: NHGridEdge) -> list[NHGridNode]:
+    def get_grids_adjacent_to_edge(self, edge: NHGridEdge) -> list[NHGridNode]:
         
         grids = []
         for grid_id in edge.grid_ids:
@@ -195,7 +195,7 @@ class NHGridHelper:
         
         return grids
     
-    def get_edges_by_grid(self, grid: NHGridNode) -> list[NHGridEdge]:
+    def get_edges_belong_to_grid(self, grid: NHGridNode) -> list[NHGridEdge]:
         
         edges = []
         for edge_set in grid.edge_ids:
@@ -208,14 +208,25 @@ class NHGridHelper:
 
 if __name__ == '__main__':
     
-    gridHelper = NHGridHelper('./testRes/gridInfo.json')
+    helper = NHGridHelper('./testRes/gridInfo.json')
     
-    grid_0 = gridHelper.get_grid_by_id(0)
-    edges = gridHelper.get_edges_by_grid(grid_0)
+    grid_0 = helper.get_grid_by_id(4)
+    edges = helper.get_edges_belong_to_grid(grid_0)
+    
+    print('\n------ Grid Info ------\n')
+    print(f'Grid ID: {grid_0.id}\n\nExtent: {grid_0.get_extent()}\n\nEdge List:')
     
     for edge in edges:
-        print(f'\n------ Grids adjacent to Edge {edge.id} ------\n')
         
-        grids = gridHelper.get_grids_by_edge(edge)
-        for grid in grids:
-            print(f'ID: {grid.id}, Extent: {grid.get_extent()}')
+        edge_id = edge.id
+        
+        # p1 & p2 can also be obtained through edge.get_p1_p2()
+        p1 = edge.get_p1()
+        p2 = edge.get_p2()
+        
+        adjacent_grids = helper.get_grids_adjacent_to_edge(edge)
+        adj_grid_ids = [ grid.id for grid in adjacent_grids ]
+        
+        print(f'\n------\n')
+        print(f'Edge ID: {edge_id}\n\nPoint1: {p1}\n\nPoint2: {p2}\n\nAdjacent Grid IDs: {adj_grid_ids}\n')
+ 
