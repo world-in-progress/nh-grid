@@ -220,7 +220,7 @@ if __name__ == '__main__':
         
         edge_id = edge.id
         
-        # p1 & p2 can also be obtained through edge.get_p1_p2()
+        # p1 & p2 can also be obtained through <edge.get_p1_p2()>
         p1 = edge.get_p1()
         p2 = edge.get_p2()
         
