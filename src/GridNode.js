@@ -1,7 +1,6 @@
 import proj4 from 'proj4'
 import { BoundingBox2D } from './BoundingBox2D.js'
 import { MercatorCoordinate } from './MercatorCoordinate.js'
-proj4.defs("ESRI:102140","+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
 
 // export class GridEdge {
 
