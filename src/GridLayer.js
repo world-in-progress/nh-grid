@@ -1,4 +1,5 @@
 import axios from 'axios'
+import proj4 from 'proj4'
 import { GUI } from 'dat.gui'
 import { VibrantColorGenerator } from './VibrantColorGenerator'
 import { EDGE_CODE_EAST, EDGE_CODE_NORTH, EDGE_CODE_SOUTH, EDGE_CODE_WEST, GridEdge, GridEdgeRecoder, GridNode } from './GridNode'
@@ -48,6 +49,7 @@ export default class GridLayer {
         this.storageIdGridMap = new Map()
         this.maxGridNum = options.maxGridNum
         this.bBox = new BoundingBox2D(...options.boundaryCondition)
+        // this.bBox = new BoundingBox2D(options.boundaryCondition[0], options.boundaryCondition[1], options.boundaryCondition[0] + 30000, options.boundaryCondition[1] + 30000)
 
         /** @type {{width: number, height: number, count: number, grids: GridNode[]}[]} */
         this.gridRecoder = new Array(this.subdivideRules.length)
@@ -104,12 +106,11 @@ export default class GridLayer {
         this._gl = undefined
 
         // Texture resource
-        this.xTexture = undefined
-        this.yTexture = undefined
         this.levelTexture = undefined
         this.paletteTexture = undefined
         this.fillIndexTexture = undefined
         this.lineIndexTexture = undefined
+        this.storageTextureArray = undefined
 
         // Interaction-related //////////////////////////////////////////////////
 
@@ -453,6 +454,12 @@ export default class GridLayer {
 
         // Hit
         grid.hit = hitOrNot
+        // console.log(
+        //     grid.xMinPercent, grid._xMinPercent,
+        //     grid.yMinPercent, grid._yMinPercent,
+        //     grid.xMaxPercent, grid._xMaxPercent,
+        //     grid.yMaxPercent, grid._yMaxPercent,
+        //     grid.getVertices(this.srcCS, this.bBox))
     }
 
     /**
@@ -508,8 +515,11 @@ export default class GridLayer {
         const storageU = grid.storageId % this.storageTextureSize
         const storageV = Math.floor(grid.storageId / this.storageTextureSize)
 
-        fillSubTexture2DByArray(gl, this.xTexture, 0, storageU, storageV, 1, 1, gl.RG, gl.FLOAT, vertices.slice(0, 2))
-        fillSubTexture2DByArray(gl, this.yTexture, 0, storageU, storageV, 1, 1, gl.RG, gl.FLOAT, vertices.slice(2, 4))
+        fillSubTexture2DArrayByArray(gl, this.storageTextureArray, 0, storageU, storageV, 0, 1, 1, gl.RG, gl.FLOAT, vertices.slice(0, 2))
+        fillSubTexture2DArrayByArray(gl, this.storageTextureArray, 0, storageU, storageV, 1, 1, 1, gl.RG, gl.FLOAT, vertices.slice(2, 4))
+        fillSubTexture2DArrayByArray(gl, this.storageTextureArray, 0, storageU, storageV, 2, 1, 1, gl.RG, gl.FLOAT, vertices.slice(4, 6))
+        fillSubTexture2DArrayByArray(gl, this.storageTextureArray, 0, storageU, storageV, 3, 1, 1, gl.RG, gl.FLOAT, vertices.slice(6, 8))
+
         fillSubTexture2DByArray(gl, this.levelTexture, 0, storageU, storageV, 1, 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, new Uint16Array([grid.level]))
     }
 
@@ -766,8 +776,7 @@ export default class GridLayer {
 
         // Create texture
         this.paletteTexture = createTexture2D(gl, 1, this.subdivideRules.length, 1, gl.RGB8)
-        this.xTexture = createTexture2D(gl, 1, this.storageTextureSize, this.storageTextureSize, gl.RG32F)
-        this.yTexture = createTexture2D(gl, 1, this.storageTextureSize, this.storageTextureSize, gl.RG32F)
+        this.storageTextureArray = createTexture2DArray(gl, 1, 4, this.storageTextureSize, this.storageTextureSize, gl.RG32F)
         this.levelTexture = createTexture2D(gl, 1, this.storageTextureSize, this.storageTextureSize, gl.R16UI)
         this.fillIndexTexture = createTexture2D(gl, 1, this.storageTextureSize, this.storageTextureSize, gl.R32UI)
         this.lineIndexTexture = createTexture2D(gl, 1, this.storageTextureSize, this.storageTextureSize, gl.R32UI)
@@ -927,21 +936,18 @@ export default class GridLayer {
         gl.useProgram(this.terrainMeshShader)
 
         gl.activeTexture(gl.TEXTURE0)
-        gl.bindTexture(gl.TEXTURE_2D, this.xTexture)
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.storageTextureArray)
         gl.activeTexture(gl.TEXTURE1)
-        gl.bindTexture(gl.TEXTURE_2D, this.yTexture)
-        gl.activeTexture(gl.TEXTURE2)
         gl.bindTexture(gl.TEXTURE_2D, this.levelTexture)
-        gl.activeTexture(gl.TEXTURE3)
+        gl.activeTexture(gl.TEXTURE2)
         gl.bindTexture(gl.TEXTURE_2D, this.fillIndexTexture)
-        gl.activeTexture(gl.TEXTURE4)
+        gl.activeTexture(gl.TEXTURE3)
         gl.bindTexture(gl.TEXTURE_2D, this.paletteTexture)
 
-        gl.uniform1i(gl.getUniformLocation(this.terrainMeshShader, 'xTexture'), 0)
-        gl.uniform1i(gl.getUniformLocation(this.terrainMeshShader, 'yTexture'), 1)
-        gl.uniform1i(gl.getUniformLocation(this.terrainMeshShader, 'levelTexture'), 2)
-        gl.uniform1i(gl.getUniformLocation(this.terrainMeshShader, 'indexTexture'), 3)
-        gl.uniform1i(gl.getUniformLocation(this.terrainMeshShader, 'paletteTexture'), 4)
+        gl.uniform1i(gl.getUniformLocation(this.terrainMeshShader, 'storageTexture'), 0)
+        gl.uniform1i(gl.getUniformLocation(this.terrainMeshShader, 'levelTexture'), 1)
+        gl.uniform1i(gl.getUniformLocation(this.terrainMeshShader, 'indexTexture'), 2)
+        gl.uniform1i(gl.getUniformLocation(this.terrainMeshShader, 'paletteTexture'), 3)
         gl.uniform2fv(gl.getUniformLocation(this.terrainMeshShader, 'centerLow'), this.map.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this.terrainMeshShader, 'centerHigh'), this.map.centerHigh)
         gl.uniformMatrix4fv(gl.getUniformLocation(this.terrainMeshShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
@@ -958,15 +964,12 @@ export default class GridLayer {
         gl.useProgram(this.terrainLineShader)
 
         gl.activeTexture(gl.TEXTURE0)
-        gl.bindTexture(gl.TEXTURE_2D, this.xTexture)
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.storageTextureArray)
         gl.activeTexture(gl.TEXTURE1)
-        gl.bindTexture(gl.TEXTURE_2D, this.yTexture)
-        gl.activeTexture(gl.TEXTURE2)
         gl.bindTexture(gl.TEXTURE_2D, this.lineIndexTexture)
 
-        gl.uniform1i(gl.getUniformLocation(this.terrainLineShader, 'xTexture'), 0)
-        gl.uniform1i(gl.getUniformLocation(this.terrainLineShader, 'yTexture'), 1)
-        gl.uniform1i(gl.getUniformLocation(this.terrainLineShader, 'indexTexture'), 2)
+        gl.uniform1i(gl.getUniformLocation(this.terrainLineShader, 'storageTexture'), 0)
+        gl.uniform1i(gl.getUniformLocation(this.terrainLineShader, 'indexTexture'), 1)
         gl.uniform2fv(gl.getUniformLocation(this.terrainLineShader, 'centerLow'), this.map.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this.terrainLineShader, 'centerHigh'), this.map.centerHigh)
         gl.uniformMatrix4fv(gl.getUniformLocation(this.terrainLineShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
@@ -1005,20 +1008,21 @@ export default class GridLayer {
     }
 
     /**
-     * @param { number } lon
-     * @param { number } lat
+     * @param { number } x
+     * @param { number } y
      * @param { number } level
     */
-    hit(lon, lat, level) {
+    hit(x, y, level) {
 
         const maxLevel = this.subdivideRules.length - 1
+        const [ lon, lat ] = proj4('EPSG:4326', this.srcCS, [ x, y ])
 
         // Subidivider type
         if (this._currentType === this.SUBDIVIDER_TYPE) {
             const hitLevel = level
 
             if (hitLevel === undefined || hitLevel > maxLevel) return 
-    
+
             const { width, height } = this.gridRecoder[hitLevel]
             const normalizedX = (lon - this.bBox.xMin) / (this.bBox.xMax - this.bBox.xMin)
             const normalizedY = (lat - this.bBox.yMin) / (this.bBox.yMax - this.bBox.yMin)
@@ -1180,11 +1184,33 @@ function createTexture2D(gl, level, width, height, internalFormat, format = unde
     return texture
 }
 
+
 /**
  * @param { WebGL2RenderingContext } gl 
  * @param { number } width 
  * @param { number } height 
  * @param { number } internalFormat 
+ * @param { number } layers
+ */
+function createTexture2DArray(gl, level, layers, width, height, internalFormat) {
+    
+    const texture = gl.createTexture()
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture)
+    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, level, internalFormat, width, height, layers)
+
+    // Set texture parameters
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+
+    return texture
+}
+
+/**
+ * @param { WebGL2RenderingContext } gl 
+ * @param { number } width 
+ * @param { number } height 
  * @param { number } format 
  * @param { number } type 
  * @param { ArrayBufferTypes } array
@@ -1195,10 +1221,31 @@ function fillSubTexture2DByArray(gl, texture, level, xOffset, yOffset, width, he
     gl.bindTexture(gl.TEXTURE_2D, texture)
 
     // Upload texture data
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, xOffset, yOffset, width, height, format, type, array)
+    gl.texSubImage2D(gl.TEXTURE_2D, level, xOffset, yOffset, width, height, format, type, array)
 
     // Unbind the texture
     gl.bindTexture(gl.TEXTURE_2D, null);
+}
+
+/**
+ * @param { WebGL2RenderingContext } gl 
+ * @param { number } width 
+ * @param { number } height 
+ * @param { number } layerIndex 
+ * @param { number } format 
+ * @param { number } type 
+ * @param { ArrayBufferTypes } array
+ */
+function fillSubTexture2DArrayByArray(gl, texture, level, xOffset, yOffset, layerIndex, width, height, format, type, array) {
+    
+    // Bind the texture
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture)
+
+    // Upload texture data
+    gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, level, xOffset, yOffset, layerIndex, width, height, 1, format, type, array, 0)
+
+    // Unbind the texture
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
 }
 
 /**

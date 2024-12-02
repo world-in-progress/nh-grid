@@ -3,13 +3,13 @@
 precision highp float;
 precision highp sampler2D;
 precision highp usampler2D;
+precision highp sampler2DArray;
 
 uniform mat4 uMatrix;
 uniform vec2 centerLow;
 uniform vec2 centerHigh;
-uniform sampler2D xTexture;
-uniform sampler2D yTexture;
 uniform usampler2D indexTexture;
+uniform sampler2DArray storageTexture;
 
 const float PI = 3.141592653;
 
@@ -71,13 +71,6 @@ float stitching(float coord, float minVal, float delta, float edge) {
 
 void main() {
 
-    ivec2 indexMap[4] = ivec2[4](
-        ivec2(0, 0),
-        ivec2(1, 0),
-        ivec2(1, 1),
-        ivec2(0, 1)
-    );
-
     ivec2 dim = textureSize(indexTexture, 0).xy;
     int index_u = gl_InstanceID % dim.x;
     int index_v = gl_InstanceID / dim.x;
@@ -86,14 +79,15 @@ void main() {
     int storage_u = storageId % dim.x;
     int storage_v = storageId / dim.x;
 
-    vec2 xs = texelFetch(xTexture, ivec2(storage_u, storage_v), 0).rg;
-    vec2 ys = texelFetch(yTexture, ivec2(storage_u, storage_v), 0).rg;
+    int layerMap[4] = int[4](
+        0,
+        1,
+        3,
+        2
+    );
 
-    ivec2 xyIndex = indexMap[gl_VertexID];
-    float x = xs[xyIndex.x];
-    float y = ys[xyIndex.y];
-
-    gl_Position = uMatrix * vec4(translateRelativeToEye(vec2(x, y), vec2(0.0)), 0.0, 1.0);
+    vec2 xy = texelFetch(storageTexture, ivec3(storage_u, storage_v, layerMap[gl_VertexID]), 0).rg;
+    gl_Position = uMatrix * vec4(translateRelativeToEye(xy, vec2(0.0)), 0.0, 1.0);
 }
 
 #endif

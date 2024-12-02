@@ -3,15 +3,15 @@
 precision highp float;
 precision highp sampler2D;
 precision highp usampler2D;
+precision highp sampler2DArray;
 
 uniform mat4 uMatrix;
 uniform vec2 centerLow;
 uniform vec2 centerHigh;
-uniform sampler2D xTexture;
-uniform sampler2D yTexture;
 uniform sampler2D paletteTexture;
 uniform usampler2D levelTexture;
 uniform usampler2D indexTexture;
+uniform sampler2DArray storageTexture;
 
 out vec3 v_color;
 
@@ -74,13 +74,6 @@ float stitching(float coord, float minVal, float delta, float edge) {
 
 void main() {
 
-    ivec2 indexMap[4] = ivec2[4](
-        ivec2(0, 0),
-        ivec2(1, 0),
-        ivec2(0, 1),
-        ivec2(1, 1)
-    );
-
     ivec2 dim = textureSize(indexTexture, 0).xy;
     int index_u = gl_InstanceID % dim.x;
     int index_v = gl_InstanceID / dim.x;
@@ -89,16 +82,18 @@ void main() {
     int storage_u = storageId % dim.x;
     int storage_v = storageId / dim.x;
 
-    vec2 xs = texelFetch(xTexture, ivec2(storage_u, storage_v), 0).rg;
-    vec2 ys = texelFetch(yTexture, ivec2(storage_u, storage_v), 0).rg;
-    int level = int(texelFetch(levelTexture, ivec2(storage_u, storage_v), 0).r);
+    int layerMap[4] = int[4](
+        0,
+        1,
+        2,
+        3
+    );
 
-    ivec2 xyIndex = indexMap[gl_VertexID];
-    float x = xs[xyIndex.x];
-    float y = ys[xyIndex.y];
+    int level = int(texelFetch(levelTexture, ivec2(storage_u, storage_v), 0).r);
+    vec2 xy = texelFetch(storageTexture, ivec3(storage_u, storage_v, layerMap[gl_VertexID]), 0).rg;
 
     v_color = texelFetch(paletteTexture, ivec2(level, 0), 0).rgb;
-    gl_Position = uMatrix * vec4(translateRelativeToEye(vec2(x, y), vec2(0.0)), 0.0, 1.0);
+    gl_Position = uMatrix * vec4(translateRelativeToEye(xy, vec2(0.0)), 0.0, 1.0);
 }
 
 #endif

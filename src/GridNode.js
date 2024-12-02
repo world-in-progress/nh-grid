@@ -1,6 +1,7 @@
 import proj4 from 'proj4'
 import { BoundingBox2D } from './BoundingBox2D.js'
 import { MercatorCoordinate } from './MercatorCoordinate.js'
+proj4.defs("ESRI:102140","+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
 
 // export class GridEdge {
 
@@ -654,30 +655,27 @@ export class GridNode {
 
     getVertices(srcCS, bBox) {
 
-        const vertices = new Float32Array(4)
-
-        //
         const xMin = lerp(bBox.xMin, bBox.xMax, this.xMinPercent)
         const yMin = lerp(bBox.yMin, bBox.yMax, this.yMinPercent)
         const xMax = lerp(bBox.xMin, bBox.xMax, this.xMaxPercent)
-        const yMax = lerp(bBox.yMin, bBox.yMax, this.yMaxPercent) 
-        //
-
-        const srcTL = [ xMin, yMax ]
-        const srcBR = [ xMax, yMin ]
+        const yMax = lerp(bBox.yMin, bBox.yMax, this.yMaxPercent)
         
-        const targetTL = proj4(`EPSG:${srcCS}`, `EPSG:${4326}`, srcTL)
-        const targetBR = proj4(`EPSG:${srcCS}`, `EPSG:${4326}`, srcBR)
+        const targetTL = proj4(srcCS, `EPSG:4326`, [ xMin, yMax ])  // srcTL
+        const targetTR = proj4(srcCS, `EPSG:4326`, [ xMax, yMax ])  // srcTR
+        const targetBL = proj4(srcCS, `EPSG:4326`, [ xMin, yMin ])  // srcBL
+        const targetBR = proj4(srcCS, `EPSG:4326`, [ xMax, yMin ])  // srcBR
 
         const renderTL = MercatorCoordinate.fromLonLat(targetTL)
+        const renderTR = MercatorCoordinate.fromLonLat(targetTR)
+        const renderBL = MercatorCoordinate.fromLonLat(targetBL)
         const renderBR = MercatorCoordinate.fromLonLat(targetBR)
 
-        vertices[0] = renderTL[0]  // min x
-        vertices[1] = renderBR[0]  // max x
-        vertices[2] = renderTL[1]  // min y
-        vertices[3] = renderBR[1]  // max y
-
-        return vertices
+        return new Float32Array([
+            renderTL[0], renderTL[1],
+            renderTR[0], renderTR[1],
+            renderBL[0], renderBL[1],
+            renderBR[0], renderBR[1]
+        ])
     }
 
     release() {
@@ -724,8 +722,7 @@ export class GridNode {
 // Helpers //////////////////////////////////////////////////////////////////////////////////////////////////////
 
 function lerp(a, b, t) {
-
-    return (1 - t) * a + t * b
+    return (1.0 - t) * a + t * b
 }
 
 function gcd(a, b) {
