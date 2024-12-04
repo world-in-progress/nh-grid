@@ -29,12 +29,10 @@ export default class GridLayer {
 
         // Function-related //////////////////////////////////////////////////
 
-        /** Update set
-         * @type { Set<{level: number, globalId: number, hitOrNot: boolean} | {lon: number, lat: number}> } 
-        */
+        /** @type { Set<{level: number, globalId: number, hitOrNot: boolean} | {lon: number, lat: number}> } */
         this.hitSet = new Set()
 
-        /** Hit grid list used in Editor Type 
+        /** Hit-grid list used in Editor Type 
          * @type { GridNode[] } 
         */
         this.hitGridList = []
@@ -878,7 +876,7 @@ export default class GridLayer {
             }
         })
 
-        // [5] Add event listner for <Ctrl + D> (Open removing grid mode)
+        // [5] Add event listner for <Shift + D> (Open removing grid mode)
         document.addEventListener('keydown', e => {
 
             if (e.shiftKey && e.key === 'D') {
@@ -1057,7 +1055,7 @@ export default class GridLayer {
                     }
 
                     this.tickSubdivider()
-                    
+
                     // Update display of capacity
                     this.uiOption.capacity = this.storageIdGridMap.size
                     this.capacityController.updateDisplay()

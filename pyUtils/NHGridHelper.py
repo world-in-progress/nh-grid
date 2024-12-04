@@ -1,3 +1,4 @@
+import math
 import json
 
 # Constants ####################################################################################################
@@ -7,12 +8,21 @@ EDGE_CODE_WEST  = 0b01
 EDGE_CODE_SOUTH = 0b10
 EDGE_CODE_EAST  = 0b11
 
+EDGE_ATTRIBUTE_VERTICAL = 0b10
+EDGE_ATTRIBUTE_HORIZONTAL = 0b01
+
 # Helpers ######################################################################################################
 
 def lerp(a: float, b: float, t: float):
     
     t = min(max(t, 0.0), 1.0)
     return (1.0 - t) * a + t * b
+
+def distance2D(x1: float, y1: float, x2: float, y2: float):
+    
+    dx = x1 - x2
+    dy = y1 - y2
+    return math.sqrt(dx ** 2 + dy ** 2)
 
 # NHGridNode ###################################################################################################
 
@@ -53,7 +63,47 @@ class NHGridNode:
     def get_extent(self) -> list[float]:
         
         return [ self.x_min, self.y_min, self.x_max, self.y_max ]
-
+    
+    def get_north_edge_num(self) -> int:
+        
+        return len(self.edge_ids[EDGE_CODE_NORTH])
+    
+    def get_west_edge_num(self) -> int:
+        
+        return len(self.edge_ids[EDGE_CODE_WEST])
+    
+    def get_south_edge_num(self) -> int:
+        
+        return len(self.edge_ids[EDGE_CODE_SOUTH])
+    
+    def get_east_edge_num(self) -> int:
+        
+        return len(self.edge_ids[EDGE_CODE_EAST])
+    
+    def get_north_edge_ids(self) -> list[int]:
+        
+        return list(self.edge_ids[EDGE_CODE_NORTH])
+    
+    def get_west_edge_ids(self) -> list[int]:
+        
+        return list(self.edge_ids[EDGE_CODE_WEST])
+    
+    def get_south_edge_ids(self) -> list[int]:
+        
+        return list(self.edge_ids[EDGE_CODE_SOUTH])
+    
+    def get_east_edge_ids(self) -> list[int]:
+        
+        return list(self.edge_ids[EDGE_CODE_EAST])
+    
+    def get_width(self) -> float:
+        
+        return abs(self.x_max - self.x_min)
+    
+    def get_height(self) -> float:
+        
+        return abs(self.y_max - self.y_min)
+    
 # NHGridEdge ####################################################################################################
 
 class NHGridEdge:
@@ -62,7 +112,7 @@ class NHGridEdge:
         
         self.id = id
         self.edge_code = edge_code
-        self.grid_ids: list[int] = []
+        self.grid_ids: list[int] = [ None, None ]
         
         # Add grid id to edge
         for grid in adjacent_grids:
@@ -94,13 +144,63 @@ class NHGridEdge:
             self.y2 = lerp(extent[1], extent[3], max_percent[0] / max_percent[1])
             
     def get_p1(self) -> list[float]:
+        
         return [ self.x1, self.y1 ]
     
     def get_p2(self) -> list[float]:
+        
         return [ self.x2, self.y2 ]
     
     def get_p1_p2(self) -> list[float]:
+        
         return [ self.x1, self.y1, self.x2, self.y2 ]
+    
+    def get_length(self) -> float:
+        
+        return distance2D(self.x1, self.y1, self.x2, self.y2)
+    
+    def get_direction(self) -> int:
+        
+        if self.edge_code == EDGE_CODE_NORTH or self.edge_code == EDGE_CODE_SOUTH:
+            return EDGE_ATTRIBUTE_HORIZONTAL
+        else:
+            return EDGE_ATTRIBUTE_VERTICAL
+    
+    def get_north_grid_id(self) -> int | None:
+        
+        if self.edge_code == EDGE_CODE_SOUTH:
+            return self.grid_ids[0]
+        elif self.edge_code == EDGE_CODE_NORTH:
+            return self.grid_ids[1]
+        else:
+            return None
+    
+    def get_west_grid_id(self) -> int | None:
+        
+        if self.edge_code == EDGE_CODE_EAST:
+            return self.grid_ids[0]
+        elif self.edge_code == EDGE_CODE_WEST:
+            return self.grid_ids[1]
+        else:
+            return None
+    
+    def get_south_grid_id(self) -> int | None:
+        
+        if self.edge_code == EDGE_CODE_NORTH:
+            return self.grid_ids[0]
+        elif self.edge_code == EDGE_CODE_SOUTH:
+            return self.grid_ids[1]
+        else:
+            return None
+            
+    def get_easet_grid_id(self) -> int | None:
+        
+        if self.edge_code == EDGE_CODE_WEST:
+            return self.grid_ids[0]
+        elif self.edge_code == EDGE_CODE_EAST:
+            return self.grid_ids[1]
+        else:
+            return None
     
     @staticmethod
     def get_op_edge_code(edge_code: int) -> int:
@@ -189,44 +289,125 @@ class NHGridHelper:
     
     def get_grids_adjacent_to_edge(self, edge: NHGridEdge) -> list[NHGridNode]:
         
-        grids = []
-        for grid_id in edge.grid_ids:
-            grids.append(self.grids[grid_id])
-        
-        return grids
+        return [ self.grids[grid_id] for grid_id in edge.grid_ids if grid_id is not None ]
     
     def get_edges_belong_to_grid(self, grid: NHGridNode) -> list[NHGridEdge]:
-        
-        edges = []
-        for edge_set in grid.edge_ids:
-            for edge_id in edge_set:
-                edges.append(self.edges[edge_id])
             
-        return edges
+        return [ self.edges[edge_id] for edge_set in grid.edge_ids for edge_id in edge_set ]
 
 # Demo ##########################################################################################################
 
 if __name__ == '__main__':
     
+    """ 
+    ---- Demo for Python lib NHGridHelper ----
+    
+    'gridInfo.json' is a serialization file generated by 'NHGrid JS'.
+    
+    This demo shows how to use 'NHGridHelper' to obtain all useful topology information in 'gridInfo.json'.
+    
+    This demo is based on Grid 4 in 'gridInfo.json'.
+    
+    Grid 4 looks like:
+    
+    ----|----- Edge 16 -----|----
+        |                   |     
+        |                Edge 19  
+        |                   |    
+    Edge 17     Grid 4      |----
+        |                   |    
+        |                Edge 18  
+        |                   |     
+    ----|----- Edge 12 -----|----
+        |                   |
+         
+    Note: Edge 16 is part of the Top Boundary.
+    
+    """
+    
+    # Initialize grid helper by gridInfo.json
     helper = NHGridHelper('./testRes/gridInfo.json')
     
-    grid_0 = helper.get_grid_by_id(4)
-    edges = helper.get_edges_belong_to_grid(grid_0)
+    # Get Grid 4 by id
+    grid_4 = helper.get_grid_by_id(4)
+    
+    # Grid 4 can also be obtained through topology
+    edge_16 = helper.get_edge_by_id(16)
+    grid_4 = helper.get_grids_adjacent_to_edge(edge_16)[0]
+    
+    # Get id of Grid 4
+    grid_id = grid_4.id
+    
+    # Get extent of Grid 4
+    extent = grid_4.get_extent()
+    
+    # Get width and height of Grid 4
+    width = grid_4.get_width()
+    height = grid_4.get_height()
+    
+    # Get north edge information of Grid 4
+    north_edge_num = grid_4.get_north_edge_num()
+    north_edge_ids = grid_4.get_north_edge_ids()
+    
+    # Get west edge information of Grid 4
+    west_edge_num = grid_4.get_west_edge_num()
+    west_edge_ids = grid_4.get_west_edge_ids()
+    
+    # Get south edge information of Grid 4
+    south_edge_num = grid_4.get_south_edge_num()
+    south_edge_ids = grid_4.get_south_edge_ids()
+    
+    # Get east edge information of Grid 4
+    east_edge_num = grid_4.get_east_edge_num()
+    east_edge_ids = grid_4.get_east_edge_ids()
     
     print('\n------ Grid Info ------\n')
-    print(f'Grid ID: {grid_0.id}\n\nExtent: {grid_0.get_extent()}\n\nEdge List:')
+    print(f'Grid ID: {grid_id}\n\nGrid Extent: {extent}\n\nGrid Width: {width}\n\nGrid Height: {height}\n\nNorth Edge Num: {north_edge_num}\n\nNorth Edge IDs: {north_edge_ids}\n\nWest Edge Num: {west_edge_num}\n\nWest Edge IDs: {west_edge_ids}\n\nSouth Edge Num: {south_edge_num}\n\nSouth Edge IDs: {south_edge_ids}\n\nEast Edge Num: {east_edge_num}\n\nEast Edge IDs: {east_edge_ids}\n\n\nEdge List:')
+    
+    # Get edges adjacent to Grid 4 based on topology
+    edges = helper.get_edges_belong_to_grid(grid_4)
+    
+    # Edges can also be obtained through id
+    edges = [ helper.get_edge_by_id(id) for id in [ *north_edge_ids, *west_edge_ids, *south_edge_ids, *east_edge_ids ] ]
     
     for edge in edges:
         
+        # Get id of this edge
         edge_id = edge.id
         
-        # p1 & p2 can also be obtained through <edge.get_p1_p2()>
-        p1 = edge.get_p1()
-        p2 = edge.get_p2()
+        # Get direction of this edge (Horizontal: 1, Vertical: 2)
+        edge_direction = edge.get_direction()
         
+        # Get lenght of this edge
+        edge_length = edge.get_length()
+        
+        # Get point 1 and point 2 of this edge
+        point_1 = edge.get_p1()
+        point_2 = edge.get_p2()
+        
+        # Point 1 and point 2 can also be obtained at one time
+        points = edge.get_p1_p2()
+        point_1, point_2 = points[:2], points[2:]
+        
+        # Get id of the north grid adjacent to this edge (if no grid, return None)
+        north_grid_id = edge.get_north_grid_id()
+        
+        # Get id of the west grid adjacent to this edge (if no grid, return None)
+        west_grid_id = edge.get_west_grid_id()
+        
+        # Get id of the south grid adjacent to this edge (if no grid, return None)
+        south_grid_id = edge.get_south_grid_id()
+        
+        # Get id of the east grid adjacent to this edge (if no grid, return None)
+        east_grid_id = edge.get_easet_grid_id()
+        
+        # Collect all adjacent grid ids and remove invalid grid id (None)
+        adj_grid_ids = [ id for id in [ north_grid_id, west_grid_id, south_grid_id, east_grid_id ] if id is not None ]
+        
+        # These grid ids can also be obtained through topology (without direction information)
         adjacent_grids = helper.get_grids_adjacent_to_edge(edge)
         adj_grid_ids = [ grid.id for grid in adjacent_grids ]
         
         print(f'\n------\n')
-        print(f'Edge ID: {edge_id}\n\nPoint1: {p1}\n\nPoint2: {p2}\n\nAdjacent Grid IDs: {adj_grid_ids}\n')
+        print(f'Edge ID: {edge_id}\n\nEdge Length: {edge_length}\n\nPoint1: {point_1}\n\nPoint2: {point_2}\n\nAdjacent Grid IDs: {adj_grid_ids}\n')
  
