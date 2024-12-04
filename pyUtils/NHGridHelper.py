@@ -378,7 +378,7 @@ if __name__ == '__main__':
         # Get direction of this edge (Horizontal: 1, Vertical: 2)
         edge_direction = edge.get_direction()
         
-        # Get lenght of this edge
+        # Get length of this edge
         edge_length = edge.get_length()
         
         # Get point 1 and point 2 of this edge
