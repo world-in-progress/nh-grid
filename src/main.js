@@ -57,8 +57,11 @@ const gridLayer = new GridLayer({
     maxGridNum: 4096 * 4096,
     srcCS: 'ESRI:102140',
     subdivideRules: [
-        [30, 30],
-        [2, 2],
+        // [1018, 382],
+        [20, 10],
+        [51, 40],
+        [3, 3],
+        // [2, 2],
         // [2, 2],
         // [2, 2],
         // [2, 2],

@@ -183,7 +183,10 @@ export class GridEdge {
         }
     }
 
-    static toggleEdgeCode(code) {
+    /**
+     * @returns { number }
+     */
+    static getToggleEdgeCode(code) {
         switch (code) {
             case EDGE_CODE_NORTH:
                 return EDGE_CODE_SOUTH
@@ -207,7 +210,7 @@ export class GridEdge {
 
         const keyArray = key.split('-').map((value, index) => {
             if (index === 8) {
-                return GridEdge.toggleEdgeCode(Number(value));
+                return GridEdge.getToggleEdgeCode(Number(value));
             }
             return value === 'null' ? 'null' : Number(value);
         })
@@ -342,8 +345,8 @@ export class GridNode {
 
             this._xMinPercent = simplifyFraction(globalU, width)
             this._xMaxPercent = simplifyFraction(globalU + 1, width)
-            this._yMinPercent = simplifyFraction(globalV, width)
-            this._yMaxPercent = simplifyFraction(globalV + 1, width)
+            this._yMinPercent = simplifyFraction(globalV, height)
+            this._yMaxPercent = simplifyFraction(globalV + 1, height)
         }
     }
 
@@ -679,13 +682,34 @@ export class GridNode {
 
     release() {
 
-        this.neighbours = null
-        this.storageId = null
+        this.neighbours.forEach((gridSet, edgeCode) => {
+            gridSet.forEach(grid => {
+                const opEdge = GridEdge.getToggleEdgeCode(edgeCode)
+                grid.neighbours[opEdge].delete(this)
+            })
+        })
+        this.neighbours = []
+
+        this._xMinPercent = null
+        this._xMaxPercent = null
+        this._yMinPercent = null
+        this._yMaxPercent = null
+
+        this.edges = null
+
         this.children = null
+
+        if (this.parent) {
+            this.parent.children[this.localId] = null
+        }
+        this.parent = null
+
+        this.storageId = null
         this.globalId = null
         this.localId = null
-        this.parent = null
         this.level = null
+
+        this.edgeCalculated = false
         this.hit = false
 
         return null
