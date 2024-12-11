@@ -6,12 +6,6 @@ body, html {
     overflow: hidden;
 }
 
-#GPUFrame {
-    position: absolute;
-    height: 100%;
-    width: 100%;
-}
-
 .dg.ac {
     position: fixed;
     z-index: 10000;

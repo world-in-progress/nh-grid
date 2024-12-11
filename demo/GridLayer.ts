@@ -1,90 +1,114 @@
-import axios, { all } from 'axios'
+import axios from 'axios'
 import proj4 from 'proj4'
-import { GUI } from 'dat.gui'
-import { VibrantColorGenerator } from './VibrantColorGenerator'
-import { EDGE_CODE_EAST, EDGE_CODE_NORTH, EDGE_CODE_SOUTH, EDGE_CODE_WEST, GridEdge, GridEdgeRecoder, GridNode } from './GridNode'
-import { BoundingBox2D } from './BoundingBox2D'
+import { MapMouseEvent } from 'mapbox-gl'
+import { GUI, GUIController } from 'dat.gui'
 proj4.defs("ESRI:102140","+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
+
+import NHMap from './map/NHMap'
+import { BoundingBox2D } from '../src/BoundingBox2D'
+import { VibrantColorGenerator } from '../src/VibrantColorGenerator'
+import { GridNode, GridEdgeRecorder, GridNodeRecorder } from '../src/NHGrid'
+
+export interface GridLayerOptions {
+    srcCS: string
+    maxGridNum: number,
+    edgeProperties?: string[], 
+    subdivideRules?: [ number, number ][]
+    boundaryCondition: [ number, number, number, number ]
+}
+
+export interface GridLayerSerializedInfo {
+    extent: [ number, number, number, number ]
+    grids: { 
+        id: number
+        xMinPercent: [ number, number ]
+        yMinPercent: [ number, number ]
+        xMaxPercent: [ number, number ]
+        yMaxPercent: [ number, number ] 
+    }[]
+    edges: {
+        id: number
+        edgeCode: number
+        minPercent: [ number, number ]
+        maxPercent: [ number, number ]
+        adjGrids: [ number | null, number | null ]
+    }[]
+}
+
 export default class GridLayer {
 
-    /**
-     * @param {{
-     *      srcCS: number,
-     *      maxGridNum: number,
-     *      edgeProperties: string[],
-     *      maxSubdividedDepth: number,
-     *      subdivideRules: [number, number][]
-     *      boundaryCondition: [number, number, number, number]
-     * }} options 
-     */
-    constructor(options) {
+    // Layer-related //////////////////////////////////////////////////
 
-        // Layer-related //////////////////////////////////////////////////
+    type = 'custom'
+    id = 'GridLayer'
+    renderingMode = '3d'
+    isInitialized = false
+    map: NHMap | undefined
 
-        this.type = 'custom'
-        this.map = undefined
-        this.id = 'GridLayer'
-        this.renderingMode = '3d'
-        this.isInitialized = false
+    // Function-related //////////////////////////////////////////////////
 
-        // Function-related //////////////////////////////////////////////////
+    // Grid properties
+    srcCS: string
+    maxGridNum: number
+    bBox: BoundingBox2D
+    gridRecorder: GridNodeRecorder
+    edgeRecorder: GridEdgeRecorder
+    subdivideRules: [ number, number ][]
 
-        /** @type { Set<{level: number, globalId: number, hitOrNot: boolean} | {lon: number, lat: number}> } */
-        this.hitSet = new Set()
+    // Grid render list
+    fillList = new Array<number>()
+    lineList = new Array<number>()
+    hitGridList = new Array<GridNode>()
+    hitSet = new Set<{ level: number, globalId: number, hitOrNot: boolean } | { lon: number, lat: number }>
 
-        /** Hit-grid list used in Editor Type 
-         * @type { GridNode[] } 
-        */
-        this.hitGridList = []
+    storageTextureSize: number
+    paletteColorList: Uint8Array
 
-        // Subdivide rule
+    // GPU-related //////////////////////////////////////////////////
+
+    private _gl: WebGL2RenderingContext | undefined
+
+    // Shader
+    terrainMeshShader: WebGLProgram = 0
+    terrainLineShader: WebGLProgram = 0
+
+    // Texture resource
+    levelTexture: WebGLTexture = 0
+    paletteTexture: WebGLTexture = 0
+    fillIndexTexture: WebGLTexture = 0
+    lineIndexTexture: WebGLTexture = 0
+    storageTextureArray: WebGLTexture = 0
+
+    // Interaction-related //////////////////////////////////////////////////
+
+    isShiftClick = false
+    isDeleteMode = false
+
+    mouseupHandler: Function
+    mousedownHandler: Function
+    mousemoveHandler: Function
+    
+    // Mode
+    typeChanged = false
+    EDITOR_TYPE = 0b01
+    SUBDIVIDER_TYPE = 0b11
+    private _currentType = 0b11
+
+    uiOption: { capacity: number, level: number }
+    
+    // Dat.GUI
+    gui: GUI
+    capacityController: GUIController
+
+    constructor(options: GridLayerOptions) {
+
         this.srcCS = options.srcCS
         this.subdivideRules = options.subdivideRules || [[1, 1]]
 
-        // Grid properties
-        this.registeredGridCount = 0
-        /** @type { Map<number, GridNode> } */
-        this.storageIdGridMap = new Map()
         this.maxGridNum = options.maxGridNum
         this.bBox = new BoundingBox2D(...options.boundaryCondition)
-
-        /** @type {{width: number, height: number, count: number, grids: GridNode[]}[]} */
-        this.gridRecoder = new Array(this.subdivideRules.length)
-
-        this.edgeRecoder = new GridEdgeRecoder(options.edgeProperties)
-
-        // Add rootGrid to gridRecoder
-        const rootGrid = new GridNode({
-            localId: 0,
-            globalId: 0,
-            storageId: this.registeredGridCount++
-        })
-        this.gridRecoder[0] = {
-            width: 1,
-            height: 1,
-            count: 1,
-            grids: [ rootGrid ]
-        }
-
-        // Init gridRecoder
-        this.subdivideRules.forEach((_, ruleLevel, rules) => {
-            if (ruleLevel === 0) return
-
-            const width = this.gridRecoder[ruleLevel - 1].width * rules[ruleLevel - 1][0]
-            const height = this.gridRecoder[ruleLevel - 1].height * rules[ruleLevel - 1][1]
-
-            this.gridRecoder[ruleLevel] = {
-                width,
-                height,
-                count: 0,
-                grids: undefined,
-            }
-            this.gridRecoder[ruleLevel].grids = new Array(width * height)
-        })
-
-        // Grid render list
-        this.fillList = []
-        this.lineList = []
+        this.gridRecorder = new GridNodeRecorder(this.subdivideRules)
+        this.edgeRecorder = new GridEdgeRecorder(options.edgeProperties)
 
         // Storage texture memory
         this.storageTextureSize = Math.ceil(Math.sqrt(options.maxGridNum))
@@ -97,33 +121,10 @@ export default class GridLayer {
             this.paletteColorList.set(color, i * 3)
         }
 
-        // GPU-related //////////////////////////////////////////////////
-
-        /** @type { WebGL2RenderingContext } */
-        this._gl = undefined
-
-        // Texture resource
-        this.levelTexture = undefined
-        this.paletteTexture = undefined
-        this.fillIndexTexture = undefined
-        this.lineIndexTexture = undefined
-        this.storageTextureArray = undefined
-
-        // Interaction-related //////////////////////////////////////////////////
-
-        this.isShiftClick = false
-        this.isDeleteMode = false
-
         // Event handler
         this.mouseupHandler = this._mouseupHandler.bind(this)
         this.mousedownHandler = this._mousedownHandler.bind(this)
         this.mousemoveHandler = this._mousemoveHandler.bind(this)
-
-        // Mode
-        this.typeChanged = false
-        this.EDITOR_TYPE = 0b01
-        this.SUBDIVIDER_TYPE = 0b11
-        this._currentType = this.SUBDIVIDER_TYPE
 
         // Interaction option
         this.uiOption = {
@@ -136,18 +137,17 @@ export default class GridLayer {
         const brushFolder = this.gui.addFolder('Brush')
         brushFolder.add(this.uiOption, 'level', 1, this.subdivideRules.length - 1, 1)
         brushFolder.open()
-        this.gui.add(this.uiOption, 'capacity',0, this.maxGridNum).name('Capacity').listen().onChange()
+        this.gui.add(this.uiOption, 'capacity',0, this.maxGridNum).name('Capacity').listen()
 
         this.capacityController = this.gui.__controllers[0]
         this.capacityController.setValue(0.0)
         this.capacityController.domElement.style.pointerEvents = 'none'
 
     }
+    
+    set currentType(type: number) {
 
-    /**
-     * @param {number} type
-     */
-    set currentType(type) {
+        const gl = this._gl!
 
         if (type === this._currentType) return
 
@@ -160,10 +160,10 @@ export default class GridLayer {
             this.addEditorUIHandler()
 
             // Find neighbours for all grids
-            this.findNeighbours()
+            this.gridRecorder.findNeighbours()
 
             // Generate hit list
-            this.storageIdGridMap.forEach(grid => {
+            this.gridRecorder.storageId_grid_map.forEach(grid => {
                 if (grid.hit === true && grid.level !== 0) {
                     this.hitGridList.push(grid)
                     grid.hit = false
@@ -174,7 +174,7 @@ export default class GridLayer {
             this.lineList = this.hitGridList.map(grid => grid.storageId)
 
             // Refill palette texture
-            fillSubTexture2DByArray(this._gl, this.paletteTexture, 0, 0, 0, this.subdivideRules.length, 1, this._gl.RGB, this._gl.UNSIGNED_BYTE, this.paletteColorList)
+            fillSubTexture2DByArray(gl, this.paletteTexture, 0, 0, 0, this.subdivideRules.length, 1, gl.RGB, gl.UNSIGNED_BYTE, this.paletteColorList)
 
         } else {
 
@@ -190,247 +190,23 @@ export default class GridLayer {
             for (let i = 0; i < this.subdivideRules.length; i++) {
                 colorList.set([ 0, 127, 127 ], i * 3)
             }
-            fillSubTexture2DByArray(this._gl, this.paletteTexture, 0, 0, 0, this.subdivideRules.length, 1, this._gl.RGB, this._gl.UNSIGNED_BYTE, colorList)
+            fillSubTexture2DByArray(gl, this.paletteTexture, 0, 0, 0, this.subdivideRules.length, 1, gl.RGB, gl.UNSIGNED_BYTE, colorList)
         }
 
-        this.map.triggerRepaint()
+        this.map!.triggerRepaint()
     }
-
-    /**
-     * When changing into Editor Type, neighbours of each grid need to be determined.
-     */
-    findNeighbours() {
-        
-        /**
-         * 
-         * @param { number } u 
-         * @param { number } v 
-         * @param { number } level 
-         * @returns { GridNode | null }
-         */
-        function getGrid(u, v, level) {
-
-            const width = this.gridRecoder[level].width
-            const height = this.gridRecoder[level].height
-
-            if (u < 0 || u >= width || v < 0 || v > height) return null
-
-            const globalId = v * width + u
-            return this.gridRecoder[level].grids[globalId]
-        }
-            
-        /* ------------------------------------------------------------------
-                                            |
-            Neighbours around a grid        |       Edges around a node   
-                                            |
-                      tGrid                 |         ----- 0b00 -----
-                        |                   |        |                |
-             lGrid -- GRID -- rGrid         |        0b01   NODE   0b11
-                        |                   |        |                |
-                      bGrid                 |         ----- 0b10 ----- 
-                                            |
-        ------------------------------------------------------------------ */
-
-        /** 
-         * Get all valid grids.  
-         * 
-         * Features about so-called VALID:
-         * 1. Is always hit
-         * 2. Level is never 0
-         * 3. Is always a leaf grid
-         * @type { GridNode[] } 
-        */
-        const validGrids = []
-        this.storageIdGridMap.forEach(grid => {
-            if (grid.hit) validGrids.push(grid)
-        })
-
-        // Iterate all valid grids and find their neighbours
-        validGrids.forEach(grid => {
-            
-            const level = grid.level
-            const width = this.gridRecoder[level].width
-
-            const globalU = grid.globalId % width
-            const globalV = Math.floor(grid.globalId / width)
-
-            const tGrid = getGrid.call(this, globalU, globalV + 1, level)
-            const lGrid = getGrid.call(this, globalU - 1, globalV, level)
-            const bGrid = getGrid.call(this, globalU, globalV - 1, level)
-            const rGrid = getGrid.call(this, globalU + 1, globalV, level)
-
-            // Check top edge with tGrid
-            if (tGrid) {
-                
-                // Get all children of tGrid, adjacent to grid
-
-                /** @type { GridNode[] } */
-                const adjChildren = []
-
-                /** @type { GridNode[] } */
-                const stack = [ tGrid ]
-
-                while (stack.length) {
-                    const _grid = stack.pop()
-
-                    if (_grid.children.length) {
-                        const [ subWidth, subHeight ] = this.subdivideRules[_grid.level]
-                        stack.push(..._grid.children.filter(childGrid => childGrid && childGrid.localId < subWidth))
-                    } else adjChildren.push(_grid)
-                }
-
-                adjChildren.filter(childGrid => childGrid.hit).forEach(childGrid => {
-                    grid.neighbours[EDGE_CODE_NORTH].add(childGrid)
-                    childGrid.neighbours[EDGE_CODE_SOUTH].add(grid)
-                })
-            }
-
-            // Check left edge with lGrid
-            if (lGrid) {
-                    
-                // Get all children of lGrid, adjacent to grid
-
-                /** @type { GridNode[] } */
-                const adjChildren = []
     
-                /** @type { GridNode[] } */
-                const stack = [ lGrid ]
-
-                while (stack.length) {
-                    const _grid = stack.pop()
-    
-                    if (_grid.children.length) {
-                        const [ subWidth, subHeight ] = this.subdivideRules[_grid.level]
-                        stack.push(..._grid.children.filter(childGrid => childGrid && (childGrid.localId % subWidth) === subWidth - 1))
-                    } else adjChildren.push(_grid)
-                }
-
-                adjChildren.filter(childGrid => childGrid.hit).forEach(childGrid => {
-                    grid.neighbours[EDGE_CODE_WEST].add(childGrid)
-                    childGrid.neighbours[EDGE_CODE_EAST].add(grid)
-                })
-            }
-
-            // Check bottom edge with rGrid
-            if (bGrid) {
-                    
-                // Get all children of bGrid, adjacent to grid
-
-                /** @type { GridNode[] } */
-                const adjChildren = []
-    
-                /** @type { GridNode[] } */
-                const stack = [ bGrid ]
-
-                while (stack.length) {
-                    const _grid = stack.pop()
-    
-                    if (_grid.children.length) {
-                        const [ subWidth, subHeight ] = this.subdivideRules[_grid.level]
-                        stack.push(..._grid.children.filter(childGrid => childGrid && childGrid.localId >= subWidth * (subHeight - 1)))
-                    } else adjChildren.push(_grid)
-                }
-
-                adjChildren.filter(childGrid => childGrid.hit).forEach(childGrid => {
-                    grid.neighbours[EDGE_CODE_SOUTH].add(childGrid)
-                    childGrid.neighbours[EDGE_CODE_NORTH].add(grid)
-                })
-            }
-
-            // Check right edge with rGrid
-            if (rGrid) {
-                    
-                // Get all children of rGrid, adjacent to grid
-
-                /** @type { GridNode[] } */
-                const adjChildren = []
-    
-                /** @type { GridNode[] } */
-                const stack = [ rGrid ]
-
-                while (stack.length) {
-                    const _grid = stack.pop()
-    
-                    if (_grid.children.length) {
-                        const [ subWidth, subHeight ] = this.subdivideRules[_grid.level]
-                        stack.push(..._grid.children.filter(childGrid => childGrid && (childGrid.localId % subWidth) === 0))
-                    } else adjChildren.push(_grid)
-                }
-
-                adjChildren.filter(childGrid => childGrid && childGrid.hit).forEach(childGrid => {
-                    grid.neighbours[EDGE_CODE_EAST].add(childGrid)
-                    childGrid.neighbours[EDGE_CODE_WEST].add(grid)
-                })
-            }
-
-            grid.resetEdges()
-        })
-    }
-
-    /**
-     * @param { number } level Level of grid
-     * @param { number } globalId Global id of grid
-    */
-    subdivideGrid(level, globalId) {
-
-        const gl = this._gl
-
-        // Subdivide parent if this grid does not exist
-        if (!this.gridRecoder[level].grids[globalId]) this.subdivideGrid(level - 1, this.getParentGlobalId(level, globalId))
-
-        const grid = this.gridRecoder[level].grids[globalId]
-
-        // Return if grid's children are all existed
-        if (grid.children.length > 0 && grid.children.every(child => child)) return
-
-        // Subdivide
-        const [subWidth, subHeight] = this.subdivideRules[level]
-        const globalU = globalId % this.gridRecoder[level].width
-        const globalV = Math.floor(globalId / this.gridRecoder[level].width)
-        const subGlobalWidth = this.gridRecoder[level + 1].width
-        const subGlobalHeight = this.gridRecoder[level + 1].height
-
-        for (let localId = 0; localId < subWidth * subHeight; localId++) {
-
-            if (grid.children[localId]) continue
-
-            const subU = localId % subWidth
-            const subV = Math.floor(localId / subWidth)
-            
-            const subGlobalU = globalU * subWidth + subU
-            const subGlobalV = globalV * subHeight + subV
-            const subGlobalId = subGlobalV * (this.gridRecoder[level].width * subWidth) + subGlobalU
-            
-            const subGrid = new GridNode({
-                localId,
-                parent: grid,
-                globalId: subGlobalId,
-                storageId: this.registeredGridCount++,
-                globalRange: [ subGlobalWidth, subGlobalHeight ]
-            })
-            this.writeGridInfoToTexture(subGrid)
-
-            subGrid.hit = true
-            grid.children[localId] = subGrid
-            this.gridRecoder[level + 1].count += 1
-            this.gridRecoder[level + 1].grids[subGlobalId] = subGrid
-
-            this.storageIdGridMap.set(subGrid.storageId, subGrid)
-        }
-    }
-
-    /**
-     * @param { number } level Level of grid
-     * @param { number } globalId Global id of grid
-     * @param { boolean } hitOrNot Hit or not
-    */
-    hitSubdivider(level, globalId, hitOrNot) {
+    hitSubdivider(level: number, globalId: number, hitOrNot: boolean) {
 
         // Subdivide parent first (to create this grid if it does not exist)
-        const parentGlobalId = this.getParentGlobalId(level, globalId)
-        this.subdivideGrid(level - 1, parentGlobalId)
+        const parentGlobalId = this.gridRecorder.getParentGlobalId(level, globalId)
+        this.gridRecorder.subdivideGrid(level - 1, parentGlobalId, this.writeGridInfoToTexture.bind(this))
         
-        const grid = this.gridRecoder[level].grids[globalId]
+        const grid = this.gridRecorder.getGrid(level, globalId)
+        if (!grid) {
+            console.error('No grid can be hit.')
+            return
+        }
 
         // Skip if grid has been hit
         // if (grid.hit) return
@@ -449,63 +225,28 @@ export default class GridLayer {
             if (!currentGrid) continue
 
             stack.push(...currentGrid.children)
-            this.removeGrid(currentGrid)
+            this.gridRecorder.removeGrid(currentGrid, this.writeGridInfoToTexture.bind(this))
         }
         grid.children = []
 
         // Hit
         grid.hit = hitOrNot
     }
-
-    /**
-     * @param { number } lon
-     * @param { number } lat
-    */
-    hitEditor(lon, lat) {
+    
+    hitEditor(lon: number, lat: number) {
 
         this.hitGridList.forEach(grid => {
             if (grid.within(this.bBox, lon, lat)) {
                 grid.hit = true
-                grid.calcEdges(this.edgeRecoder)
+                grid.calcEdges(this.edgeRecorder)
                 console.log(grid.edges)
             }
         })
     }
+    
+    writeGridInfoToTexture(grid: GridNode) {
 
-    /**
-     * @param { GridNode } grid 
-     */
-    removeGrid(grid) {
-
-        const gl = this._gl
-
-        if (!grid) return
-
-        // Find last valid grid
-        const lastValidGrid = this.storageIdGridMap.get(this.registeredGridCount - 1)
-        this.storageIdGridMap.delete(lastValidGrid.storageId)
-
-        // Overwrite the texture data of the grid to the valid one
-        if (!lastValidGrid.equal(grid)) {
-
-            this.storageIdGridMap.set(grid.storageId, lastValidGrid)
-            
-            lastValidGrid.storageId = grid.storageId
-            this.writeGridInfoToTexture(lastValidGrid)
-        }
-
-        // Remove
-        this.gridRecoder[grid.level].grids[grid.globalId] = undefined
-        this.registeredGridCount--
-        grid.release()
-    }
-
-    /** 
-     * @param {GridNode} grid
-    */
-    writeGridInfoToTexture(grid) {
-
-        const gl = this._gl
+        const gl = this._gl!
 
         const vertices = grid.getVertices(this.srcCS, this.bBox)
         const storageU = grid.storageId % this.storageTextureSize
@@ -514,14 +255,10 @@ export default class GridLayer {
         fillSubTexture2DArrayByArray(gl, this.storageTextureArray, 0, storageU, storageV, 0, 1, 1, 4, gl.RG, gl.FLOAT, vertices)
         fillSubTexture2DByArray(gl, this.levelTexture, 0, storageU, storageV, 1, 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, new Uint16Array([grid.level]))
     }
+    
+    writeIndicesToTexture(list: Array<number>, texture: WebGLTexture) {
 
-    /**
-     * @param { ArrayLike } list 
-     * @param { WebGLTexture } texture 
-    */
-    writeIndicesToTexture(list, texture) {
-
-        const gl = this._gl
+        const gl = this._gl!
         
         const listLength = list.length
         const blockWidth = this.storageTextureSize
@@ -534,12 +271,10 @@ export default class GridLayer {
 
     tickSubdivider() {
 
-        const gl = this._gl
-
         this.fillList = []
         this.lineList = []
 
-        const stack = [this.gridRecoder[0].grids[0]]
+        const stack = [ this.gridRecorder.getGrid(0, 0) ]
         while(stack.length > 0) {
 
             const grid = stack.pop()
@@ -552,7 +287,7 @@ export default class GridLayer {
                 grid.hit && this.fillList.push(grid.storageId)
                 
             } else {
-                stack.push(...grid.children)
+                stack.push(...grid.children.filter(child => child !== null))
             }
         }
         this.writeIndicesToTexture(this.fillList, this.fillIndexTexture)
@@ -560,8 +295,6 @@ export default class GridLayer {
     }
 
     tickEditor() {
-
-        const gl = this._gl
         
         this.fillList = this.hitGridList.filter(grid => grid.hit).map(grid => grid.storageId)
         this.writeIndicesToTexture(this.fillList, this.fillIndexTexture)
@@ -569,14 +302,12 @@ export default class GridLayer {
     }
 
     hitGrids() {
-
-        const gl = this._gl
         
         if (this.hitSet.size === 0 && !this.typeChanged) return
 
         if (this._currentType === this.SUBDIVIDER_TYPE) {
 
-            this.hitSet.forEach(({ level, globalId, hitOrNot }) => {
+            (this.hitSet as Set<{ level: number, globalId: number, hitOrNot: boolean }>).forEach(({ level, globalId, hitOrNot }) => {
                 this.hitSubdivider(level, globalId, hitOrNot === undefined ? true : hitOrNot)
             })
 
@@ -584,7 +315,7 @@ export default class GridLayer {
 
         } else {
 
-            this.hitSet.forEach(({ lon, lat }) => {
+            (this.hitSet as Set<{ lon: number, lat: number }>).forEach(({ lon, lat }) => {
                 this.hitEditor(lon, lat)
             })
             
@@ -595,20 +326,16 @@ export default class GridLayer {
         this.typeChanged = false
 
         // Update display of capacity
-        this.uiOption.capacity = this.storageIdGridMap.size
+        this.uiOption.capacity = this.gridRecorder.storageId_grid_map.size
         this.capacityController.updateDisplay()
     }
 
     serialize() {
 
         /**
-         * @type {{
-         *      extent: [ number, number, number, number ],
-         *      grids: { id: number, xMinPercent: [ number, number ], yMinPercent: [ number, number ], xMaxPercent: [ number, number ], yMaxPercent: [ number, number ] }[]
-         *      edges: { id: number, adjGrids: [ number | null, number | null ], minPercent: [ number, number ], maxPercent: [ number, number ], edgeCode: number }[]
-         * }}
+         * @type {}
          */
-        const serializedData = {
+        const serializedData: GridLayerSerializedInfo = {
             extent: this.bBox.boundary,
             grids: [],
             edges: []
@@ -616,11 +343,10 @@ export default class GridLayer {
         const grids = serializedData.grids
         const edges = serializedData.edges
 
-        /** @type { Map<string, number> } */
-        const levelGlobalId_serializedId_Map = new Map()
+        const levelGlobalId_serializedId_Map: Map<string, number> = new Map<string, number>()
 
         // Serialized edge recoder used to record valid edges
-        const sEdgeRecoder = new GridEdgeRecoder()
+        const sEdgeRecoder = new GridEdgeRecorder()
 
         // Serialize grids //////////////////////////////////////////////////
 
@@ -628,20 +354,19 @@ export default class GridLayer {
         if (this._currentType === this.EDITOR_TYPE) {
             this.hitGridList.forEach((grid, index) => {
 
+                const { xMinPercent, yMinPercent, xMaxPercent, yMaxPercent } = grid.serialization
                 grids.push({
                     id: index,
-                    xMinPercent: grid._xMinPercent,
-                    yMinPercent: grid._yMinPercent,
-                    xMaxPercent: grid._xMaxPercent,
-                    yMaxPercent: grid._yMaxPercent
+                    xMinPercent, yMinPercent,
+                    xMaxPercent, yMaxPercent
                 })
                 const key = [ grid.level, grid.globalId ].join('-')
                 levelGlobalId_serializedId_Map.set(key, index)
 
                 // Avoid edge miss and record valid key
-                grid.calcEdges(this.edgeRecoder)
+                grid.calcEdges(this.edgeRecorder)
                 grid.edgeKeys.forEach(key => {
-                    const edge = this.edgeRecoder.getEdgeByKey(key)
+                    const edge = this.edgeRecorder.getEdgeByKey(key)
                     sEdgeRecoder.addEdge(edge)
                 })
             })
@@ -650,18 +375,17 @@ export default class GridLayer {
         else {
 
             // Find neighbours for all grids
-            this.findNeighbours()
+            this.gridRecorder.findNeighbours()
             
             let index = 0
-            this.storageIdGridMap.forEach(grid => {
+            this.gridRecorder.storageId_grid_map.forEach(grid => {
                 if (grid.hit) {
 
+                    const { xMinPercent, yMinPercent, xMaxPercent, yMaxPercent } = grid.serialization
                     grids.push({
                         id: index,
-                        xMinPercent: grid._xMinPercent,
-                        yMinPercent: grid._yMinPercent,
-                        xMaxPercent: grid._xMaxPercent,
-                        yMaxPercent: grid._yMaxPercent
+                        xMinPercent, yMinPercent,
+                        xMaxPercent, yMaxPercent
                     })
 
                     const key = [ grid.level, grid.globalId ].join('-')
@@ -669,9 +393,9 @@ export default class GridLayer {
                     index++
 
                     // Avoid edge miss and record valid key
-                    grid.calcEdges(this.edgeRecoder)
+                    grid.calcEdges(this.edgeRecorder)
                     grid.edgeKeys.forEach(key => {
-                        const edge = this.edgeRecoder.getEdgeByKey(key)
+                        const edge = this.edgeRecorder.getEdgeByKey(key)
                         sEdgeRecoder.addEdge(edge)
                     })
                 }
@@ -681,11 +405,11 @@ export default class GridLayer {
         // Serialize edges //////////////////////////////////////////////////
 
         let index = 0
-        sEdgeRecoder._edgeMap.forEach(edge => {
+        sEdgeRecoder.edges.forEach(edge => {
 
             const { adjGrids, minPercent, maxPercent, edgeCode } = edge.serialization
-            const grid1 = adjGrids[0] !== 'null-null' ? levelGlobalId_serializedId_Map.get(adjGrids[0]) : null
-            const grid2 = adjGrids[1] !== 'null-null' ? levelGlobalId_serializedId_Map.get(adjGrids[1]) : null
+            const grid1 = adjGrids[0] !== 'null-null' ? levelGlobalId_serializedId_Map.get(adjGrids[0])! : null
+            const grid2 = adjGrids[1] !== 'null-null' ? levelGlobalId_serializedId_Map.get(adjGrids[1])! : null
 
             edges.push({
                 id: index++,
@@ -699,65 +423,65 @@ export default class GridLayer {
         return serializedData
     }
     
-    _mousedownHandler(e) {
+    _mousedownHandler(e: MapMouseEvent) {
         
         if (e.originalEvent.shiftKey && e.originalEvent.button === 0) {
             this.isShiftClick = true
-            this.map.dragPan.disable()
+            this.map!.dragPan.disable()
         }
     }
 
-    _mouseupHandler(e) {
+    _mouseupHandler(e: MapMouseEvent) {
 
         if (this.isShiftClick) {
-            this.map.dragPan.enable()
+            this.map!.dragPan.enable()
             this.isShiftClick = false
 
-            const lngLat = this.map.unproject([e.point.x, e.point.y])
+            const lngLat = this.map!.unproject([e.point.x, e.point.y])
             this.hit(lngLat.lng, lngLat.lat, this.uiOption.level)
         }
     }
 
-    _mousemoveHandler(e) {
+    _mousemoveHandler(e: MapMouseEvent) {
 
         if (this.isShiftClick) {
-            this.map.dragPan.disable()
+            this.map!.dragPan.disable()
 
-            const lngLat = this.map.unproject([e.point.x, e.point.y])
+            const lngLat = this.map!.unproject([e.point.x, e.point.y])
             this.hit(lngLat.lng, lngLat.lat, this.uiOption.level)
         }
     }
 
     removeUIHandler() {
     
-        this.map
-        .off('mouseup', this.mouseupHandler)
-        .off('mousedown', this.mousedownHandler)
-        .off('mousemove', this.mousemoveHandler)
+        this.map!
+        .off('mouseup', this.mouseupHandler as any)
+        .off('mousedown', this.mousedownHandler as any)
+        .off('mousemove', this.mousemoveHandler as any)
     }
 
     addSubdividerUIHandler() {
 
         this.removeUIHandler()
     
-        this.map
-        .on('mouseup', this.mouseupHandler)
-        .on('mousedown', this.mousedownHandler)
-        .on('mousemove', this.mousemoveHandler)
+        this.map!
+        .on('mouseup', this.mouseupHandler as any)
+        .on('mousedown', this.mousedownHandler as any)
+        .on('mousemove', this.mousemoveHandler as any)
     }
 
     addEditorUIHandler() {
 
         this.removeUIHandler()
     
-        this.map
-        .on('mouseup', this.mouseupHandler)
-        .on('mousedown', this.mousedownHandler)
+        this.map!
+        .on('mouseup', this.mouseupHandler as any)
+        .on('mousedown', this.mousedownHandler as any)
     }
     
     async init() {
 
-        const gl = this._gl
+        const gl = this._gl!
 
         enableAllExtensions(gl)
 
@@ -780,11 +504,10 @@ export default class GridLayer {
         fillSubTexture2DByArray(gl, this.paletteTexture, 0, 0, 0, this.subdivideRules.length, 1, gl.RGB, gl.UNSIGNED_BYTE, colorList)
         
         // Init root grid
-        const rootGrid = this.gridRecoder[0].grids[0]
+        const rootGrid = this.gridRecorder.getGrid(0, 0)!
         this.writeGridInfoToTexture(rootGrid)
-        this.storageIdGridMap.set(rootGrid.storageId, rootGrid)
 
-        for (let globalId = 0; globalId < this.gridRecoder[1].width * this.gridRecoder[1].height; globalId++) {
+        for (let globalId = 0; globalId < this.gridRecorder.levelInfos[1].width * this.gridRecorder.levelInfos[1].height; globalId++) {
                 
             // Initialization and hit
             this.hitSet.add({
@@ -860,7 +583,7 @@ export default class GridLayer {
         addButtonClickListener(editorButton)
 
         // [3] Remove Event handler for map boxZoom
-        this.map.boxZoom.disable()
+        this.map!.boxZoom.disable()
 
         // [4] Add event listener for <Shift + S> (Download serialization json)
         document.addEventListener('keydown', e => {
@@ -889,43 +612,10 @@ export default class GridLayer {
 
         this.isInitialized = true
     }
-
-    /**
-     * @param { number } level Level of grid
-     * @param { number } globalId Global id of grid
-    */
-    getGridLocalId(level, globalId) {
-        if (level === 0) return 0
     
-        const { width } = this.gridRecoder[level]
-        const [subWidth, subHeight] = this.subdivideRules[level - 1]
-    
-        const u = globalId % width
-        const v = Math.floor(globalId / width)
-    
-        return ((v % subHeight) * subWidth) + (u % subWidth);
-    }
+    drawGridMesh() {
 
-    /**
-     * @param { number } level Level of grid
-     * @param { number } globalId Global id of grid
-    */
-    getParentGlobalId(level, globalId) {
-        if (level === 0) return 0
-
-        const { width } = this.gridRecoder[level]
-        const [subWidth, subHeight] = this.subdivideRules[level - 1]
-
-        const u = globalId % width
-        const v = Math.floor(globalId / width)
-
-        return Math.floor(v / subHeight) * this.gridRecoder[level - 1].width + Math.floor(u / subWidth)
-    }
-
-    /** 
-     * @param {WebGL2RenderingContext} gl 
-    */
-    drawGridMesh(gl) {
+        const gl = this._gl!
 
         gl.enable(gl.BLEND)
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -948,15 +638,16 @@ export default class GridLayer {
         gl.uniform1i(gl.getUniformLocation(this.terrainMeshShader, 'levelTexture'), 1)
         gl.uniform1i(gl.getUniformLocation(this.terrainMeshShader, 'indexTexture'), 2)
         gl.uniform1i(gl.getUniformLocation(this.terrainMeshShader, 'paletteTexture'), 3)
-        gl.uniform2fv(gl.getUniformLocation(this.terrainMeshShader, 'centerLow'), this.map.centerLow)
-        gl.uniform2fv(gl.getUniformLocation(this.terrainMeshShader, 'centerHigh'), this.map.centerHigh)
-        gl.uniformMatrix4fv(gl.getUniformLocation(this.terrainMeshShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
+        gl.uniform2fv(gl.getUniformLocation(this.terrainMeshShader, 'centerLow'), this.map!.centerLow)
+        gl.uniform2fv(gl.getUniformLocation(this.terrainMeshShader, 'centerHigh'), this.map!.centerHigh)
+        gl.uniformMatrix4fv(gl.getUniformLocation(this.terrainMeshShader, 'uMatrix'), false, this.map!.relativeEyeMatrix)
 
         gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.fillList.length)
     }
 
-    /** @param {WebGL2RenderingContext} gl */
-    drawGridLine(gl) {
+    drawGridLine() {
+
+        const gl = this._gl!
 
         gl.disable(gl.BLEND)
         gl.disable(gl.DEPTH_TEST)
@@ -970,49 +661,40 @@ export default class GridLayer {
 
         gl.uniform1i(gl.getUniformLocation(this.terrainLineShader, 'storageTexture'), 0)
         gl.uniform1i(gl.getUniformLocation(this.terrainLineShader, 'indexTexture'), 1)
-        gl.uniform2fv(gl.getUniformLocation(this.terrainLineShader, 'centerLow'), this.map.centerLow)
-        gl.uniform2fv(gl.getUniformLocation(this.terrainLineShader, 'centerHigh'), this.map.centerHigh)
-        gl.uniformMatrix4fv(gl.getUniformLocation(this.terrainLineShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
+        gl.uniform2fv(gl.getUniformLocation(this.terrainLineShader, 'centerLow'), this.map!.centerLow)
+        gl.uniform2fv(gl.getUniformLocation(this.terrainLineShader, 'centerHigh'), this.map!.centerHigh)
+        gl.uniformMatrix4fv(gl.getUniformLocation(this.terrainLineShader, 'uMatrix'), false, this.map!.relativeEyeMatrix)
 
         gl.drawArraysInstanced(gl.LINE_LOOP, 0, 4, this.lineList.length)
     }
 
-    onAdd(map, gl) {
+    onAdd(map: NHMap, gl: WebGL2RenderingContext) {
 
         this._gl = gl
         this.map = map
         this.init()
     }
-
-    /**
-     * @param { WebGL2RenderingContext } gl
-     * @param { [number] } matrix  
-     */
-    render(gl, matrix) {
+    
+    render(gl: WebGL2RenderingContext, _: number[]) {
 
         // Skip if not ready
         if (!this.isInitialized) return
 
         // Tick logic
-        this.map.update()
+        this.map!.update()
         this.hitGrids()
 
         // Tick render: Mesh Pass
-        this.drawGridMesh(gl)
+        this.drawGridMesh()
         
         // Tick render: Line Pass
-        this.drawGridLine(gl)
+        this.drawGridLine()
 
         // WebGL check
         errorCheck(gl)
     }
-
-    /**
-     * @param { number } x
-     * @param { number } y
-     * @param { number } level
-    */
-    hit(x, y, level) {
+    
+    hit(x: number, y: number, level: number) {
 
         const maxLevel = this.subdivideRules.length - 1
         const [ lon, lat ] = proj4('EPSG:4326', this.srcCS, [ x, y ])
@@ -1023,7 +705,7 @@ export default class GridLayer {
 
             if (hitLevel === undefined || hitLevel > maxLevel) return 
 
-            const { width, height } = this.gridRecoder[hitLevel]
+            const { width, height } = this.gridRecorder.levelInfos[hitLevel]
             const normalizedX = (lon - this.bBox.xMin) / (this.bBox.xMax - this.bBox.xMin)
             const normalizedY = (lat - this.bBox.yMin) / (this.bBox.yMax - this.bBox.yMin)
     
@@ -1035,20 +717,19 @@ export default class GridLayer {
 
             if (this.isDeleteMode) {
                 
-                const grid = this.gridRecoder[hitLevel].grids[globalId]
+                const grid = this.gridRecorder.getGrid(hitLevel, globalId)
                 if (grid) {
 
-                    /** @type { GridNode[] } */
-                    const stack = [grid]
+                    const stack: GridNode[] = [ grid ]
                     while (stack.length) {
-                        const _grid = stack.pop()
+                        const _grid = stack.pop()!
                         const children = _grid.children.filter(child => child)
 
                         if (children.length) {
                             _grid.children = []
-                            stack.push(_grid, ...children)
+                            stack.push(_grid, ...children.filter(child => child !== null))
                         } else {
-                            this.removeGrid(_grid)
+                            this.gridRecorder.removeGrid(_grid, this.writeGridInfoToTexture.bind(this))
                         }
 
                         stack.push()
@@ -1057,7 +738,7 @@ export default class GridLayer {
                     this.tickSubdivider()
 
                     // Update display of capacity
-                    this.uiOption.capacity = this.storageIdGridMap.size
+                    this.uiOption.capacity = this.gridRecorder.storageId_grid_map.size
                     this.capacityController.updateDisplay()
                 }
 
@@ -1075,13 +756,13 @@ export default class GridLayer {
             this.hitSet.add({ lon, lat })
         }
 
-        this.map.triggerRepaint()
+        this.map!.triggerRepaint()
     }
 }
 
 // Helpers //////////////////////////////////////////////////////////////////////////////////////////////////////
 
-function addButtonClickListener(button) {
+function addButtonClickListener(button: HTMLButtonElement) {
     button.addEventListener('click', () => {
 
       const allButtons = document.querySelectorAll('button')
@@ -1091,37 +772,31 @@ function addButtonClickListener(button) {
     });
   }
 
-/** @param {WebGL2RenderingContext} gl */
-function errorCheck(gl) {
+function errorCheck(gl: WebGL2RenderingContext) {
     const error = gl.getError()
     if (error !== gl.NO_ERROR) {
         console.error('Error happened: ', getWebGLErrorMessage(gl, error))
     }
 }
 
-/** @param {WebGL2RenderingContext} gl */
-function enableAllExtensions(gl) {
+function enableAllExtensions(gl: WebGL2RenderingContext) {
 
-    const extensions = gl.getSupportedExtensions()
+    const extensions = gl.getSupportedExtensions()!
     extensions.forEach(ext => {
         gl.getExtension(ext)
         console.log('Enabled extensions: ', ext)
     })
 }
 
-/** 
- * @param {WebGL2RenderingContext} gl  
- * @param {string} url 
- */
-async function createShader(gl, url) {
+async function createShader(gl: WebGL2RenderingContext, url: string) {
 
     let shaderCode = ''
     await axios.get(url)
     .then(response => shaderCode += response.data)
-    const vertexShaderStage = compileShader(gl, shaderCode, gl.VERTEX_SHADER)
-    const fragmentShaderStage = compileShader(gl, shaderCode, gl.FRAGMENT_SHADER)
+    const vertexShaderStage = compileShader(gl, shaderCode, gl.VERTEX_SHADER)!
+    const fragmentShaderStage = compileShader(gl, shaderCode, gl.FRAGMENT_SHADER)!
 
-    const shader = gl.createProgram()
+    const shader = gl.createProgram()!
     gl.attachShader(shader, vertexShaderStage)
     gl.attachShader(shader, fragmentShaderStage)
     gl.linkProgram(shader)
@@ -1132,10 +807,10 @@ async function createShader(gl, url) {
 
     return shader
 
-    function compileShader(gl, source, type) {
+    function compileShader(gl: WebGL2RenderingContext, source: string, type: number) {
     
         const versionDefinition = '#version 300 es\n'
-        const module = gl.createShader(type)
+        const module = gl.createShader(type)!
         if (type === gl.VERTEX_SHADER) source = versionDefinition + '#define VERTEX_SHADER\n' + source
         else if (type === gl.FRAGMENT_SHADER) source = versionDefinition + '#define FRAGMENT_SHADER\n' + source
     
@@ -1151,14 +826,7 @@ async function createShader(gl, url) {
     }
 }
 
-/**
- * @param { WebGL2RenderingContext } gl 
- * @param { WebGLTexture[] } [ textures ] 
- * @param { WebGLRenderbuffer } [ depthTexture ] 
- * @param { WebGLRenderbuffer } [ renderBuffer ] 
- * @returns { WebGLFramebuffer }
- */
-function createFrameBuffer(gl, textures, depthTexture, renderBuffer) {
+function createFrameBuffer(gl: WebGL2RenderingContext, textures: WebGLTexture[], depthTexture: WebGLTexture, renderBuffer: WebGLRenderbuffer) {
 
     const frameBuffer = gl.createFramebuffer()
     gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer)
@@ -1186,18 +854,9 @@ function createFrameBuffer(gl, textures, depthTexture, renderBuffer) {
     return frameBuffer
 }
 
-/**
- * @param { WebGL2RenderingContext } gl 
- * @param { number } width 
- * @param { number } height 
- * @param { number } internalFormat 
- * @param { number } format 
- * @param { number } type 
- * @param { ArrayBufferTypes | ImageBitmap } [ resource ]
- */
-function createTexture2D(gl, level, width, height, internalFormat, format = undefined, type = undefined, resource = undefined, generateMips = false) {
+function createTexture2D(gl: WebGL2RenderingContext, level: number, width: number, height: number, internalFormat: number, format?: number, type?: number, resource?: ArrayBufferView, generateMips = false): WebGLTexture {
     
-    const texture = gl.createTexture()
+    const texture = gl.createTexture()!
     gl.bindTexture(gl.TEXTURE_2D, texture)
 
     // Set texture parameters
@@ -1207,7 +866,7 @@ function createTexture2D(gl, level, width, height, internalFormat, format = unde
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
 
     resource ? 
-    gl.texImage2D(gl.TEXTURE_2D, level, internalFormat, width, height, 0, format, type, resource)
+    gl.texImage2D(gl.TEXTURE_2D, level, internalFormat, width, height, 0, format!, type!, resource)
     : 
     gl.texStorage2D(gl.TEXTURE_2D, level, internalFormat, width, height) 
 
@@ -1216,17 +875,9 @@ function createTexture2D(gl, level, width, height, internalFormat, format = unde
     return texture
 }
 
-
-/**
- * @param { WebGL2RenderingContext } gl 
- * @param { number } width 
- * @param { number } height 
- * @param { number } internalFormat 
- * @param { number } layers
- */
-function createTexture2DArray(gl, level, layers, width, height, internalFormat) {
+function createTexture2DArray(gl: WebGL2RenderingContext, level: number, layers: number, width: number, height: number, internalFormat: number): WebGLTexture {
     
-    const texture = gl.createTexture()
+    const texture = gl.createTexture()!
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture)
     gl.texStorage3D(gl.TEXTURE_2D_ARRAY, level, internalFormat, width, height, layers)
 
@@ -1239,15 +890,7 @@ function createTexture2DArray(gl, level, layers, width, height, internalFormat) 
     return texture
 }
 
-/**
- * @param { WebGL2RenderingContext } gl 
- * @param { number } width 
- * @param { number } height 
- * @param { number } format 
- * @param { number } type 
- * @param { ArrayBufferTypes } array
- */
-function fillSubTexture2DByArray(gl, texture, level, xOffset, yOffset, width, height, format, type, array) {
+function fillSubTexture2DByArray(gl: WebGL2RenderingContext, texture: WebGLTexture, level: number, xOffset: number, yOffset: number, width: number, height: number, format: number, type: number, array: ArrayBufferView): void {
     
     // Bind the texture
     gl.bindTexture(gl.TEXTURE_2D, texture)
@@ -1259,16 +902,7 @@ function fillSubTexture2DByArray(gl, texture, level, xOffset, yOffset, width, he
     gl.bindTexture(gl.TEXTURE_2D, null);
 }
 
-/**
- * @param { WebGL2RenderingContext } gl 
- * @param { number } width 
- * @param { number } height 
- * @param { number } zOffset 
- * @param { number } format 
- * @param { number } type 
- * @param { ArrayBufferTypes } array
- */
-function fillSubTexture2DArrayByArray(gl, texture, level, xOffset, yOffset, zOffset, width, height, depth, format, type, array) {
+function fillSubTexture2DArrayByArray(gl: WebGL2RenderingContext, texture: WebGLTexture, level: number, xOffset: number, yOffset: number, zOffset: number, width: number, height: number, depth: number, format: number, type: number, array: ArrayBufferView): void {
     
     // Bind the texture
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture)
@@ -1280,16 +914,7 @@ function fillSubTexture2DArrayByArray(gl, texture, level, xOffset, yOffset, zOff
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
 }
 
-/**
- * @param { WebGL2RenderingContext } gl 
- * @param { number } width 
- * @param { number } height 
- * @param { number } internalFormat 
- * @param { number } format 
- * @param { number } type 
- * @param { ArrayBufferTypes } array
- */
-function fillTexture2DByArray(gl, texture, width, height, internalFormat, format, type, array) {
+function fillTexture2DByArray(gl: WebGL2RenderingContext, texture: WebGLTexture, width: number, height: number, internalFormat: number, format: number, type: number, array: ArrayBufferView): void {
     
     // Bind the texture
     gl.bindTexture(gl.TEXTURE_2D, texture)
@@ -1301,18 +926,12 @@ function fillTexture2DByArray(gl, texture, width, height, internalFormat, format
     gl.bindTexture(gl.TEXTURE_2D, null);
 }
 
-/**
- * @param { WebGL2RenderingContext } gl 
- * @param { number } [ width ] 
- * @param { number } [ height ] 
- * @returns { WebGLRenderbuffer }
- */
-function createRenderBuffer(gl, width, height) {
+function createRenderBuffer(gl: WebGL2RenderingContext, width: number, height: number): WebGLRenderbuffer {
 
     const bufferWidth = width || gl.canvas.width * window.devicePixelRatio
     const bufferHeight = height || gl.canvas.height * window.devicePixelRatio
 
-    const renderBuffer = gl.createRenderbuffer()
+    const renderBuffer = gl.createRenderbuffer()!
     gl.bindRenderbuffer(gl.RENDERBUFFER, renderBuffer)
     gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_STENCIL, bufferWidth, bufferHeight)
     gl.bindRenderbuffer(gl.RENDERBUFFER, null)
@@ -1321,26 +940,26 @@ function createRenderBuffer(gl, width, height) {
 }
 
 // Helper function to get WebGL error messages
-function getWebGLErrorMessage(gl, error) {
+function getWebGLErrorMessage(gl: WebGL2RenderingContext, error: number) {
     switch (error) {
         case gl.NO_ERROR:
-            return 'NO_ERROR';
+            return 'NO_ERROR'
         case gl.INVALID_ENUM:
-            return 'INVALID_ENUM';
+            return 'INVALID_ENUM'
         case gl.INVALID_VALUE:
-            return 'INVALID_VALUE';
+            return 'INVALID_VALUE'
         case gl.INVALID_OPERATION:
-            return 'INVALID_OPERATION';
+            return 'INVALID_OPERATION'
         case gl.OUT_OF_MEMORY:
-            return 'OUT_OF_MEMORY';
+            return 'OUT_OF_MEMORY'
         case gl.CONTEXT_LOST_WEBGL:
-            return 'CONTEXT_LOST_WEBGL';
+            return 'CONTEXT_LOST_WEBGL'
         default:
-            return 'UNKNOWN_ERROR';
+            return 'UNKNOWN_ERROR'
     }
 }
 
-async function loadImage(url) {
+async function loadImage(url: string) {
     try {
         const response = await fetch(url)
         if (!response.ok) {
@@ -1356,17 +975,17 @@ async function loadImage(url) {
     }
 }
 
-function getMaxMipLevel(width, height) {
+function getMaxMipLevel(width: number, height: number) {
     return Math.floor(Math.log2(Math.max(width, height)));
 }
 
-async function loadF32Image(url) {
+async function loadF32Image(url: string) {
 
     const response = await axios.get(url, {responseType: "blob"})
     const bitmap = await createImageBitmap(response.data, {imageOrientation: "flipY", premultiplyAlpha: "none", colorSpaceConversion: "default"})
     
     const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
-    const gl = canvas.getContext("webgl2");
+    const gl = canvas.getContext("webgl2")!
     const pixelData = new Uint8Array(bitmap.width * bitmap.height * 4)
 
     // Create texture

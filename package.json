@@ -1,46 +1,19 @@
 {
-  "name": "geoscratch",
-  "version": "0.0.22",
-  "description": "Tiny 3D library for geovisualization, powered by WebGPU",
-  "main": "src/scratch.js",
-  "types": "src/scratch.d.ts",
-  "directories": {
-    "example": "example"
-  },
-  "scripts": {
-    "test": "mocha",
-    "dev": "vite",
-    "build": "vite build",
-    "serve": "vite preview"
-  },
+  "name": "nhgrid",
+  "private": true,
+  "version": "0.0.0",
   "type": "module",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/YcSoku/GeoScratch.git"
-  },
-  "keywords": [
-    "WebGPU",
-    "3D Library",
-    "Geovisualization"
-  ],
-  "author": "YcSoku",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/YcSoku/GeoScratch/issues"
-  },
-  "homepage": "https://github.com/YcSoku/GeoScratch#readme",
-  "dependencies": {
-    "@mlc-ai/web-llm": "^0.2.46",
-    "@vitejs/plugin-basic-ssl": "^1.1.0",
-    "axios": "^1.6.8",
-    "dat.gui": "^0.7.9",
-    "gl-matrix": "^3.4.3",
-    "mapbox-gl": "^3.3.0",
-    "proj4": "^2.14.0"
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "demo": "cd demo && npm install && npm run dev"
   },
   "devDependencies": {
-    "chai": "^5.1.0",
-    "mocha": "^10.3.0",
-    "vite": "^5.1.5"
+    "typescript": "~5.6.2",
+    "vite": "^6.0.1"
+  },
+  "dependencies": {
+    "@types/proj4": "^2.5.5",
+    "proj4": "^2.15.0"
   }
 }

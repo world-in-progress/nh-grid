@@ -1,0 +1,22 @@
+{
+    "name": "nhgrid-demo",
+    "private": true,
+    "version": "0.0.0",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build"
+    },
+    "devDependencies": {
+        "typescript": "~5.6.2",
+        "vite": "^6.0.1",
+        "@types/dat.gui": "^0.7.13",
+        "@types/mapbox-gl": "^3.4.1",
+        "@types/proj4": "^2.5.5",
+        "axios": "^1.7.9",
+        "dat.gui": "^0.7.9",
+        "gl-matrix": "^3.4.3",
+        "mapbox-gl": "^3.8.0",
+        "proj4": "^2.15.0"
+    }
+  }
+  
