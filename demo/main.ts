@@ -1,5 +1,4 @@
-import 'mapbox-gl/dist/mapbox-gl.css'
-import mapboxgl, { AnyLayer } from 'mapbox-gl'
+import mapboxgl, { CustomLayerInterface } from 'mapbox-gl'
 
 import NHMap from './map/NHMap'
 import GridLayer from './GridLayer'
@@ -54,5 +53,5 @@ const map = new NHMap({
     zoom: 11
 
 }).on('load', () => {
-    map.addLayer(gridLayer as AnyLayer)
+    map.addLayer(gridLayer as unknown as CustomLayerInterface)
 })

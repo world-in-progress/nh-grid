@@ -1,5 +1,5 @@
 import { mat4, vec3 } from 'gl-matrix'
-import { Map as MapboxMap, MapboxOptions, MercatorCoordinate } from 'mapbox-gl'
+import { Map as MapboxMap, MapOptions, MercatorCoordinate } from 'mapbox-gl'
 
 export default class NHMap extends MapboxMap {
 
@@ -9,9 +9,7 @@ export default class NHMap extends MapboxMap {
     WORLD_SIZE = 1024000 // TILE_SIZE * 2000
     relativeEyeMatrix = mat4.create()
 
-    transform: any
-
-    constructor(options: MapboxOptions) {
+    constructor(options: MapOptions) {
 
         // Init mapbox map
         super(options)
