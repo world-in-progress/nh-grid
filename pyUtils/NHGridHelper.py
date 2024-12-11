@@ -1,5 +1,8 @@
+import os
 import math
 import json
+
+import utils.DemSampler as util
 
 # Constants ####################################################################################################
 
@@ -104,6 +107,13 @@ class NHGridNode:
         
         return abs(self.y_max - self.y_min)
     
+    def get_center(self) -> list[float]:
+        
+        return [
+            (self.x_min + self.x_max) / 2.0,
+            (self.y_min + self.y_max) / 2.0
+        ]
+    
 # NHGridEdge ####################################################################################################
 
 class NHGridEdge:
@@ -115,9 +125,9 @@ class NHGridEdge:
         self.grid_ids: list[int] = [ None, None ]
         
         # Add grid id to edge
-        for grid in adjacent_grids:
+        for index, grid in enumerate(adjacent_grids):
             if grid is not None:
-                self.grid_ids.append(grid.id)
+                self.grid_ids[index] = grid.id
         
         # North edge of adjacent_grids[0]
         if edge_code == EDGE_CODE_NORTH:
@@ -193,7 +203,7 @@ class NHGridEdge:
         else:
             return None
             
-    def get_easet_grid_id(self) -> int | None:
+    def get_east_grid_id(self) -> int | None:
         
         if self.edge_code == EDGE_CODE_WEST:
             return self.grid_ids[0]
@@ -201,6 +211,13 @@ class NHGridEdge:
             return self.grid_ids[1]
         else:
             return None
+    
+    def get_center(self) -> list[float]:
+        
+        return [
+            (self.x1 + self.x2) / 2.0,
+            (self.y1 + self.y2) / 2.0
+        ]
     
     @staticmethod
     def get_op_edge_code(edge_code: int) -> int:
@@ -294,6 +311,66 @@ class NHGridHelper:
     def get_edges_belong_to_grid(self, grid: NHGridNode) -> list[NHGridEdge]:
             
         return [ self.edges[edge_id] for edge_set in grid.edge_ids for edge_id in edge_set ]
+    
+    def export(self, output_path: str, dem_path: str = '', invalid_data: float = -9999):
+        
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
+        
+        if dem_path != '':
+            sampler = util.DemSampler(dem_path, invalid_data)
+        
+        gridInfo = ''
+        for id in self.grids:
+            grid = self.grids[id]
+            
+            left_edge_num = grid.get_west_edge_num()
+            left_edge_ids = ', '.join(map(str, [id + 1 for id in grid.get_west_edge_ids()]))
+            
+            right_edge_num = grid.get_east_edge_num()
+            right_edge_ids = ', '.join(map(str, [id + 1 for id in grid.get_east_edge_ids()]))
+            
+            bottom_edge_num = grid.get_south_edge_num()
+            bottom_edge_ids = ', '.join(map(str, [id + 1 for id in grid.get_south_edge_ids()]))
+            
+            top_edge_num = grid.get_north_edge_num()
+            top_edge_ids = ', '.join(map(str, [id + 1 for id in grid.get_north_edge_ids()]))
+            
+            center_point = grid.get_center()
+            center = ', '.join(map(str, [ *center_point, sampler.sampling(*center_point) ]))
+            
+            gridInfo += f'{id + 1}, {left_edge_num}, {right_edge_num}, {bottom_edge_num}, {top_edge_num}, {left_edge_ids}, {right_edge_ids}, {bottom_edge_ids}, {top_edge_ids}, {center}\n'
+                
+        with open(os.path.join(output_path, 'ne.txt'), 'w', encoding='utf-8') as file:
+            file.write(gridInfo)
+        
+        edge_info = ''
+        for id in self.edges:
+            edge = self.edges[id]
+            
+            direction = edge.get_direction()
+            
+            west_id = edge.get_west_grid_id()
+            left_grid_id = west_id + 1 if west_id is not None else 0
+            
+            east_id = edge.get_east_grid_id()
+            right_grid_id = east_id + 1 if east_id is not None else 0
+            
+            north_id = edge.get_north_grid_id()
+            top_grid_id = north_id + 1 if north_id is not None else 0
+            
+            south_id = edge.get_south_grid_id()
+            bottom_grid_id = south_id + 1 if south_id is not None else 0
+            
+            center_point = edge.get_center()
+            center = ', '.join(map(str, [ *center_point, sampler.sampling(*center_point) ]))
+            
+            distance = edge.get_length()
+            
+            edge_info += f'{id + 1}, {direction}, {left_grid_id}, {right_grid_id}, {top_grid_id}, {bottom_grid_id}, {distance}, {center}\n'
+        
+        with open(os.path.join(output_path, 'ns.txt'), 'w', encoding='utf-8') as file:
+            file.write(edge_info)
 
 # Demo ##########################################################################################################
 
@@ -399,7 +476,7 @@ if __name__ == '__main__':
         south_grid_id = edge.get_south_grid_id()
         
         # Get id of the east grid adjacent to this edge (if no grid, return None)
-        east_grid_id = edge.get_easet_grid_id()
+        east_grid_id = edge.get_east_grid_id()
         
         # Collect all adjacent grid ids and remove invalid grid id (None)
         adj_grid_ids = [ id for id in [ north_grid_id, west_grid_id, south_grid_id, east_grid_id ] if id is not None ]
@@ -410,4 +487,5 @@ if __name__ == '__main__':
         
         print(f'\n------\n')
         print(f'Edge ID: {edge_id}\n\nEdge Length: {edge_length}\n\nPoint1: {point_1}\n\nPoint2: {point_2}\n\nAdjacent Grid IDs: {adj_grid_ids}\n')
+
  
