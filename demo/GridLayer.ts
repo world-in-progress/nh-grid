@@ -79,7 +79,6 @@ export default class GridLayer {
     lineIndexTexture: WebGLTexture = 0
     storageTextureArray: WebGLTexture = 0
 
-
     // Interaction-related //////////////////////////////////////////////////
 
     isShiftClick = false
