@@ -40,4 +40,7 @@ Thumbs.db
 # Directories #
 ######################
 node_modules/
-public/json/examples
+Dem
+test.py
+output
+gridInfo10.json

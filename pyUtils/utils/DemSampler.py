@@ -1,5 +1,5 @@
 import numpy as np
-from osgeo import gdal, osr
+from osgeo import gdal
 
 # Helpers ######################################################################################################
 

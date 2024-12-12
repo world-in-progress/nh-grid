@@ -12,9 +12,9 @@ export type EDGE_CODE = typeof EDGE_CODE_NORTH | typeof EDGE_CODE_WEST | typeof 
 
 export interface GridEdgeSerializedInfo {
     edgeCode: number
-    adjGrids: [string, string]
-    minPercent: [number, number]
-    maxPercent: [number, number]
+    adjGrids: [ string, string ]
+    minPercent: [ number, number ]
+    maxPercent: [ number, number ]
 }
 
 export interface GridNodeSerializedInfo {
@@ -29,7 +29,7 @@ export interface GridNodeOptions {
     globalId: number,
     storageId: number,
     parent?: GridNode,
-    globalRange?: [number, number]
+    globalRange?: [ number, number ]
 }
 
 /*
@@ -42,7 +42,7 @@ export interface GridNodeOptions {
 export class GridEdge {
 
     key: string
-    properties: {[key:string]: any}
+    properties: { [ key:string ]: any }
 
     constructor(key: string, properties: string[] | undefined) {
 
@@ -62,7 +62,7 @@ export class GridEdge {
         })
     }
 
-    static createKey(grid1: GridNode | null, grid2: GridNode | null, edgeCode: number, range: [number, number, number, number]): string {
+    static createKey(grid1: GridNode | null, grid2: GridNode | null, edgeCode: number, range: [ number, number, number, number ]): string {
 
         const key1 = grid1 ? `${grid1.level}-${grid1.globalId}` : 'null-null'
         const key2 = grid2 ? `-${grid2.level}-${grid2.globalId}` : '-null-null'
@@ -146,7 +146,7 @@ export class GridEdgeRecorder {
         return this._edgeMap.values()
     }
 
-    getEdgeByInfo(grid1: GridNode | null, grid2: GridNode | null, edgeCode: number, range: [number, number, number, number]): GridEdge {
+    getEdgeByInfo(grid1: GridNode | null, grid2: GridNode | null, edgeCode: number, range: [ number, number, number, number ]): GridEdge {
 
         const key = GridEdge.createKey(grid1, grid2, edgeCode, range)
         const opKey = GridEdge.getOpKey(key)
@@ -191,7 +191,6 @@ export class GridEdgeRecorder {
         } else {
             
             return null
-            
         }
     }
 }
@@ -336,7 +335,7 @@ export class GridNode {
     
     calcHorizontalEdges(edgeRecoder: GridEdgeRecorder, edgeCode: number, opEdgeCode: number): void {
 
-        let neighbours = [...this.neighbours[edgeCode]]
+        let neighbours = [ ...this.neighbours[edgeCode] ]
 
         // Case when neighbour has lower level /////////////////////////////////////////////////////
 
@@ -449,7 +448,7 @@ export class GridNode {
     
     calcVerticalEdges(edgeRecoder: GridEdgeRecorder, edgeCode: number, opEdgeCode: number): void {
 
-        let neighbours = [...this.neighbours[edgeCode]]
+        let neighbours = [ ...this.neighbours[edgeCode] ]
 
         // Case when neighbour has lower level /////////////////////////////////////////////////////
 
@@ -634,7 +633,7 @@ export class GridNode {
     }
 }
 
-export type SubdivideRules = [number, number][]
+export type SubdivideRules = [ number, number ][]
 
 export interface GridLevelInfo {
     width: number
@@ -838,7 +837,7 @@ export class GridNodeRecorder {
         if (level === 0) return 0
     
         const { width } = this._levelInfos[level]
-        const [subWidth, subHeight] = this._subdivideRules[level - 1]
+        const [ subWidth, subHeight ] = this._subdivideRules[level - 1]
     
         const u = globalId % width
         const v = Math.floor(globalId / width)
@@ -850,7 +849,7 @@ export class GridNodeRecorder {
         if (level === 0) return 0
 
         const { width } = this._levelInfos[level]
-        const [subWidth, subHeight] = this._subdivideRules[level - 1]
+        const [ subWidth, subHeight ] = this._subdivideRules[level - 1]
 
         const u = globalId % width
         const v = Math.floor(globalId / width)
@@ -939,17 +938,17 @@ function lerp(a: number, b: number, t: number): number {
 function gcd(a: number, b: number): number {
 
     while (b !== 0) {
-      let temp = b
-      b = a % b
-      a = temp
+        const temp = b
+        b = a % b
+        a = temp
     }
+    
     return a
-  }
+}
   
-  
-  function simplifyFraction(n: number, m: number): [ number, number ] {
+function simplifyFraction(n: number, m: number): [ number, number ] {
 
-    let divisor = gcd(n, m)
+    const divisor = gcd(n, m)
     return [ n / divisor, m / divisor ]
-  }
+}
   
