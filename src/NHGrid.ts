@@ -661,7 +661,6 @@ export class GridNodeRecorder {
             }
         ]
 
-
         this._subdivideRules = subdivideRules
         this._subdivideRules.forEach((_, level, rules) => {
             if (level == 0) return
@@ -676,7 +675,7 @@ export class GridNodeRecorder {
         })
     }
 
-    private _getGrid(u: number, v: number, level: number): GridNode | undefined {
+    private _getNode(u: number, v: number, level: number): GridNode | undefined {
 
         const width = this._levelInfos[level].width
         const height = this._levelInfos[level].height
@@ -728,10 +727,10 @@ export class GridNodeRecorder {
             const globalU = grid.globalId % width
             const globalV = Math.floor(grid.globalId / width)
 
-            const tGrid = this._getGrid(globalU, globalV + 1, level)
-            const lGrid = this._getGrid(globalU - 1, globalV, level)
-            const bGrid = this._getGrid(globalU, globalV - 1, level)
-            const rGrid = this._getGrid(globalU + 1, globalV, level)
+            const tGrid = this._getNode(globalU, globalV + 1, level)
+            const lGrid = this._getNode(globalU - 1, globalV, level)
+            const bGrid = this._getNode(globalU, globalV - 1, level)
+            const rGrid = this._getNode(globalU + 1, globalV, level)
 
             // Check top edge with tGrid
             if (tGrid) {
