@@ -1,6 +1,7 @@
 import proj4 from 'proj4'
-import { BoundingBox2D } from './BoundingBox2D'
-import { MercatorCoordinate } from './MercatorCoordinate'
+import { BoundingBox2D } from './boundingBox2D'
+import { MercatorCoordinate } from './mercatorCoordinate'
+import Dispatcher from './core/message/dispatcher'
 
 export const EDGE_CODE_NORTH   = 0b00
 export const EDGE_CODE_WEST    = 0b01
@@ -645,6 +646,7 @@ export class GridNodeRecorder {
 
     private _levelInfos: GridLevelInfo[]
     private _subdivideRules: SubdivideRules
+    private _dispatcher = new Dispatcher(this)
 
     registeredGridCount = 0
     storageId_grid_map= new Map<number, GridNode>()
@@ -673,6 +675,10 @@ export class GridNodeRecorder {
                 grids: new Array<GridNode>(width * height)
             }
         })
+    }
+
+    private get _actor() {
+        return this._dispatcher.getActor()
     }
 
     private _getNode(u: number, v: number, level: number): GridNode | undefined {
@@ -898,6 +904,8 @@ export class GridNodeRecorder {
 
             callback && callback(subGrid)
         }
+        
+        this._actor.send('hello', null)
     }
 
     removeGrid(grid: GridNode, callback?: Function) {

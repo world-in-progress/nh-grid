@@ -5,8 +5,8 @@ import { GUI, GUIController } from 'dat.gui'
 
 import gll from './GlLib'
 import NHMap from './NHMap'
-import { BoundingBox2D } from '../../src/BoundingBox2D'
-import { VibrantColorGenerator } from '../../src/VibrantColorGenerator'
+import { BoundingBox2D } from '../../src/boundingBox2D'
+import { VibrantColorGenerator } from '../../src/vibrantColorGenerator'
 import { GridNode, GridEdgeRecorder, GridNodeRecorder } from '../../src/NHGrid'
 
 proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
