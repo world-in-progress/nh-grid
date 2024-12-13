@@ -1,4 +1,4 @@
-import { Vec4f } from './Vec4f'
+import { Vec4f } from './vec4f'
 
 export class BoundingBox2D extends Vec4f {
 
@@ -66,22 +66,18 @@ export class BoundingBox2D extends Vec4f {
     }
 
     get xMin(): number {
-
         return this.data[0]
     }
 
     get yMin(): number {
-
         return this.data[1]
     }
 
     get xMax(): number {
-
         return this.data[2]
     }
 
     get yMax(): number {
-
         return this.data[3]
     }
 
