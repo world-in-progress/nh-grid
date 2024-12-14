@@ -8,6 +8,6 @@ self.actor = new Actor(self, globalThis)
 for (const key in func) {
 
     const element = (func as FuncModule)[key]
-    if (element) self[key] = element
+    if (element) self[key] = element.bind(self)
 }
 

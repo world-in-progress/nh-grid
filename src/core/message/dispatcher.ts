@@ -1,6 +1,6 @@
 import Actor from './actor'
 import WorkerPool from '../worker/workerPool'
-import { uniqueId, asyncAll } from '../utils'
+import { uniqueId, asyncAll } from '../util/utils'
 import type { Class, Callback } from '../types'
 
 class Dispatcher {

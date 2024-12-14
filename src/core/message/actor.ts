@@ -1,7 +1,7 @@
 import Scheduler from './scheduler'
-import { bindAll, isWorker } from '../utils'
-import { serialize, deserialize } from '../utils'
+import { bindAll, isWorker } from '../util/utils'
 import type { Transferable, Cancelable, Callback } from '../types'
+import { deserialize, serialize } from '../util/transfer'
 
 type ActorCallback = Callback<any> & { metadata?: any }
 

@@ -1,41 +1,5 @@
-import { Callback, Class, Serialized, SerializedObject } from "./types"
-
-let id = 1;
-export function uniqueId(): number {
-    return id++;
-}
-
-export function bindAll(fns: string[], context: any): void {
-
-    fns.forEach(fn => {
-        if (!context[fn]) return 
-        context[fn] = context[fn].bind(context)
-    })
-}
-
-export function asyncAll<Item, Result>(
-    array: Array<Item>,
-    fn: (item: Item, fnCallback: Callback<Result>) => void,
-    callback: Callback<Array<Result>>
-): void {
-    if (!array.length) return callback(null, [])
-
-    let remaining = array.length
-    const results = new Array(array.length)
-    let error: Error | null = null
-    array.forEach((item, index) => {
-        fn(item, (err, result) => {
-            if (err) error = err
-            results[index] = result
-            if (--remaining === 0) callback(error, results)
-        })
-    })
-}
-
-export function isWorker(): boolean {
-
-    return !!self && typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope
-}
+import registry from "./register"
+import { Klass, Serialized, SerializedObject, Transferable } from "../types"
 
 function isArrayBuffer(val: any): boolean {
 
@@ -46,43 +10,6 @@ function isImageBitmap(val: any): boolean {
 
     return val instanceof ImageBitmap
 }
-
-type Klass = Class<any> & {
-    _classRegistryKey: string
-    serialize?: (input: any, transferables?: Set<Transferable>) => SerializedObject
-    deserialize?: (serialized: unknown) => unknown
-}
-
-type Registry = {
-    [ key: string ]: {
-        klass: Klass
-        omit: ReadonlyArray<string>
-    }
-}
-
-type RegisterOptions<T> = {
-    omit?: ReadonlyArray<keyof T>
-}
-
-const registry: Registry = {}
-
-export function register<T extends any>(klass: Class<T>, name: string, options: RegisterOptions<T> = {}) {
-    if (registry[name]) return
-
-    Object.defineProperty(klass, '_classRegistryKey', {
-        value: name,
-        writable: false
-    })
-
-    registry[name] = {
-        klass,
-        omit: options.omit || []
-    } as unknown as Registry[string]
-}
-
-register(Object, 'Object')
-register(Error, 'Error')
-// register(WorkerGlobalScope, 'WorkerGlobalScope')
 
 export function serialize(input: unknown, transferables?: Set<Transferable>): Serialized {
     
@@ -100,18 +27,18 @@ export function serialize(input: unknown, transferables?: Set<Transferable>): Se
     ) return input
 
     if (isArrayBuffer(input) || isImageBitmap(input)) {
-        transferables?.add(input)
+        transferables?.add(input as Transferable)
         return input
     }
 
     if (ArrayBuffer.isView(input)) {
         const view = input as ArrayBufferView
-        transferables?.add(view.buffer)
+        transferables?.add(view.buffer as Transferable)
         return view
     }
 
     if (input instanceof ImageData) {
-        transferables?.add(input.data.buffer)
+        transferables?.add(input.data.buffer as Transferable)
         return input
     }
 
