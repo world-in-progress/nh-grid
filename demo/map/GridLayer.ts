@@ -240,9 +240,6 @@ export default class GridLayer {
 
         // Hit
         grid.hit = hitOrNot
-
-        // Submit new created grids
-        this.gridRecorder.submitNewGrids()
     }
     
     hitEditor(lon: number, lat: number) {
@@ -340,6 +337,9 @@ export default class GridLayer {
         // Update display of capacity
         this.uiOption.capacity = this.gridRecorder.storageId_grid_map.size
         this.capacityController.updateDisplay()
+
+        // Submit grid actions to IndexedDB
+        this.gridRecorder.submit()
     }
 
     serialize() {
@@ -618,7 +618,10 @@ export default class GridLayer {
 
         // All done ////////////////////////////////////////////////////////////
 
-        this.isInitialized = true
+        this.gridRecorder.submit(() => {
+
+            this.isInitialized = true
+        })
     }
     
     drawGridMesh() {

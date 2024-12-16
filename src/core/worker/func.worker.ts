@@ -1,20 +1,15 @@
 import { GridNode } from '../grid/NHGrid'
 import { Callback, WorkerSelf } from '../types'
-
-export function checkIfReady(_: unknown, callback: Callback<any>) {
-
-    callback()
-}
+import { createDbManager, DbAction } from '../database/db'
 
 export function hello(_: unknown, __: Callback<any>) {
     
     console.log('Hello!')
 }
 
-let count = 0
-export function createGrids(this: WorkerSelf, grids: GridNode[]) {
+const dbManager = createDbManager()
+export function gridProcess(actions: DbAction[], callback: Callback<GridNode[]>) {
 
-    count += grids.length
-    console.log(count)
-    this.count += 1
+    dbManager('GridDB', actions)
+    callback(null, actions.map(action => action.data))
 }

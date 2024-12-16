@@ -1,8 +1,6 @@
 import proj4 from 'proj4'
-import Dispatcher from '../message/dispatcher'
 import { BoundingBox2D } from '../util/boundingBox2D'
 import { MercatorCoordinate } from '../math/mercatorCoordinate'
-import { GridEdgeRecorder } from './NHGridRecorder'
 
 export const EDGE_CODE_NORTH   = 0b00
 export const EDGE_CODE_WEST    = 0b01

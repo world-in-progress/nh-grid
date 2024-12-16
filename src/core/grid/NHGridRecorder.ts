@@ -1,5 +1,7 @@
+import { DbAction } from './../database/db'
 import Dispatcher from "../message/dispatcher"
 import { EDGE_CODE, EDGE_CODE_EAST, EDGE_CODE_NORTH, EDGE_CODE_SOUTH, EDGE_CODE_WEST, GridEdge, GridNode } from "./NHGrid"
+import { Callback } from '../types'
 
 export class GridEdgeRecorder {
 
@@ -316,21 +318,20 @@ export class GridNodeRecorder {
 
     private _levelInfos: GridLevelInfo[]
     private _subdivideRules: SubdivideRules
-    private _newGrids = new Array<GridNode>()
     private _dispatcher = new Dispatcher(this)
+    private _dbActions = new Array<DbAction>()
 
     registeredGridCount = 0
     storageId_grid_map= new Map<number, GridNode>()
 
     constructor(subdivideRules: SubdivideRules) {
 
+        const rootGrid = new GridNode({ localId: 0, globalId: 0, storageId: this.registeredGridCount++ })
         this._levelInfos = [
             {
                 width: 1,
                 height: 1,
-                grids: [
-                    new GridNode({ localId: 0, globalId: 0, storageId: this.registeredGridCount++ })
-                ]
+                grids: [ rootGrid ]
             }
         ]
 
@@ -346,6 +347,8 @@ export class GridNodeRecorder {
                 grids: new Array<GridNode>(width * height)
             }
         })
+
+        this._dbActions.push({ type: 'C', data: rootGrid, tableName: 'GridNode' })
     }
 
     private get _actor() {
@@ -544,6 +547,8 @@ export class GridNodeRecorder {
         // Return if grid's children are all existed
         if (grid.children.length > 0 && grid.children.every(child => child !== null)) return
 
+        this._dbActions.push({ type: 'U', data: grid, tableName: 'GridNode' })
+
         // Subdivide
         const globalU = globalId % this._levelInfos[level].width
         const globalV = Math.floor(globalId / this._levelInfos[level].width)
@@ -569,19 +574,20 @@ export class GridNodeRecorder {
                 globalRange: [ subGlobalWidth, subGlobalHeight ]
             })
 
-            this._newGrids.push(subGrid)
             grid.children[localId] = subGrid
-            this._levelInfos[level + 1].grids[subGlobalId] = subGrid
             this.storageId_grid_map.set(subGrid.uuId, subGrid)
+            this._levelInfos[level + 1].grids[subGlobalId] = subGrid
+            this._dbActions.push({ type: 'C', tableName: 'GridNode', data: subGrid })
 
             callback && callback(subGrid)
         }
     }
 
-    submitNewGrids() {
+    // Submit grid CRUD actions to IndexedDB
+    submit(callback?: Callback<GridNode[]>) {
 
-        this._actor.send('createGrids', this._newGrids)
-        this._newGrids = new Array<GridNode>()
+        this._actor.send('gridProcess', this._dbActions, callback)
+        this._dbActions = new Array<DbAction>()
     }
 
     removeGrid(grid: GridNode, callback?: Function) {

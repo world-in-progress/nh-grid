@@ -1,8 +1,13 @@
-import * as func from './func.worker'
+import { Callback } from '../types'
 import Actor from '../message/actor'
+import * as func from './func.worker'
+
+// Base Worker Types //////////////////////////////////////////////////
 
 type FuncModule = { [ key: string ]: Function }
 declare const self: WorkerGlobalScope & Record<string, any>
+
+// Base Worker Members //////////////////////////////////////////////////
 
 self.actor = new Actor(self, globalThis)
 for (const key in func) {
@@ -11,3 +16,6 @@ for (const key in func) {
     if (element) self[key] = element.bind(self)
 }
 
+// Base Worker Handlers //////////////////////////////////////////////////
+
+self.checkIfReady = (_: unknown, callback: Callback<any>) => callback()
