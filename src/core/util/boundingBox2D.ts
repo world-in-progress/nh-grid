@@ -1,4 +1,4 @@
-import { Vec4f } from './vec4f'
+import { Vec4f } from '../math/vec4f'
 
 export class BoundingBox2D extends Vec4f {
 

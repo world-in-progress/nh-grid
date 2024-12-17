@@ -1,4 +1,4 @@
-import { bindAll } from '../utils'
+import { bindAll } from '../util/utils'
 import ThrottledInvoker from './throttledInvoker'
 import type { Cancelable, TaskType } from '../types'
 

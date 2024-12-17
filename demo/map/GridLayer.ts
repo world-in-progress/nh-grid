@@ -5,10 +5,14 @@ import { GUI, GUIController } from 'dat.gui'
 
 import gll from './GlLib'
 import NHMap from './NHMap'
-import { BoundingBox2D } from '../../src/boundingBox2D'
-import { VibrantColorGenerator } from '../../src/vibrantColorGenerator'
-import { GridNode, GridEdgeRecorder, GridNodeRecorder } from '../../src/NHGrid'
+import { BoundingBox2D } from '../../src/core/util/boundingBox2D'
+import { VibrantColorGenerator } from '../../src/core/util/vibrantColorGenerator'
+import { GridNode } from '../../src/core/grid/NHGrid'
+import { GridEdgeRecorder, GridNodeRecorder } from '../../src/core/grid/NHGridRecorder'
+import { createDB, deleteDB } from '../../src/core/database/db'
 
+createDB('GridDB', 'GridNode', 'uuId')
+window.onbeforeunload = () => deleteDB('GridDB')
 proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
 
 export interface GridLayerOptions {
@@ -176,7 +180,7 @@ export default class GridLayer {
             })
 
             // Set show list (it is static when in Editor type)
-            this.lineList = this.hitGridList.map(grid => grid.storageId)
+            this.lineList = this.hitGridList.map(grid => grid.uuId)
 
             // Refill palette texture
             gll.fillSubTexture2DByArray(gl, this._paletteTexture, 0, 0, 0, this.subdivideRules.length, 1, gl.RGB, gl.UNSIGNED_BYTE, this.paletteColorList)
@@ -217,10 +221,10 @@ export default class GridLayer {
         // if (grid.hit) return
 
         // Remove parent hitting if it has been hit
-        let parent = grid.parent
+        let parent = this.gridRecorder.getGridParent(grid)
         while (parent) {
             parent.hit = false
-            parent = parent.parent
+            parent = this.gridRecorder.getGridParent(parent)
         }
         
         // Remove children if they have existed
@@ -243,7 +247,7 @@ export default class GridLayer {
         this.hitGridList.forEach(grid => {
             if (grid.within(this.bBox, lon, lat)) {
                 grid.hit = true
-                grid.calcEdges(this.edgeRecorder)
+                this.edgeRecorder.calcGridEdges(grid, this.gridRecorder)
                 console.log(grid.edges)
             }
         })
@@ -254,8 +258,8 @@ export default class GridLayer {
         const gl = this._gl
 
         const vertices = grid.getVertices(this.srcCS, this.bBox)
-        const storageU = grid.storageId % this.storageTextureSize
-        const storageV = Math.floor(grid.storageId / this.storageTextureSize)
+        const storageU = grid.uuId % this.storageTextureSize
+        const storageV = Math.floor(grid.uuId / this.storageTextureSize)
 
         gll.fillSubTexture2DArrayByArray(gl, this._storageTextureArray, 0, storageU, storageV, 0, 1, 1, 4, gl.RG, gl.FLOAT, vertices)
         gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, storageU, storageV, 1, 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, new Uint16Array([grid.level]))
@@ -288,8 +292,8 @@ export default class GridLayer {
             // Add hit grid to render list
             if (grid.hit || grid.children.length === 0) {
 
-                this.lineList.push(grid.storageId)
-                grid.hit && this.fillList.push(grid.storageId)
+                this.lineList.push(grid.uuId)
+                grid.hit && this.fillList.push(grid.uuId)
                 
             } else {
                 stack.push(...grid.children.filter(child => child !== null))
@@ -301,7 +305,7 @@ export default class GridLayer {
 
     tickEditor() {
         
-        this.fillList = this.hitGridList.filter(grid => grid.hit).map(grid => grid.storageId)
+        this.fillList = this.hitGridList.filter(grid => grid.hit).map(grid => grid.uuId)
         this.writeIndicesToTexture(this.fillList, this._fillIndexTexture)
         this.writeIndicesToTexture(this.lineList, this._lineIndexTexture)
     }
@@ -333,6 +337,9 @@ export default class GridLayer {
         // Update display of capacity
         this.uiOption.capacity = this.gridRecorder.storageId_grid_map.size
         this.capacityController.updateDisplay()
+
+        // Submit grid actions to IndexedDB
+        this.gridRecorder.submit()
     }
 
     serialize() {
@@ -365,7 +372,7 @@ export default class GridLayer {
                 levelGlobalId_serializedId_Map.set(key, index)
 
                 // Avoid edge miss and record valid key
-                grid.calcEdges(this.edgeRecorder)
+                this.edgeRecorder.calcGridEdges(grid, this.gridRecorder)
                 grid.edgeKeys.forEach(key => {
                     const edge = this.edgeRecorder.getEdgeByKey(key)
                     sEdgeRecoder.addEdge(edge)
@@ -394,7 +401,7 @@ export default class GridLayer {
                     index++
 
                     // Avoid edge miss and record valid key
-                    grid.calcEdges(this.edgeRecorder)
+                    this.edgeRecorder.calcGridEdges(grid, this.gridRecorder)
                     grid.edgeKeys.forEach(key => {
                         const edge = this.edgeRecorder.getEdgeByKey(key)
                         sEdgeRecoder.addEdge(edge)
@@ -611,7 +618,10 @@ export default class GridLayer {
 
         // All done ////////////////////////////////////////////////////////////
 
-        this.isInitialized = true
+        this.gridRecorder.submit(() => {
+
+            this.isInitialized = true
+        })
     }
     
     drawGridMesh() {
