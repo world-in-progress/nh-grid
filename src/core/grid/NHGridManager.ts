@@ -3,7 +3,7 @@ import Dispatcher from "../message/dispatcher"
 import { EDGE_CODE, EDGE_CODE_EAST, EDGE_CODE_NORTH, EDGE_CODE_SOUTH, EDGE_CODE_WEST, GridEdge, GridNode } from "./NHGrid"
 import { Callback } from '../types'
 
-export class GridEdgeRecorder {
+export class GridEdgeManager {
 
     private _edgeMap: Map<string, GridEdge>
     private _properties: string[] | undefined
@@ -66,244 +66,6 @@ export class GridEdgeRecorder {
             return null
         }
     }
-
-    calcGridEdges(grid: GridNode, nodeRecorder: GridNodeRecorder): void {
-
-        if (grid.edgeCalculated) return
-
-        // Calculate north edges
-        this._calcHorizontalEdges(grid, nodeRecorder.getGridNeighbours(grid, EDGE_CODE_NORTH), EDGE_CODE_NORTH, EDGE_CODE_SOUTH)
-        // Calculate sourth edges
-        this._calcHorizontalEdges(grid, nodeRecorder.getGridNeighbours(grid, EDGE_CODE_SOUTH), EDGE_CODE_SOUTH, EDGE_CODE_NORTH)
-        // Calculate west edges
-        this._calcVerticalEdges(grid, nodeRecorder.getGridNeighbours(grid, EDGE_CODE_SOUTH), EDGE_CODE_WEST, EDGE_CODE_EAST)
-        // Calculate east edges
-        this._calcVerticalEdges(grid, nodeRecorder.getGridNeighbours(grid, EDGE_CODE_SOUTH), EDGE_CODE_EAST, EDGE_CODE_WEST)
-        
-        grid.edgeCalculated = true
-    }
-    
-    private _calcHorizontalEdges(grid: GridNode, neighbours: GridNode[], edgeCode: number, opEdgeCode: number): void {
-
-        // Case when neighbour has lower level /////////////////////////////////////////////////////
-
-        if (neighbours.length === 1 && neighbours[0].level < grid.level) {
-
-            const edge = this.getEdgeByInfo(grid, neighbours[0], edgeCode, [ ...grid.xMinPercent, ...grid.xMaxPercent ])
-            grid.addEdge(edge, edgeCode)
-            neighbours[0].addEdge(edge, opEdgeCode)
-            return
-        }
-
-        // Case when neighbours have equal or higher levels ////////////////////////////////////////
-        
-        neighbours = neighbours.filter(neighbour => neighbour.level >= grid.level)
-        const xSet = new Set([ grid.xMin, grid.xMax ])
-        neighbours.forEach(neighbour => {
-            xSet.add(neighbour.xMin)
-            xSet.add(neighbour.xMax)
-        })
-        const xPercentList = [...xSet].sort((x1, x2) => x1 - x2)
-
-        // Iterate sub-edges and find their neighbours
-        // If a sub-edge:
-        // - [Situation 1] belongs to a neighbour ( add it to <this> and <neighbour> )
-        // - [Situation 2] does not belong to any neighbour ( only add it to <this> )
-        for (let i = 0; i < xPercentList.length - 1; i++) {
-
-            const from = xPercentList[i]
-            const to = xPercentList[i + 1]
-
-            let fromIndex = -1
-            let toIndex = -1
-            for (let j = 0; j < neighbours.length; j++) {
-
-                const neighbour = neighbours[j]
-                const xMin = neighbour.xMin
-                const xMax = neighbour.xMax
-
-                if (xMin === from || xMax === from) fromIndex = j
-                if (xMin === to || xMax === to) toIndex = j
-                if (fromIndex !== -1 && toIndex !== -1) break
-            }
-
-            // Situation 1
-            // X -->
-            // From   Neighbour     To
-            // |____________________|
-
-            if (fromIndex === toIndex && fromIndex !== -1) {
-
-                const neighbour = neighbours[fromIndex]
-                const edge = this.getEdgeByInfo(grid, neighbour, edgeCode, [ ...neighbour.xMinPercent, ...neighbour.xMaxPercent ])
-                grid.addEdge(edge, edgeCode)
-                neighbour.addEdge(edge, opEdgeCode)
-
-            }
-
-            // Situation 2 - Case 1
-            // X -->
-            // From                 To
-            // |____________________|
-
-            else if (fromIndex === toIndex && fromIndex === -1) {
-
-                const edge = this.getEdgeByInfo(grid, null, edgeCode, [ ...grid.xMinPercent, ...grid.xMaxPercent ])
-                grid.addEdge(edge, edgeCode)
-
-            }
-
-            // Situation 2 - Case 2
-            // X -->
-            //      Neighbour_F     From                 To    Neighbour_T
-            // |_ _ _ _ _ _ _ _ _ _ |____________________|_ _ _ _ _ _ _ _ _ _ ｜
-
-            else if (fromIndex !== toIndex && fromIndex !== -1 && toIndex !== -1) {
-
-                const fromNeighbour = neighbours[fromIndex]
-                const toNeighbour = neighbours[toIndex]
-                const edge = this.getEdgeByInfo(grid, null, edgeCode, [ ...fromNeighbour.xMaxPercent, ...toNeighbour.xMinPercent ])
-                grid.addEdge(edge, edgeCode)
-
-            } 
-
-            // Situation 2 - Case 3
-            // X -->
-            //      Neighbour_F     From                 To
-            // |_ _ _ _ _ _ _ _ _ _ |____________________|
-
-            else if (fromIndex !== -1 && toIndex === -1) {
-
-                const fromNeighbour = neighbours[fromIndex]
-                const edge = this.getEdgeByInfo(grid, null, edgeCode, [ ...fromNeighbour.xMaxPercent, ...grid.xMaxPercent ])
-                grid.addEdge(edge, edgeCode)
-
-            } 
-
-            // Situation 2 - Case 4
-            // X -->
-            // From                 To    Neighbour_T
-            // |____________________|_ _ _ _ _ _ _ _ _ _ ｜
-
-            else if (fromIndex === -1 && toIndex !== -1) {
-
-                const toNeighbour = neighbours[toIndex]
-                const edge = this.getEdgeByInfo(grid, null, edgeCode, [ ...grid.xMinPercent, ...toNeighbour.xMinPercent ])
-                grid.addEdge(edge, edgeCode)
-            }
-        }
-    }
-    
-    private _calcVerticalEdges(grid: GridNode, neighbours: GridNode[], edgeCode: number, opEdgeCode: number): void {
-
-        // Case when neighbour has lower level /////////////////////////////////////////////////////
-
-        if (neighbours.length === 1 && neighbours[0].level < grid.level) {
-
-            const edge = this.getEdgeByInfo(grid, neighbours[0], edgeCode, [ ...grid.yMinPercent, ...grid.yMaxPercent ])
-            grid.addEdge(edge, edgeCode)
-            neighbours[0].addEdge(edge, opEdgeCode)
-            return
-        }
-
-        // Case when neighbours have equal or higher levels ////////////////////////////////////////
-        
-        neighbours = neighbours.filter(neighbour => neighbour.level >= grid.level)
-        const ySet = new Set([ grid.yMin, grid.yMax ])
-        neighbours.forEach(neighbour => {
-            ySet.add(neighbour.yMin)
-            ySet.add(neighbour.yMax)
-        })
-        const yList = [...ySet].sort((y1, y2) => y1 - y2)
-
-        // Iterate sub-edges and find their neighbours
-        // If a sub-edge:
-        // - [Situation 1] belongs to a neighbour ( add it to <this> and <neighbour> )
-        // - [Situation 2] does not belong to any neighbour ( only add it to <this> )
-        for (let i = 0; i < yList.length - 1; i++) {
-
-            const from = yList[i]
-            const to = yList[i + 1]
-
-            let fromIndex = -1
-            let toIndex = -1
-            for (let j = 0; j < neighbours.length; j++) {
-
-                const neighbour = neighbours[j]
-                const yMin = neighbour.yMin
-                const yMax = neighbour.yMax
-
-                if (yMin === from || yMax === from) fromIndex = j
-                if (yMin === to || yMax === to) toIndex = j
-                if (fromIndex !== -1 && toIndex !== -1) break
-            }
-
-            // Situation 1
-            // Y -->
-            // From   Neighbour     To
-            // |____________________|
-
-            if (fromIndex === toIndex && fromIndex !== -1) {
-
-                const neighbour = neighbours[fromIndex]
-                const edge = this.getEdgeByInfo(grid, neighbour, edgeCode, [ ...neighbour.yMinPercent, ...neighbour.yMaxPercent ])
-                grid.addEdge(edge, edgeCode)
-                neighbour.addEdge(edge, opEdgeCode)
-
-            }
-
-            // Situation 2 - Case 1
-            // Y -->
-            // From                 To
-            // |____________________|
-
-            else if (fromIndex === toIndex && fromIndex === -1) {
-
-                const edge = this.getEdgeByInfo(grid, null, edgeCode, [ ...grid.yMinPercent, ...grid.yMaxPercent ])
-                grid.addEdge(edge, edgeCode)
-
-            }
-
-            // Situation 2 - Case 2
-            // Y -->
-            //      Neighbour_F     From                 To    Neighbour_T
-            // |_ _ _ _ _ _ _ _ _ _ |____________________|_ _ _ _ _ _ _ _ _ _ ｜
-
-            else if (fromIndex !== toIndex && fromIndex !== -1 && toIndex !== -1) {
-
-                const fromNeighbour = neighbours[fromIndex]
-                const toNeighbour = neighbours[toIndex]
-                const edge = this.getEdgeByInfo(grid, null, edgeCode, [ ...fromNeighbour.yMaxPercent, ...toNeighbour.yMinPercent ])
-                grid.addEdge(edge, edgeCode)
-
-            } 
-
-            // Situation 2 - Case 3
-            // Y -->
-            //      Neighbour_F     From                 To
-            // |_ _ _ _ _ _ _ _ _ _ |____________________|
-
-            else if (fromIndex !== -1 && toIndex === -1) {
-
-                const fromNeighbour = neighbours[fromIndex]
-                const edge = this.getEdgeByInfo(grid, null, edgeCode, [ ...fromNeighbour.yMaxPercent, ...grid.yMaxPercent ])
-                grid.addEdge(edge, edgeCode)
-
-            } 
-
-            // Situation 2 - Case 4
-            // Y -->
-            // From                 To    Neighbour_T
-            // |____________________|_ _ _ _ _ _ _ _ _ _ ｜
-
-            else if (fromIndex === -1 && toIndex !== -1) {
-
-                const toNeighbour = neighbours[toIndex]
-                const edge = this.getEdgeByInfo(grid, null, edgeCode, [ ...grid.yMinPercent, ...toNeighbour.yMinPercent ])
-                grid.addEdge(edge, edgeCode)
-            }
-        }
-    }
 }
 
 export type SubdivideRules = [ number, number ][]
@@ -314,7 +76,7 @@ export interface GridLevelInfo {
     grids: (GridNode | undefined)[]
 }
 
-export class GridNodeRecorder {
+export class GridNodeManager {
 
     private _levelInfos: GridLevelInfo[]
     private _subdivideRules: SubdivideRules
@@ -327,7 +89,6 @@ export class GridNodeRecorder {
 
     constructor(subdivideRules: SubdivideRules) {
 
-        // const rootGrid = new GridNode({ localId: 0, globalId: 0, uuId: this.registeredGridCount++ })
         const rootGrid = new GridNode({ localId: 0, globalId: 0 })
         this.uuId_gridNode_map.set(rootGrid.uuId, rootGrid)
         this._levelInfos = [
@@ -573,13 +334,14 @@ export class GridNodeRecorder {
                 localId,
                 parent: grid,
                 globalId: subGlobalId,
+                // uuId: this.registeredGridCount++,
                 globalRange: [ subGlobalWidth, subGlobalHeight ]
             })
 
             grid.children[localId] = subGrid.uuId
             this.uuId_gridNode_map.set(subGrid.uuId, subGrid)
             this.storageId_uuId_map.set(this.storageId_uuId_map.size, subGrid.uuId)
-            this.uuId_storageId_map.set(subGrid.uuId, this.uuId_storageId_map.size)
+            this.uuId_storageId_map.set(subGrid.uuId, this.storageId_uuId_map.size - 1)
             this._levelInfos[level + 1].grids[subGlobalId] = subGrid
             this._dbActions.push({ type: 'C', tableName: 'GridNode', data: subGrid.record })
 

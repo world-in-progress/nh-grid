@@ -5,6 +5,7 @@ import { GUI, GUIController } from 'dat.gui'
 
 import gll from './GlLib'
 import NHMap from './NHMap'
+import { mat4 } from 'gl-matrix'
 import { BoundingBox2D } from '../../src/core/util/boundingBox2D'
 import { VibrantColorGenerator } from '../../src/core/util/vibrantColorGenerator'
 import { GridNode } from '../../src/core/grid/NHGrid'
@@ -54,6 +55,8 @@ export default class GridLayer {
 
     // Function-related //////////////////////////////////////////////////
 
+    // pickingMatrix = mat3.create()
+
     // Grid properties
     srcCS: string
     maxGridNum: number
@@ -76,6 +79,7 @@ export default class GridLayer {
     private _gl: WebGL2RenderingContext
 
     // Shader
+    private _pickingShader: WebGLProgram = 0
     private _terrainMeshShader: WebGLProgram = 0
     private _terrainLineShader: WebGLProgram = 0
 
@@ -85,6 +89,10 @@ export default class GridLayer {
     private _fillIndexTexture: WebGLTexture = 0
     private _lineIndexTexture: WebGLTexture = 0
     private _storageTextureArray: WebGLTexture = 0
+
+    private _pickingFBO: WebGLFramebuffer = 0
+    private _pickingRBO: WebGLRenderbuffer = 0
+    private _pickingTexture: WebGLTexture = 0
 
     // Interaction-related //////////////////////////////////////////////////
 
@@ -172,7 +180,7 @@ export default class GridLayer {
             this.gridRecorder.findNeighbours()
 
             // Generate hit list
-            this.gridRecorder.storageId_grid_map.forEach(grid => {
+            this.gridRecorder.uuId_gridNode_map.forEach(grid => {
                 if (grid.hit === true && grid.level !== 0) {
                     this.hitGridList.push(grid)
                     grid.hit = false
@@ -180,7 +188,7 @@ export default class GridLayer {
             })
 
             // Set show list (it is static when in Editor type)
-            this.lineList = this.hitGridList.map(grid => grid.uuId)
+            this.lineList = this.hitGridList.map(grid => this.gridRecorder.uuId_storageId_map.get(grid.uuId)!)
 
             // Refill palette texture
             gll.fillSubTexture2DByArray(gl, this._paletteTexture, 0, 0, 0, this.subdivideRules.length, 1, gl.RGB, gl.UNSIGNED_BYTE, this.paletteColorList)
@@ -228,12 +236,12 @@ export default class GridLayer {
         }
         
         // Remove children if they have existed
-        const stack = [ ...grid.children ]
+        const stack = [ ...this.gridRecorder.getGridChildren(grid) ]
         while (stack.length > 0) {
             const currentGrid = stack.pop()
             if (!currentGrid) continue
 
-            stack.push(...currentGrid.children)
+            stack.push(...this.gridRecorder.getGridChildren(currentGrid))
             this.gridRecorder.removeGrid(currentGrid, this.writeGridInfoToTexture.bind(this))
         }
         grid.children = []
@@ -258,8 +266,9 @@ export default class GridLayer {
         const gl = this._gl
 
         const vertices = grid.getVertices(this.srcCS, this.bBox)
-        const storageU = grid.uuId % this.storageTextureSize
-        const storageV = Math.floor(grid.uuId / this.storageTextureSize)
+        const storageId = this.gridRecorder.uuId_storageId_map.get(grid.uuId)!
+        const storageU = storageId % this.storageTextureSize
+        const storageV = Math.floor(storageId / this.storageTextureSize)
 
         gll.fillSubTexture2DArrayByArray(gl, this._storageTextureArray, 0, storageU, storageV, 0, 1, 1, 4, gl.RG, gl.FLOAT, vertices)
         gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, storageU, storageV, 1, 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, new Uint16Array([grid.level]))
@@ -292,11 +301,12 @@ export default class GridLayer {
             // Add hit grid to render list
             if (grid.hit || grid.children.length === 0) {
 
-                this.lineList.push(grid.uuId)
-                grid.hit && this.fillList.push(grid.uuId)
+                const storageId = this.gridRecorder.uuId_storageId_map.get(grid.uuId)!
+                this.lineList.push(storageId)
+                grid.hit && this.fillList.push(storageId)
                 
             } else {
-                stack.push(...grid.children.filter(child => child !== null))
+                stack.push(...this.gridRecorder.getGridChildren(grid))
             }
         }
         this.writeIndicesToTexture(this.fillList, this._fillIndexTexture)
@@ -305,7 +315,7 @@ export default class GridLayer {
 
     tickEditor() {
         
-        this.fillList = this.hitGridList.filter(grid => grid.hit).map(grid => grid.uuId)
+        this.fillList = this.hitGridList.filter(grid => grid.hit).map(grid => this.gridRecorder.uuId_storageId_map.get(grid.uuId)!)
         this.writeIndicesToTexture(this.fillList, this._fillIndexTexture)
         this.writeIndicesToTexture(this.lineList, this._lineIndexTexture)
     }
@@ -335,7 +345,7 @@ export default class GridLayer {
         this.typeChanged = false
 
         // Update display of capacity
-        this.uiOption.capacity = this.gridRecorder.storageId_grid_map.size
+        this.uiOption.capacity = this.gridRecorder.storageId_uuId_map.size
         this.capacityController.updateDisplay()
 
         // Submit grid actions to IndexedDB
@@ -386,7 +396,7 @@ export default class GridLayer {
             this.gridRecorder.findNeighbours()
             
             let index = 0
-            this.gridRecorder.storageId_grid_map.forEach(grid => {
+            this.gridRecorder.uuId_gridNode_map.forEach(grid => {
                 if (grid.hit) {
 
                     const { xMinPercent, yMinPercent, xMaxPercent, yMaxPercent } = grid.serialization
@@ -430,6 +440,20 @@ export default class GridLayer {
 
         return serializedData
     }
+
+    private _calcPickingMatrix(e: MapMouseEvent) {
+
+        const canvas = this._gl.canvas
+
+        const ndcX = ((e.originalEvent.clientX * window.devicePixelRatio) / canvas.width) * 2.0 - 1.0
+        const ndcY = 1.0 - ((e.originalEvent.clientY * window.devicePixelRatio) / canvas.height) * 2.0
+
+        const pickingMatrix = mat4.create()
+        mat4.scale(pickingMatrix, pickingMatrix, [ canvas.width * 0.5, canvas.height * 0.5, 1.0 ])
+        mat4.translate(pickingMatrix, pickingMatrix, [ -ndcX, -ndcY, 0.0 ])
+
+        return pickingMatrix
+    }
     
     _mousedownHandler(e: MapMouseEvent) {
         
@@ -445,8 +469,12 @@ export default class GridLayer {
             this.map.dragPan.enable()
             this.isShiftClick = false
 
-            const lngLat = this.map.unproject([e.point.x, e.point.y])
-            this.hit(lngLat.lng, lngLat.lat, this.uiOption.level)
+            const uuid = this.picking(this._calcPickingMatrix(e))
+            if (uuid) {
+                const [ level, globalId ] = uuid.split('-').map(key => Number(key))
+                console.log(level, globalId)
+            }
+            this.hit(...e.lngLat.toArray(),  this.uiOption.level)
         }
     }
 
@@ -455,8 +483,7 @@ export default class GridLayer {
         if (this.isShiftClick) {
             this.map.dragPan.disable()
 
-            const lngLat = this.map.unproject([e.point.x, e.point.y])
-            this.hit(lngLat.lng, lngLat.lat, this.uiOption.level)
+            this.hit(...e.lngLat.toArray(),  this.uiOption.level)
         }
     }
 
@@ -494,8 +521,9 @@ export default class GridLayer {
         gll.enableAllExtensions(gl)
 
         // Create shader
-        this._terrainMeshShader = await gll.createShader(gl, '/shaders/gridMesh.glsl')
+        this._pickingShader = await gll.createShader(gl, '/shaders/picking.glsl')
         this._terrainLineShader = await gll.createShader(gl, '/shaders/gridLine.glsl')
+        this._terrainMeshShader = await gll.createShader(gl, '/shaders/gridMesh.glsl')
 
         // Create texture
         this._paletteTexture = gll.createTexture2D(gl, 1, this.subdivideRules.length, 1, gl.RGB8)
@@ -503,6 +531,11 @@ export default class GridLayer {
         this._fillIndexTexture = gll.createTexture2D(gl, 1, this.storageTextureSize, this.storageTextureSize, gl.R32UI)
         this._lineIndexTexture = gll.createTexture2D(gl, 1, this.storageTextureSize, this.storageTextureSize, gl.R32UI)
         this._storageTextureArray = gll.createTexture2DArray(gl, 1, 4, this.storageTextureSize, this.storageTextureSize, gl.RG32F)
+
+        // Create picking pass
+        this._pickingTexture = gll.createTexture2D(gl, 0, 1, 1, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([ 0, 0, 0, 0 ]))
+        this._pickingRBO = gll.createRenderBuffer(gl, 1, 1)
+        this._pickingFBO = gll.createFrameBuffer(gl, [ this._pickingTexture ], 0, this._pickingRBO)
 
         // Init palette texture (default in subdivider type)
         const colorList = new Uint8Array(this.subdivideRules.length * 3)
@@ -623,6 +656,51 @@ export default class GridLayer {
             this.isInitialized = true
         })
     }
+
+    picking(pickingMatrix: mat4) {
+
+        const gl = this._gl
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this._pickingFBO)
+        gl.viewport(0, 0, 1, 1)
+
+        gl.clearColor(1.0, 1.0, 1.0, 1.0)
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+
+        gl.disable(gl.BLEND)
+
+        gl.depthFunc(gl.LESS)
+        gl.enable(gl.DEPTH_TEST)
+
+        gl.useProgram(this._pickingShader)
+
+        gl.activeTexture(gl.TEXTURE0)
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this._storageTextureArray)
+        gl.activeTexture(gl.TEXTURE1)
+        gl.bindTexture(gl.TEXTURE_2D, this._fillIndexTexture)
+        gl.activeTexture(gl.TEXTURE2)
+        gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture)
+
+        gl.uniform1i(gl.getUniformLocation(this._pickingShader, 'storageTexture'), 0)
+        gl.uniform1i(gl.getUniformLocation(this._pickingShader, 'indexTexture'), 1)
+        gl.uniform1i(gl.getUniformLocation(this._pickingShader, 'paletteTexture'), 2)
+        gl.uniform2fv(gl.getUniformLocation(this._pickingShader, 'centerLow'), this.map.centerLow)
+        gl.uniform2fv(gl.getUniformLocation(this._pickingShader, 'centerHigh'), this.map.centerHigh)
+        gl.uniformMatrix4fv(gl.getUniformLocation(this._pickingShader, 'pickingMatrix'), false, pickingMatrix)
+        gl.uniformMatrix4fv(gl.getUniformLocation(this._pickingShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
+
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.fillList.length)
+
+        const pixel = new Uint8Array(4)
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+
+        const storageId = pixel[0] + (pixel[1] << 8) + (pixel[2] << 16) + (pixel[3] << 24)
+
+        return storageId === -1 ? 
+        null : this.gridRecorder.storageId_uuId_map.get(storageId)!
+    }
     
     drawGridMesh() {
 
@@ -733,7 +811,7 @@ export default class GridLayer {
                     const stack: GridNode[] = [ grid ]
                     while (stack.length) {
                         const _grid = stack.pop()!
-                        const children = _grid.children.filter(child => child)
+                        const children = this.gridRecorder.getGridChildren(_grid)
 
                         if (children.length) {
                             _grid.children = []
@@ -748,7 +826,7 @@ export default class GridLayer {
                     this.tickSubdivider()
 
                     // Update display of capacity
-                    this.uiOption.capacity = this.gridRecorder.storageId_grid_map.size
+                    this.uiOption.capacity = this.gridRecorder.storageId_uuId_map.size
                     this.capacityController.updateDisplay()
                 }
 

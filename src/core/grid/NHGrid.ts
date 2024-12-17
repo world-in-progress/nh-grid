@@ -24,10 +24,9 @@ export interface GridNodeSerializedInfo {
     yMaxPercent: [ number, number ]
 }
 
-export interface GridNodeOptions {
+export interface GridNodeParams {
     localId: number,
     globalId: number,
-    storageId: number,
     parent?: GridNode,
     globalRange?: [ number, number ]
 }
@@ -130,35 +129,42 @@ export class GridEdge {
     }
 }
 
+export interface GridNodeRecord {
+    uuId: string
+    level: number,
+    children: Array<string | null>
+    edges: [ Set<string>, Set<string>, Set<string>, Set<string> ]
+    neighbours: [ Set<string>, Set<string>, Set<string>, Set<string> ]
+}
+
 export class GridNode {
 
-    uuId: number
+    uuId: string
     localId: number
     globalId: number
-
-    level: number
-    children: (GridNode | null)[]
 
     xMinPercent: [ number, number ]
     xMaxPercent: [ number, number ]
     yMinPercent: [ number, number ]
     yMaxPercent: [ number, number ]
     
+    level: number
+    children: Array<string | null>
     edges: [ Set<string>, Set<string>, Set<string>, Set<string> ]
-    neighbours: [ Set<number>, Set<number>, Set<number>, Set<number> ]
+    neighbours: [ Set<string>, Set<string>, Set<string>, Set<string> ]
 
     hit: boolean
     edgeCalculated: boolean
 
-    constructor(options: GridNodeOptions) {
+    constructor(options: GridNodeParams) {
 
         this.hit = false
         this.edgeCalculated = false
 
         this.localId = options.localId
         this.globalId = options.globalId
-        this.uuId = options.storageId
         this.level = options.parent !== undefined ? options.parent.level + 1 : 0
+        this.uuId = `${this.level}-${this.globalId}`
 
         this.children = []
 
@@ -170,10 +176,10 @@ export class GridNode {
         this.yMaxPercent = [ 1, 1 ]
         
         this.neighbours = [ 
-            new Set<number>(),
-            new Set<number>(),
-            new Set<number>(),
-            new Set<number>()
+            new Set<string>(),
+            new Set<string>(),
+            new Set<string>(),
+            new Set<string>()
         ]
 
         this.edges = [
@@ -215,6 +221,17 @@ export class GridNode {
     get yMax(): number {
 
         return this.yMaxPercent[0] / this.yMaxPercent[1]
+    }
+
+    get record(): GridNodeRecord {
+
+        return {
+            uuId: this.uuId,
+            level: this.level,
+            edges: this.edges,
+            children: this.children,
+            neighbours: this.neighbours
+        }
     }
 
     resetEdges(): void {
@@ -292,7 +309,7 @@ export class GridNode {
 
         this.children = []
 
-        this.uuId = -1
+        this.uuId = ''
         this.globalId = -1
         this.localId = -1
         this.level = -1

@@ -37,7 +37,10 @@ export function addData(store: IDBObjectStore, data: any) {
     const request = store.add(data)
 
     request.onsuccess = () => {}
-    request.onerror = (e) => console.error((e.target as any).error)
+    request.onerror = (e) => {
+        console.log(data.uuId)
+        console.error((e.target as any).error)
+    }
 }
 
 export function deleteData(store: IDBObjectStore, id: number | string) {
