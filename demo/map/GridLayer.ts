@@ -20,8 +20,9 @@ proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555
 export interface GridLayerOptions {
     map: NHMap
     srcCS: string
-    maxGridNum: number,
-    edgeProperties?: string[], 
+    maxGridNum: number
+    edgeProperties?: string[]
+    firstLevelSize: [ number, number ]
     subdivideRules?: [ number, number ][]
     boundaryCondition: [ number, number, number, number ]
 }
@@ -66,6 +67,7 @@ export default class GridLayer {
     projConverter: proj4.Converter
     gridRecorder: GridNodeRecorder
     edgeRecorder: GridEdgeRecorder
+    firstLevelSize: [ number, number ]
     subdivideRules: [ number, number ][]
     subdivideStacks = new Array<[ level: number, globalId: number ][]>()
 
@@ -129,10 +131,21 @@ export default class GridLayer {
         this.srcCS = options.srcCS
         this._gl = this.map.painter.context.gl
         this.projConverter = proj4(this.srcCS, 'EPSG:4326')
-        this.subdivideRules = options.subdivideRules || [[ 1, 1 ]]
+        this.firstLevelSize = options.firstLevelSize
+        this.subdivideRules = [[ 1, 1 ]]
+        options.subdivideRules?.forEach(rule => {
+            this.subdivideRules.push(rule)
+        })
 
         this.maxGridNum = options.maxGridNum
-        this.bBox = new BoundingBox2D(...options.boundaryCondition)
+        const boundary = options.boundaryCondition
+        boundary[2] = boundary[0] + Math.floor((boundary[2] - boundary[0]) / this.firstLevelSize[0]) * this.firstLevelSize[0] 
+        boundary[3] = boundary[1] + Math.floor((boundary[3] - boundary[1]) / this.firstLevelSize[1]) * this.firstLevelSize[1]
+        this.bBox = new BoundingBox2D(...boundary)
+        this.subdivideRules[0] = [
+            Math.ceil((boundary[2] - boundary[0]) / this.firstLevelSize[0]),
+            Math.ceil((boundary[3] - boundary[1]) / this.firstLevelSize[1]),
+        ]
         this.edgeRecorder = new GridEdgeRecorder(options.edgeProperties)
         this.gridRecorder = new GridNodeRecorder(this.dispatcher, {
             bBox: this.bBox,

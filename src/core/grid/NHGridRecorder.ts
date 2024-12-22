@@ -115,6 +115,7 @@ export class GridNodeRecorder {
             const width = this._levelInfos[level - 1].width * rules[level - 1][0]
             const height = this._levelInfos[level - 1].height * rules[level - 1][1]
 
+            console.log(width, height)
             this._levelInfos[level] = {
                 width, height,
                 infos: new Array<GridNodeRenderInfo>(width * height)
