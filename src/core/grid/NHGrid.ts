@@ -1,6 +1,7 @@
 import proj4 from 'proj4'
 import { BoundingBox2D } from '../util/boundingBox2D'
 import { MercatorCoordinate } from '../math/mercatorCoordinate'
+import { DbAction } from '../database/db'
 
 export const EDGE_CODE_NORTH   = 0b00
 export const EDGE_CODE_WEST    = 0b01
@@ -9,6 +10,16 @@ export const EDGE_CODE_EAST    = 0b11
 export const EDGE_CODE_INVALID = -1
 
 export type EDGE_CODE = typeof EDGE_CODE_NORTH | typeof EDGE_CODE_WEST | typeof EDGE_CODE_SOUTH | typeof EDGE_CODE_EAST
+
+export interface GridNodeRenderInfo {
+    uuId: string
+    vertices: Float32Array
+}
+
+export interface GridNodeRenderInfoPack {
+    uuIds: string[]
+    vertexBuffer: Float32Array
+}
 
 export interface GridEdgeSerializedInfo {
     edgeCode: number
@@ -29,6 +40,14 @@ export interface GridNodeParams {
     globalId: number,
     parent?: GridNode,
     globalRange?: [ number, number ]
+}
+
+export type SubdivideRules = {
+
+    srcCS: string
+    targetCS: string
+    bBox: BoundingBox2D
+    rules: [ number, number ][]
 }
 
 /*
@@ -129,12 +148,43 @@ export class GridEdge {
     }
 }
 
-export interface GridNodeRecord {
-    uuId: string
-    level: number,
-    children: Array<string | null>
-    edges: [ Set<string>, Set<string>, Set<string>, Set<string> ]
-    neighbours: [ Set<string>, Set<string>, Set<string>, Set<string> ]
+export class GridNodeRecord {
+
+    isActivated = false
+    children_uuIds: Array<string> = []
+    edge_uuIds = new Array<Set<string>>(4)
+    neighbour_uuIds = new Array<Set<string>>(4)
+
+    constructor(public uuId: string) {}
+
+    static async createFromIndexedDB(dbManager: (dbName: string, actions: DbAction[]) => Promise<any[]>, key: any): Promise<GridNodeRecord> {
+
+        const readNodeAction: DbAction = {
+            storeName: 'GridNode',
+            type: 'R',
+            data: key
+        }
+
+        const gridRecord = new GridNodeRecord(key) as any
+        const storedData = (await dbManager('GridDB', [ readNodeAction ]))[0]
+        for (const _key in storedData) {
+            gridRecord[_key] = storedData[_key]
+        }
+
+        return gridRecord as GridNodeRecord
+    }
+
+    get level(): number {
+        return +this.uuId.split('-')[0]
+    }
+
+    get globalId(): number {
+        return +this.uuId.split('-')[1]
+    }
+
+    get keys(): [ level: number, globalId: number ] {
+        return this.uuId.split('-').map(key => +key) as [ level: number, globalId: number ]
+    }
 }
 
 export class GridNode {
@@ -223,17 +273,6 @@ export class GridNode {
         return this.yMaxPercent[0] / this.yMaxPercent[1]
     }
 
-    get record(): GridNodeRecord {
-
-        return {
-            uuId: this.uuId,
-            level: this.level,
-            edges: this.edges,
-            children: this.children,
-            neighbours: this.neighbours
-        }
-    }
-
     resetEdges(): void {
 
         this.edgeCalculated = false
@@ -267,17 +306,17 @@ export class GridNode {
         }
     }
 
-    getVertices(srcCS: string, bBox: BoundingBox2D) {
+    getVertices(converter: proj4.Converter, bBox: BoundingBox2D) {
 
         const xMin = lerp(bBox.xMin, bBox.xMax, this.xMin)
         const yMin = lerp(bBox.yMin, bBox.yMax, this.yMin)
         const xMax = lerp(bBox.xMin, bBox.xMax, this.xMax)
         const yMax = lerp(bBox.yMin, bBox.yMax, this.yMax)
         
-        const targetTL = proj4(srcCS, `EPSG:4326`, [ xMin, yMax ])  // srcTL
-        const targetTR = proj4(srcCS, `EPSG:4326`, [ xMax, yMax ])  // srcTR
-        const targetBL = proj4(srcCS, `EPSG:4326`, [ xMin, yMin ])  // srcBL
-        const targetBR = proj4(srcCS, `EPSG:4326`, [ xMax, yMin ])  // srcBR
+        const targetTL = converter.forward([ xMin, yMax ])  // srcTL
+        const targetTR = converter.forward([ xMax, yMax ])  // srcTR
+        const targetBL = converter.forward([ xMin, yMin ])  // srcBL
+        const targetBR = converter.forward([ xMax, yMin ])  // srcBR
 
         const renderTL = MercatorCoordinate.fromLonLat(targetTL as [ number, number ])
         const renderTR = MercatorCoordinate.fromLonLat(targetTR as [ number, number ])
@@ -285,10 +324,8 @@ export class GridNode {
         const renderBR = MercatorCoordinate.fromLonLat(targetBR as [ number, number ])
 
         return new Float32Array([
-            renderTL[0], renderTL[1],
-            renderTR[0], renderTR[1],
-            renderBL[0], renderBL[1],
-            renderBR[0], renderBR[1]
+            ...renderTL, ...renderTR,
+            ...renderBL, ...renderBR
         ])
     }
 

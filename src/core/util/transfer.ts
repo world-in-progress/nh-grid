@@ -84,6 +84,7 @@ export function serialize(input: unknown, transferables?: Set<Transferable>): Se
 }
 
 export function deserialize(input: Serialized): unknown {
+
     if (
         input === null ||
         input === undefined ||

@@ -294,6 +294,74 @@ class NHGridHelper:
                 adj_grids[0].add_edge(edge_code, edge_id)
             if adj_grids[1] is not None:
                 adj_grids[1].add_edge(op_edge_code, edge_id)
+                
+        # Validate edges in grids
+        for grid in self.grids.values():
+            north_edges = [ self.get_edge_by_id(edge_id) for edge_id in grid.edge_ids[EDGE_CODE_NORTH] ]
+            west_edges = [ self.get_edge_by_id(edge_id) for edge_id in grid.edge_ids[EDGE_CODE_WEST] ]
+            south_edges = [ self.get_edge_by_id(edge_id) for edge_id in grid.edge_ids[EDGE_CODE_SOUTH] ]
+            east_edges = [ self.get_edge_by_id(edge_id) for edge_id in grid.edge_ids[EDGE_CODE_EAST] ]
+            
+            invalid_n_edges = self.validate_edges(north_edges)
+            invalid_e_edges = self.validate_edges(west_edges)
+            invalid_s_edges = self.validate_edges(south_edges)
+            invalid_w_edges = self.validate_edges(east_edges)
+            
+            if len(invalid_n_edges) != 0:
+                self.process_invalid_edge(invalid_n_edges)
+            if len(invalid_e_edges) != 0:
+                self.process_invalid_edge(invalid_e_edges)
+            if len(invalid_s_edges) != 0:
+                self.process_invalid_edge(invalid_s_edges)
+            if len(invalid_w_edges) != 0:
+                self.process_invalid_edge(invalid_w_edges)
+
+    def process_invalid_edge(self, edges: list[NHGridEdge]):
+        
+        for edge in edges:
+            del self.edges[edge.id]
+            
+            for grid in self.get_grids_adjacent_to_edge(edge):
+                for edge_set in grid.edge_ids:
+                    if edge.id in edge_set:
+                        edge_set.discard(edge.id)
+    
+    def validate_edges(self, edges: list[NHGridEdge]) -> list[NHGridEdge]:
+        
+        invalid_edges = set()
+
+        if len(edges) == 1:
+            return list(invalid_edges)
+        
+        for i in range(len(edges)):
+            for j in range(len(edges)):
+                if i == j:
+                    continue
+                
+                edge1: NHGridEdge = edges[i]
+                edge2: NHGridEdge = edges[j]
+                if self.is_edges_overlapped(edge1, edge2):
+                    if None in edge1.grid_ids:
+                        invalid_edges.add(edge1)
+        return list(invalid_edges)
+    
+    def is_edges_overlapped(self, edge1: NHGridEdge, edge2: NHGridEdge) -> bool:
+        
+        [ x11, y11, x12, y12 ] = edge1.get_p1_p2()
+        [ x21, y21, x22, y22 ] = edge2.get_p1_p2()
+        
+        if edge1.get_direction() == EDGE_ATTRIBUTE_HORIZONTAL:
+            p1_min, p1_max = sorted((x11, x12))
+            p2_min, p2_max = sorted((x21, x22))
+        else:
+            p1_min, p1_max = sorted((y11, y12))
+            p2_min, p2_max = sorted((y21, y22))
+        
+        if p1_max > p2_min and p1_min < p2_max:
+            return True
+        if p1_min <= p2_min and p1_max >= p2_max:
+            return True
+        return False
     
     def get_grid_by_id(self, id: int) -> NHGridNode:
         
@@ -366,7 +434,7 @@ class NHGridHelper:
             
             distance = edge.get_length()
             
-            edge_info += f'{id + 1}, {direction}, {left_grid_id}, {right_grid_id}, {top_grid_id}, {bottom_grid_id}, {distance}, {center}\n'
+            edge_info += f'{id + 1}, {direction}, {left_grid_id}, {right_grid_id}, {bottom_grid_id}, {top_grid_id}, {distance}, {center}\n'
         
         with open(os.path.join(output_path, 'ns.txt'), 'w', encoding='utf-8') as file:
             file.write(edge_info)

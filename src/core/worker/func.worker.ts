@@ -1,15 +1,19 @@
-import { GridNode } from '../grid/NHGrid'
+import { GridNodeManager } from '../grid/NHGridManager'
+import { SubdivideRules } from '../grid/NHGrid'
 import { Callback, WorkerSelf } from '../types'
-import { createDbManager, DbAction } from '../database/db'
 
-export function hello(_: unknown, __: Callback<any>) {
-    
-    console.log('Hello!')
+export function checkIfReady(this: WorkerSelf, _: unknown, callback: Callback<any>) {
+
+    callback()
 }
 
-const dbManager = createDbManager()
-export function gridProcess(actions: DbAction[], callback: Callback<GridNode[]>) {
+export function init(this: WorkerSelf & Record<'nodeManager', GridNodeManager>, subdivideRules: SubdivideRules, callback: Callback<any>) {
 
-    dbManager('GridDB', actions)
-    callback(null, actions.map(action => action.data))
+    this.nodeManager = new GridNodeManager(subdivideRules)
+    callback()
+}
+
+export async function subdivideGrid(this: WorkerSelf & Record<'nodeManager', GridNodeManager>, [ level, globalId ]: [ level: number, globalId: number ], callback: Callback<any>) {
+
+    callback(null, this.nodeManager.subdivideGrid(level, globalId))
 }

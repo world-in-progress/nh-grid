@@ -118,25 +118,25 @@ function createTexture2DArray(gl: WebGL2RenderingContext, level: number, layers:
     return texture
 }
 
-function fillSubTexture2DByArray(gl: WebGL2RenderingContext, texture: WebGLTexture, level: number, xOffset: number, yOffset: number, width: number, height: number, format: number, type: number, array: ArrayBufferView): void {
+function fillSubTexture2DByArray(gl: WebGL2RenderingContext, texture: WebGLTexture, level: number, xOffset: number, yOffset: number, width: number, height: number, format: number, type: number, array: ArrayBufferView, srcOffset = 0): void {
     
     // Bind the texture
     gl.bindTexture(gl.TEXTURE_2D, texture)
 
     // Upload texture data
-    gl.texSubImage2D(gl.TEXTURE_2D, level, xOffset, yOffset, width, height, format, type, array)
+    gl.texSubImage2D(gl.TEXTURE_2D, level, xOffset, yOffset, width, height, format, type, array, srcOffset)
 
     // Unbind the texture
     gl.bindTexture(gl.TEXTURE_2D, null);
 }
 
-function fillSubTexture2DArrayByArray(gl: WebGL2RenderingContext, texture: WebGLTexture, level: number, xOffset: number, yOffset: number, zOffset: number, width: number, height: number, depth: number, format: number, type: number, array: ArrayBufferView): void {
+function fillSubTexture2DArrayByArray(gl: WebGL2RenderingContext, texture: WebGLTexture, level: number, xOffset: number, yOffset: number, zOffset: number, width: number, height: number, depth: number, format: number, type: number, array: ArrayBufferView, srcOffset = 0): void {
     
     // Bind the texture
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, texture)
 
     // Upload texture data
-    gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, level, xOffset, yOffset, zOffset, width, height, depth, format, type, array, 0)
+    gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, level, xOffset, yOffset, zOffset, width, height, depth, format, type, array, srcOffset)
 
     // Unbind the texture
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
