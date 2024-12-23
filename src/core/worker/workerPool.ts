@@ -1,5 +1,7 @@
 export const PRELOAD_POOL_ID = 'preloaded_worker_pool'
 
+type WorkerType = 'Function' | 'IndexedDB'
+
 class WorkerPool {
 
     private static _instance: WorkerPool
@@ -31,7 +33,7 @@ class WorkerPool {
 
             while (this.workers.length < WorkerPool.workerCount) {
                 
-                this.workers.push(createWorker())
+                this.workers.push(createWorker(this.workers.length === WorkerPool.workerCount - 1 ? 'IndexedDB' : 'Function'))
             }
         }
 
@@ -61,13 +63,21 @@ class WorkerPool {
     }
 }
 
-function createWorker() {
+function createWorker(type: WorkerType) {
 
-    const worker = new Worker(new URL('./base.worker.ts', import.meta.url), {type: 'module'})!
+    let worker: Worker
+    switch (type) {
+        default:
+        case 'Function':
+            worker = new Worker(new URL('./base.worker.ts', import.meta.url), {type: 'module'})!
+            break
+
+        case 'IndexedDB': 
+            worker = new Worker(new URL('./db.worker.ts', import.meta.url), {type: 'module'})!
+            break
+    }
+
     return worker
 }
-
-const hardwareConcurrency = typeof window !== 'undefined' ? (window.navigator.hardwareConcurrency || 2) : 2
-WorkerPool.workerCount = Math.min(hardwareConcurrency, 2)
 
 export default WorkerPool

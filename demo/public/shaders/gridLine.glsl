@@ -71,13 +71,10 @@ float stitching(float coord, float minVal, float delta, float edge) {
 
 void main() {
 
-    ivec2 dim = textureSize(indexTexture, 0).xy;
-    int index_u = gl_InstanceID % dim.x;
-    int index_v = gl_InstanceID / dim.x;
-    int storageId = int(texelFetch(indexTexture, ivec2(index_u, index_v), 0).r);
+    ivec2 dim = textureSize(storageTexture, 0).xy;
 
-    int storage_u = storageId % dim.x;
-    int storage_v = storageId / dim.x;
+    int storage_u = gl_InstanceID % dim.x;
+    int storage_v = gl_InstanceID / dim.x;
 
     int layerMap[4] = int[4](
         0,

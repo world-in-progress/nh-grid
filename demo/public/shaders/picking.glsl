@@ -8,12 +8,12 @@ precision highp sampler2DArray;
 uniform mat4 uMatrix;
 uniform vec2 centerLow;
 uniform vec2 centerHigh;
+uniform mat4 pickingMatrix;
 uniform sampler2D paletteTexture;
-uniform usampler2D levelTexture;
 uniform usampler2D indexTexture;
 uniform sampler2DArray storageTexture;
 
-out vec3 v_color;
+out vec4 v_color;
 
 const float PI = 3.141592653;
 
@@ -71,6 +71,14 @@ float stitching(float coord, float minVal, float delta, float edge) {
     return -order * delta;
 }
 
+uvec4 idToRGBA(uint id) {
+    return uvec4(
+        (id >> 0) & uint(0xFF),
+        (id >> 8) & uint(0xFF),
+        (id >> 16) & uint(0xFF),
+        (id >> 24) & uint(0xFF)
+    );
+}
 
 void main() {
 
@@ -86,11 +94,12 @@ void main() {
         3
     );
 
-    int level = int(texelFetch(levelTexture, ivec2(storage_u, storage_v), 0).r);
     vec2 xy = texelFetch(storageTexture, ivec3(storage_u, storage_v, layerMap[gl_VertexID]), 0).rg;
 
-    v_color = texelFetch(paletteTexture, ivec2(level, 0), 0).rgb;
-    gl_Position = uMatrix * vec4(translateRelativeToEye(xy, vec2(0.0)), 0.0, 1.0);
+    gl_Position = pickingMatrix * uMatrix * vec4(translateRelativeToEye(xy, vec2(0.0)), 0.0, 1.0);
+
+    uvec4 id = idToRGBA(uint(gl_InstanceID));
+    v_color = vec4(id) / 255.0;
 }
 
 #endif
@@ -99,11 +108,11 @@ void main() {
 
 precision highp float;
 
-in vec3 v_color;
+in vec4 v_color;
 out vec4 fragColor;
 
 void main() {
-    fragColor = vec4(v_color, 0.3);
+    fragColor = v_color;
 }
 
 #endif

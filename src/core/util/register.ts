@@ -1,6 +1,6 @@
-
 import { Class, Klass } from '../types'
-import { GridNode } from '../grid/NHGrid'
+import { GridNode, GridNodeRecord } from '../grid/NHGrid'
+import { BoundingBox2D } from './boundingBox2D'
 
 export type Registry = {
     [ key: string ]: {
@@ -36,3 +36,5 @@ export default registry
 register(Error, 'Error')
 register(Object, 'Object')
 register(GridNode, 'GridNode')
+register(BoundingBox2D, 'BoundingBox2D')
+register(GridNodeRecord, 'GridNodeRecord')

@@ -14,12 +14,26 @@ class Dispatcher {
 
     static Actor: Class<Actor>
 
-    constructor(parent: any) {
+    constructor(parent: any, actorMaxNum?: number) {
+
+        if (actorMaxNum) {
+            WorkerPool.workerCount = actorMaxNum
+        } else {
+            const hardwareConcurrency = typeof window !== 'undefined' ? (window.navigator.hardwareConcurrency || 2) : 2
+            WorkerPool.workerCount = Math.min(hardwareConcurrency, 2)
+        }
 
         this.workerPool.acquire(this.id).forEach((worker, index) => {
-            const actor = new Actor(worker, parent)
-            actor.name = `Worker ${index}`
-            this.actors.push(actor)
+
+            if (index === WorkerPool.workerCount - 1) {
+                const actor = new Actor(worker, parent)
+                actor.name = `IndexedDB Worker`
+                this.actors.push(actor)
+            } else {
+                const actor = new Actor(worker, parent)
+                actor.name = `Worker ${index}`
+                this.actors.push(actor)
+            }
         })
         this.broadcast('checkIfReady', null, () => { this.ready = true })
     }
@@ -32,10 +46,15 @@ class Dispatcher {
         }, cb)
     }
 
-    getActor(): Actor {
+    get actor(): Actor {
 
-        this.currentActor = (this.currentActor + 1) % this.actors.length
+        this.currentActor = (this.currentActor + 1) % (this.actors.length - 1)
         return this.actors[this.currentActor]
+    }
+
+    get dbActor(): Actor {
+
+        return this.actors[this.actors.length - 1]
     }
 
     remove() {

@@ -32,12 +32,19 @@ export function deleteDB(dbName: string): void {
     }
 }
 
-export function addData(store: IDBObjectStore, data: any) {
+export function addData(store: IDBObjectStore, data: any): Promise<any> {
 
-    const request = store.add(data)
+    return new Promise((resolve, reject) => {
+        const request = store.add(data)
 
-    request.onsuccess = () => {}
-    request.onerror = (e) => console.error((e.target as any).error)
+        request.onsuccess = () => {
+            resolve(null)
+        }
+
+        request.onerror = (e) => {
+            reject((e.target as any).error)
+        }
+    })
 }
 
 export function deleteData(store: IDBObjectStore, id: number | string) {
@@ -56,18 +63,23 @@ export function updateData(store: IDBObjectStore, data: any) {
     request.onerror = (e) => console.error((e.target as any).error)
 }
 
-export function getData(store: IDBObjectStore, id: number | string) {
+function getData(store: IDBObjectStore, id: string | number): Promise<any> {
+    return new Promise((resolve, reject) => {
+        const request = store.get(id)
 
-    const request = store.get(id)
+        request.onsuccess = () => {
+            resolve(request.result || null)
+        }
 
-    request.onsuccess = () => {}
-    request.onerror = (e) => console.error((e.target as any).error)
+        request.onerror = () => {
+            reject(new Error(`Failed to get data for id: ${id}`))
+        }
+    })
 }
 
 export type DbAction = {
-    data?: any
-    id?: string | number
-    tableName: string
+    data: any
+    storeName: string
     type: 'C' | 'R' | 'U' | 'D'
 }
 
@@ -78,37 +90,48 @@ export interface DbStoreDict {
 export function createDbManager() {
 
     let db: IDBDatabase | undefined
-
-    function handleActions(actions: DbAction[]) {
-
+    
+    async function handleActions(actions: DbAction[]): Promise<any[]> {
         const storeDict: DbStoreDict = {}
+        const transaction = db!.transaction(actions.map(a => a.storeName), 'readwrite')
 
-        actions.forEach(action => {
+        const results: any[] = new Array(actions.length).fill(null)
 
-            if (!storeDict[action.tableName]) {
-                const transaction = db!.transaction([action.tableName], 'readwrite')
-                storeDict[action.tableName] = transaction.objectStore(action.tableName)
+        actions.forEach((action, index) => {
+            if (!storeDict[action.storeName]) {
+                storeDict[action.storeName] = transaction.objectStore(action.storeName)
             }
+            const store = storeDict[action.storeName]
 
-            const store = storeDict[action.tableName]
-
-            switch (action.type) {
-
-                case 'C':
-                    addData(store, action.data)
-                    break
-                case 'R':
-                    getData(store, action.id!)
-                    break
-                case 'U':
-                    updateData(store, action.data)
-                    break
-                case 'D':
-                    deleteData(store, action.id!)
-                    break
-                default:
-                    console.error(`Unknown action type: ${action.type}`)
+            try {
+                switch (action.type) {
+                    case 'C':
+                        store.add(action.data)
+                        break
+                    case 'U':
+                        store.put(action.data)
+                        break
+                    case 'D':
+                        store.delete(action.data!.id)
+                        break
+                    case 'R':
+                        const request = store.get(action.data!.id)
+                        request.onsuccess = (event) => {
+                            results[index] = (event.target as IDBRequest).result
+                        }
+                        request.onerror = () => {
+                            results[index] = null
+                        }
+                        break
+                }
+            } catch (error) {
+                console.error(`Action failed: ${action.type}`, error)
             }
+        })
+
+        return new Promise<any[]>((resolve, reject) => {
+            transaction.oncomplete = () => resolve(results)
+            transaction.onerror = () => reject(new Error('Transaction failed'))
         })
     }
 
@@ -128,7 +151,7 @@ export function createDbManager() {
         })
     }
 
-    return async (dbName: string, actions: DbAction[]) => {
+    return async (dbName: string, actions: DbAction[]): Promise<any[]> => {
 
         if (!db) {
             try {
@@ -138,6 +161,6 @@ export function createDbManager() {
             }
         }
 
-        handleActions(actions)
+        return handleActions(actions)
     }
 }
