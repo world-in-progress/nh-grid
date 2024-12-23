@@ -4,6 +4,7 @@ import { EDGE_CODE, EDGE_CODE_EAST, EDGE_CODE_NORTH, EDGE_CODE_SOUTH, EDGE_CODE_
 import { Callback } from '../types'
 import proj4 from 'proj4'
 import { MercatorCoordinate } from '../math/mercatorCoordinate'
+import UndoRedoManager, { UndoRedoOperation } from '../util/undoRedoManager'
 
 export class GridEdgeRecorder {
 
@@ -73,53 +74,42 @@ export class GridEdgeRecorder {
 export interface GridLevelInfo {
     width: number
     height: number
-    infos: (GridNodeRenderInfo | undefined)[]
 }
 
 const NODE_STORE = 'GridNode'
 
-export class GridNodeRecorder {
+export interface UndoRedoRecordOperation extends UndoRedoOperation {
+    action: 'RemoveGrid' | 'SubdivideGrid'
+}
+
+export class GridNodeRecorder extends UndoRedoManager {
+
+    private _projConverter: proj4.Converter
 
     isReady = false
     nextStorageId = 0
+    levelInfos: GridLevelInfo[]
+    storageId_gridInfo_cache = new Array() // [ level_0, globalId_0, level_1, globalId_1, ... , level_n, globalId_n ]
 
-    private _levelInfos: GridLevelInfo[]
-    private _projConverter: proj4.Converter
-    private _subdivideRules: SubdivideRules
+    constructor(private _dispatcher: Dispatcher, private _subdivideRules: SubdivideRules, capacity: number = 1000) {
+        super(capacity)
 
-    // [ level_0, globalId_0, level_1, globalId_1, ... , level_n, globalId_n ]
-    storageId_gridInfo_cache = new Array()
-
-    constructor(private _dispatcher: Dispatcher, subdivideRules: SubdivideRules) {
-        this._subdivideRules = subdivideRules
-
-        this._projConverter = proj4(subdivideRules.srcCS, subdivideRules.targetCS)
-
-        const rootGrid = new GridNode({ localId: 0, globalId: 0 })
-        const rootGridInfo: GridNodeRenderInfo = {
-            uuId: rootGrid.uuId,
-            vertices: rootGrid.getVertices(this._projConverter, this._subdivideRules.bBox)
-        }
+        // Init projConverter
+        this._projConverter = proj4(this._subdivideRules.srcCS, this._subdivideRules.targetCS)
         
-        this._levelInfos = [
-            {
-                width: 1,
-                height: 1,
-                infos: [ rootGridInfo ]
-            }
-        ]
-
+        // Init levelInfos
+        this.levelInfos = new Array<GridLevelInfo>(this._subdivideRules.rules.length)
         this._subdivideRules.rules.forEach((_, level, rules) => {
-            if (level == 0) return
 
-            const width = this._levelInfos[level - 1].width * rules[level - 1][0]
-            const height = this._levelInfos[level - 1].height * rules[level - 1][1]
-
-            console.log(width, height)
-            this._levelInfos[level] = {
-                width, height,
-                infos: new Array<GridNodeRenderInfo>(width * height)
+            let width: number, height: number
+            if (level == 0) {
+                width = 1
+                height = 1
+            } else {
+                width = this.levelInfos[level - 1].width * rules[level - 1][0]
+                height = this.levelInfos[level - 1].height * rules[level - 1][1]
             }
+            this.levelInfos[level] = { width, height }
         })
     }
 
@@ -135,16 +125,28 @@ export class GridNodeRecorder {
         })
     }
 
-    private get _actor() {
-        return this._dispatcher.actor
+    removeGrid(storageId: number, callback?: Function): void {
+
+        const removeOperation = this._generateRemoveGridOperation(storageId, callback)
+        this.execute(removeOperation)
+    }
+    
+    subdivideGrid(level: number, globalId: number, callback?: Function): void {
+
+        // Dispatch a worker to subdivide the grid
+        this._actor.send('subdivideGrid', [ level, globalId ], (_, renderInfos: GridNodeRenderInfoPack) => {
+
+            const subdivideOperation = this._generateSubdivideGridOperation(level + 1, renderInfos, callback)            
+            this.execute(subdivideOperation)
+
+            this._dbActor.send('createGrids', renderInfos.uuIds)
+        })
     }
 
-    private get _dbActor() {
-        return this._dispatcher.dbActor
-    }
+    parseGridTopology(): void {
 
-    get levelInfos() {
-        return this._levelInfos
+        // Dispatch a worker to parse the topology about all grids
+        this._actor.send('parseTopology', this.storageId_gridInfo_cache, () => {})
     }
 
     getGridInfoByStorageId(storageId: number): [ level: number, globalId: number ] {
@@ -155,7 +157,7 @@ export class GridNodeRecorder {
     getGridLocalId(level: number, globalId: number) {
         if (level === 0) return 0
     
-        const { width } = this._levelInfos[level]
+        const { width } = this.levelInfos[level]
         const [ subWidth, subHeight ] = this._subdivideRules.rules[level - 1]
     
         const u = globalId % width
@@ -167,19 +169,27 @@ export class GridNodeRecorder {
     getParentGlobalId(level: number, globalId: number): number {
         if (level === 0) return 0
 
-        const { width } = this._levelInfos[level]
+        const { width } = this.levelInfos[level]
         const [ subWidth, subHeight ] = this._subdivideRules.rules[level - 1]
 
         const u = globalId % width
         const v = Math.floor(globalId / width)
 
-        return Math.floor(v / subHeight) * this._levelInfos[level - 1].width + Math.floor(u / subWidth)
+        return Math.floor(v / subHeight) * this.levelInfos[level - 1].width + Math.floor(u / subWidth)
+    }
+
+    private get _actor() {
+        return this._dispatcher.actor
+    }
+
+    private get _dbActor() {
+        return this._dispatcher.dbActor
     }
         
     private _createNodeRenderVertices(level: number, globalId: number) {
         
         const bBox = this._subdivideRules.bBox
-        const { width, height } = this._levelInfos[level]
+        const { width, height } = this.levelInfos[level]
 
         const globalU = globalId % width
         const globalV = Math.floor(globalId / width)
@@ -204,87 +214,87 @@ export class GridNodeRecorder {
         ])
     }
 
-    removeGrid(storageId: number, callback?: Function): void {
+    private _generateRemoveGridOperation(storageId: number, callback?: Function): UndoRedoRecordOperation {
 
-        this.nextStorageId -= 1
-        if (this.nextStorageId === storageId) return
+        const lastStorageId = this.nextStorageId - 1
 
-        // Get render info of grid having the last storageId
-        const [ lastLevel, lastGlobalId ] = this.getGridInfoByStorageId(this.nextStorageId)
+        // Get render info of this removable grid and the grid having the last storageId
+        const [ lastLevel, lastGlobalId ] = this.getGridInfoByStorageId(lastStorageId)
+        const [ removableLevel, removableGlobalId ] = this.getGridInfoByStorageId(storageId)
 
-        // Replace removable render info with the last render info in the cache
-        this.storageId_gridInfo_cache[storageId * 2 + 0] = lastLevel
-        this.storageId_gridInfo_cache[storageId * 2 + 1] = lastGlobalId
+        const removeOperation: UndoRedoRecordOperation = {
+            action: 'RemoveGrid',
+            apply: () => {
+                this.nextStorageId -= 1
 
-        callback && callback([ storageId, lastLevel, this._createNodeRenderVertices(lastLevel, lastGlobalId) ])
-    }
-    
-    subdivideGrid(level: number, globalId: number, callback?: Function): void {
-
-        this._actor.send('subdivideGrid', [ level, globalId ], (_, renderInfos: GridNodeRenderInfoPack) => {
-
-            this._handleGridNodeRenderInfo(level + 1, renderInfos, callback)
-        })
-    }
-
-    private _handleGridNodeRenderInfo(level: number, renderInfos: GridNodeRenderInfoPack, callback?: Function) {
-
-        const infoLength = renderInfos.uuIds.length
-        const fromStorageId = this.nextStorageId
-        const toStorageId = fromStorageId + infoLength - 1
-        const levels = new Uint16Array(infoLength).fill(level)
+                // Do nothing if the removable grid is the grid having the last storageId
+                if (this.nextStorageId === storageId) return
         
-        renderInfos.uuIds.forEach(uuId => {
+                // Replace removable render info with the last render info in the cache
+                this.storageId_gridInfo_cache[storageId * 2 + 0] = lastLevel
+                this.storageId_gridInfo_cache[storageId * 2 + 1] = lastGlobalId
+        
+                callback && callback([ storageId, lastLevel, this._createNodeRenderVertices(lastLevel, lastGlobalId) ])
+            },
 
-            const storageId = this.nextStorageId++
-            const [ level, globalId ] = uuId.split('-').map(key => +key)
-
-            this.storageId_gridInfo_cache[storageId * 2 + 0]  = level
-            this.storageId_gridInfo_cache[storageId * 2 + 1]  = globalId
-
-        })
-
-        callback && callback([ fromStorageId, toStorageId, levels, renderInfos.vertexBuffer ])
-
-        this._dbActor.send('createGrids', renderInfos.uuIds)
-    }
-
-    getGridRenderInfo(uuId: string): GridNodeRenderInfo | undefined
-    getGridRenderInfo(level: number, globalId: number): GridNodeRenderInfo | undefined
-    getGridRenderInfo(uuIdOrLevel?: string | number, globalId?: number): GridNodeRenderInfo | undefined {
-
-        if (typeof uuIdOrLevel === 'string') {
-
-            const keys = uuIdOrLevel.split('-').map(key => Number(key))
-            if (keys.length !== 2 || isNaN(keys[0]) || isNaN(keys[1])) {
-                throw new Error(`Invalid uuId format: ${uuIdOrLevel}`)
+            inverse: () => {
+                this.nextStorageId += 1
+                
+                // Revert info about the removable grid
+                this.storageId_gridInfo_cache[storageId * 2 + 0] = removableLevel
+                this.storageId_gridInfo_cache[storageId * 2 + 1] = removableGlobalId
+                
+                // Revert info about the grid having the last storageId
+                this.storageId_gridInfo_cache[lastStorageId * 2 + 0] = lastLevel
+                this.storageId_gridInfo_cache[lastStorageId * 2 + 1] = lastGlobalId
+        
+                // Revert callback
+                if (callback) {
+                    callback([ lastStorageId, lastLevel, this._createNodeRenderVertices(lastLevel, lastGlobalId) ])
+                    callback([ storageId, removableLevel, this._createNodeRenderVertices(removableLevel, removableGlobalId) ])
+                }
             }
-            const [ level, globalId ] = keys
-            
-            return this._levelInfos[level]?.infos[globalId]
-
-        } else if (typeof uuIdOrLevel === 'number' && typeof globalId === 'number') {
-
-            if (uuIdOrLevel < 0) {
-                throw new Error(`Invalid level ${uuIdOrLevel}`)
-            }
-
-            return this._levelInfos[uuIdOrLevel]?.infos[globalId]
-
-        } else {
-
-            throw new Error('Invalid calling of getGrid')
         }
+
+        return removeOperation
     }
 
-    getGridParent(info: GridNodeRenderInfo): GridNodeRenderInfo | undefined {
+    private _generateSubdivideGridOperation(level: number, renderInfos: GridNodeRenderInfoPack, callback?: Function): UndoRedoRecordOperation {
 
-        const [ level, globalId ] = info.uuId.split('-').map(key => Number(key))
+        const fromStorageId = this.nextStorageId
+        const infoLength = renderInfos.uuIds.length
+        const toStorageId = fromStorageId + infoLength - 1
 
-        if (level === 0) return undefined
+        const subdivideOperation: UndoRedoRecordOperation = {
+            action: 'SubdivideGrid',
+            apply: () => {
+
+                renderInfos.uuIds.forEach(uuId => {
         
-        const parentId = this.getParentGlobalId(level, globalId)
-        return this.getGridRenderInfo(level - 1, parentId)
+                    const storageId = this.nextStorageId++
+                    const [ level, globalId ] = uuId.split('-').map(key => +key)
+        
+                    this.storageId_gridInfo_cache[storageId * 2 + 0]  = level
+                    this.storageId_gridInfo_cache[storageId * 2 + 1]  = globalId
+        
+                })
+                const levels = new Uint16Array(infoLength).fill(level)
+                callback && callback([ fromStorageId, toStorageId, levels, renderInfos.vertexBuffer ])
+            },
+            inverse: () => {
+
+                // Remove info in cache
+                for (let i = fromStorageId; i <= toStorageId; i++) {
+        
+                    this.nextStorageId --
+                    this.storageId_gridInfo_cache[i * 2 + 0]  = undefined
+                    this.storageId_gridInfo_cache[i * 2 + 1]  = undefined
+                }
+                callback && callback(null)
+            }
+        }
+
+        return subdivideOperation
     }
 }
 

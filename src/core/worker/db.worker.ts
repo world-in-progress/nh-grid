@@ -34,7 +34,7 @@ self.createGrids = async (uuIds: Array<string>, callback: Callback<any>) => {
 
     const dbActions = uuIds.map(uuId => {
         return {
-            type: 'C',
+            type: 'U',
             storeName: NODE_STORE,
             data: new GridNodeRecord(uuId)
         } as DbAction

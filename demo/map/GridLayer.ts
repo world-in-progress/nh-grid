@@ -8,7 +8,7 @@ import NHMap from './NHMap'
 import { mat4 } from 'gl-matrix'
 import { BoundingBox2D } from '../../src/core/util/boundingBox2D'
 import { VibrantColorGenerator } from '../../src/core/util/vibrantColorGenerator'
-import { GridNode, GridNodeRenderInfo } from '../../src/core/grid/NHGrid'
+import { GridNode } from '../../src/core/grid/NHGrid'
 import { GridEdgeRecorder, GridNodeRecorder } from '../../src/core/grid/NHGridRecorder'
 import { createDB, deleteDB } from '../../src/core/database/db'
 import Dispatcher from '../../src/core/message/dispatcher'
@@ -49,11 +49,11 @@ export default class GridLayer {
 
     // Layer-related //////////////////////////////////////////////////
 
+    map: NHMap
     type = 'custom'
     id = 'GridLayer'
     renderingMode = '3d'
     isInitialized = false
-    map: NHMap
 
     // Function-related //////////////////////////////////////////////////
 
@@ -108,6 +108,7 @@ export default class GridLayer {
 
     isShiftClick = false
     isDeleteMode = false
+    isTransparent = false
 
     mouseupHandler: Function
     mousedownHandler: Function
@@ -127,25 +128,31 @@ export default class GridLayer {
 
     constructor(options: GridLayerOptions) {
 
+        // Set map
         this.map = options.map
-        this.srcCS = options.srcCS
         this._gl = this.map.painter.context.gl
-        this.projConverter = proj4(this.srcCS, 'EPSG:4326')
+
+        this.srcCS = options.srcCS
+        this.maxGridNum = options.maxGridNum
         this.firstLevelSize = options.firstLevelSize
-        this.subdivideRules = [[ 1, 1 ]]
+        this.projConverter = proj4(this.srcCS, 'EPSG:4326')
+
+        // Resize boundary condition by the first level size
+        const boundary = options.boundaryCondition
+        boundary[2] = boundary[0] + Math.ceil((boundary[2] - boundary[0]) / this.firstLevelSize[0]) * this.firstLevelSize[0] 
+        boundary[3] = boundary[1] + Math.ceil((boundary[3] - boundary[1]) / this.firstLevelSize[1]) * this.firstLevelSize[1]
+        this.bBox = new BoundingBox2D(...boundary)
+
+        // Set subdivide rules by new boundary condition
+        this.subdivideRules = [[  
+            (boundary[2] - boundary[0]) / this.firstLevelSize[0],
+            (boundary[3] - boundary[1]) / this.firstLevelSize[1],
+        ]]
         options.subdivideRules?.forEach(rule => {
             this.subdivideRules.push(rule)
         })
 
-        this.maxGridNum = options.maxGridNum
-        const boundary = options.boundaryCondition
-        boundary[2] = boundary[0] + Math.floor((boundary[2] - boundary[0]) / this.firstLevelSize[0]) * this.firstLevelSize[0] 
-        boundary[3] = boundary[1] + Math.floor((boundary[3] - boundary[1]) / this.firstLevelSize[1]) * this.firstLevelSize[1]
-        this.bBox = new BoundingBox2D(...boundary)
-        this.subdivideRules[0] = [
-            Math.ceil((boundary[2] - boundary[0]) / this.firstLevelSize[0]),
-            Math.ceil((boundary[3] - boundary[1]) / this.firstLevelSize[1]),
-        ]
+        // Create core recorders
         this.edgeRecorder = new GridEdgeRecorder(options.edgeProperties)
         this.gridRecorder = new GridNodeRecorder(this.dispatcher, {
             bBox: this.bBox,
@@ -154,13 +161,10 @@ export default class GridLayer {
             rules: this.subdivideRules
         })
 
-        this.updateGPUGrid = this._updateGPUGrid.bind(this)
-        this.updateGPUGrids = this._updateGPUGrids.bind(this)
-
-        // Storage texture memory
+        // Set storage texture memory
         this.storageTextureSize = Math.ceil(Math.sqrt(options.maxGridNum))
 
-        // Palette color list
+        // Make palette color list
         const colorGenerator = new VibrantColorGenerator()
         this.paletteColorList = new Uint8Array(this.subdivideRules.length * 3)
         for (let i = 0; i < this.subdivideRules.length; i++) {
@@ -168,19 +172,21 @@ export default class GridLayer {
             this.paletteColorList.set(color, i * 3)
         }
 
-        // Event handler
+        // Bind callbacks and event handlers
+        this.updateGPUGrid = this._updateGPUGrid.bind(this)
+        this.updateGPUGrids = this._updateGPUGrids.bind(this)
         this.mouseupHandler = this._mouseupHandler.bind(this)
         this.mousedownHandler = this._mousedownHandler.bind(this)
         this.mousemoveHandler = this._mousemoveHandler.bind(this)
 
-        // Interaction option
+        // Init interaction option
         this.uiOption = {
             capacity: 0.0,
             // level: this.subdivideRules.length - 1
             level: 2
         }
 
-        // Dat.GUI
+        // Launch Dat.GUI
         this.gui = new GUI()
         const brushFolder = this.gui.addFolder('Brush')
         brushFolder.add(this.uiOption, 'level', 1, this.subdivideRules.length - 1, 1)
@@ -255,7 +261,7 @@ export default class GridLayer {
         })
     }
     
-    // Fast function to just upload one grid rendering info to GPU stograge texture
+    // Fast function to upload one grid rendering info to GPU stograge texture
     writeGridInfoToTexture(info: [ storageId: number, level: number, vertices: Float32Array ]) {
 
         const gl = this._gl
@@ -299,11 +305,11 @@ export default class GridLayer {
             const size_within_fromStorageV_toStorageV = this.storageTextureSize * fullBlockRows
             const size_within_0_toStorageU = toStorageU + 1
 
-            // Use the maximum size to allocate the memory
+            // Use the maximum size to allocate this memory
             const subBlockSize = Math.max(size_within_0_toStorageU, Math.max(size_within_fromStorageU_textureSize, size_within_fromStorageV_toStorageV))
             const subVertices = new Float32Array(subBlockSize * 8)
 
-            // Update grid info for situation 1
+            // Update grid info for situation 1 //////////////////////////////////////////////////
             let srcOffset = 0
             let updateBlockWidth = this.storageTextureSize - fromStorageU
             let elementSize = updateBlockWidth * 2
@@ -314,7 +320,7 @@ export default class GridLayer {
             gll.fillSubTexture2DArrayByArray(gl, this._storageTextureArray, 0, fromStorageU, fromStorageV, 0, updateBlockWidth, 1, 4, gl.RG, gl.FLOAT, subVertices)
             gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, fromStorageU, fromStorageV, updateBlockWidth, 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, levels, srcOffset)
 
-            // Update grid info for situation 2
+            // Update grid info for situation 2 //////////////////////////////////////////////////
             srcOffset += updateBlockWidth
             if (fullBlockRows > 0) {
 
@@ -328,7 +334,7 @@ export default class GridLayer {
                 gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, 0, fromStorageV + 1, updateBlockWidth, fullBlockRows, gl.RED_INTEGER, gl.UNSIGNED_SHORT, levels, srcOffset)
             }
 
-            // Update grid info for situation 3
+            // Update grid info for situation 3 //////////////////////////////////////////////////
             srcOffset += updateBlockWidth * fullBlockRows
             updateBlockWidth = toStorageU + 1
             elementSize = updateBlockWidth * 2
@@ -340,45 +346,6 @@ export default class GridLayer {
             gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, 0, toStorageV, updateBlockWidth, 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, levels, srcOffset)
         }
     }
-
-    // tickSubdivider() {
-
-    //     this.indexList = Array.from(this.gridRecorder.uuId_storageId_map.values())
-    //     this.writeIndicesToTexture(this.indexList, this._indexTexture)
-    // }
-
-    // _tickSubdivider() {
-
-    //     this.fillList = []
-    //     this.lineList = []
-
-    //     const stack = [ this.gridRecorder.getGrid(0, 0) ]
-    //     while(stack.length > 0) {
-
-    //         const grid = stack.pop()
-    //         if (!grid) continue
-
-    //         // Add hit grid to render list
-    //         if (grid.hit || grid.children.length === 0) {
-
-    //             const storageId = this.gridRecorder.uuId_storageId_map.get(grid.uuId)!
-    //             this.lineList.push(storageId)
-    //             grid.hit && this.fillList.push(storageId)
-                
-    //         } else {
-    //             stack.push(...this.gridRecorder.getGridChildren(grid))
-    //         }
-    //     }
-    //     this.writeIndicesToTexture(this.fillList, this._fillIndexTexture)
-    //     this.writeIndicesToTexture(this.lineList, this._lineIndexTexture)
-    // }
-
-    // tickEditor() {
-        
-    //     this.indexList = this.hitGridList.filter(grid => grid.hit).map(grid => this.gridRecorder.uuId_storageId_map.get(grid.uuId)!)
-    //     this.writeIndicesToTexture(this.indexList, this._indexTexture)
-    //     // this.writeIndicesToTexture(this.lineList, this._lineIndexTexture)
-    // }
     
     async init() {
 
@@ -473,6 +440,16 @@ export default class GridLayer {
             }
         })
 
+        // [6] Add event listner for <Shift + T> (Set grid transparent or not)
+        document.addEventListener('keydown', e => {
+
+            if (e.shiftKey && e.key === 'T') {
+                this.isTransparent = !this.isTransparent 
+                console.log(`Grid Transparent: ${ this.isTransparent ? 'ON' : 'OFF' }`)
+                this.map.triggerRepaint()
+            }
+        })
+
         // Init GPU resources ////////////////////////////////////////////////////////////
 
         const gl = this._gl
@@ -514,7 +491,7 @@ export default class GridLayer {
         for (let i = 0; i < this.subdivideRules.length; i++) {
             colorList.set([ 0, 127, 127 ], i * 3)
         }
-        gll.fillSubTexture2DByArray(gl, this._paletteTexture, 0, 0, 0, this.subdivideRules.length, 1, gl.RGB, gl.UNSIGNED_BYTE, colorList)
+        gll.fillSubTexture2DByArray(gl, this._paletteTexture, 0, 0, 0, this.subdivideRules.length, 1, gl.RGB, gl.UNSIGNED_BYTE, this.paletteColorList)
         
         // Init workers of gridRecorder ////////////////////////////////////////////////////////////
 
@@ -523,7 +500,7 @@ export default class GridLayer {
             this.gridRecorder.subdivideGrid(0, 0, (infos: any) => {
                 this.updateGPUGrids(infos)
 
-                // Raise flage when the root grid (level: 0, globalId: 0) has been subdivided
+                // Raise flag when the root grid (level: 0, globalId: 0) has been subdivided
                 this.isInitialized = true
             })
         })
@@ -768,35 +745,6 @@ export default class GridLayer {
         gl.drawArraysInstanced(gl.LINE_LOOP, 0, 4, this.gridRecorder.nextStorageId)
     }
 
-    async onAdd(_: NHMap, gl: WebGL2RenderingContext) {
-
-        this._gl = gl
-        await this.init()
-    }
-    
-    render(gl: WebGL2RenderingContext, _: number[]) {
-
-        // Skip if not ready
-        if (!this.isInitialized || !this.gridRecorder.isReady) return
-
-        // Tick logic
-        this.map.update()
-        this.tickGrids()
-
-        // Tick render: Mesh Pass
-        this.drawGridMesh()
-        
-        // Tick render: Line Pass
-        this.drawGridLine()
-
-        // WebGL check
-        gll.errorCheck(gl)
-
-        // Update display of capacity
-        this.uiOption.capacity = this.gridRecorder.nextStorageId
-        this.capacityController.updateDisplay()
-    }
-
     /**
      * @param pickingMatrix 
      * @returns { number } StorageId of the picked grid
@@ -858,25 +806,29 @@ export default class GridLayer {
             if (hitLevel === maxLevel) return
     
             const targetLevel = Math.min(this.uiOption.level, maxLevel)
-            const [ lon, lat ] = this.projConverter.inverse(coordinates)
 
+            // Nothing will happen if subdivide grids more than one level
+            // Or target subdivided level equals to hitLevel
+            if (targetLevel - hitLevel > 1 || targetLevel == hitLevel) return
+
+            const [ lon, lat ] = this.projConverter.inverse(coordinates)
             const { width, height } = this.gridRecorder.levelInfos[targetLevel]
             const normalizedX = (lon - this.bBox.xMin) / (this.bBox.xMax - this.bBox.xMin)
             const normalizedY = (lat - this.bBox.yMin) / (this.bBox.yMax - this.bBox.yMin)
     
+            // Nothing will happen if mouse is out of boundary condition
             if (normalizedX < 0 || normalizedX > 1 || normalizedY < 0 || normalizedY > 1) return
 
+            // Calculate globalId of the target grid
             const col = Math.floor(normalizedX * (width - 1))
             const row = Math.floor(normalizedY * (height - 1))
             const globalId = row * width + col
 
-            if (targetLevel - hitLevel > 1 || targetLevel == hitLevel) return
-
             this.hitSet.add([ 
-                hitLevel,       // fromLevel
-                storageId,      // fromStorageId
-                targetLevel,    // toLevel
-                globalId,       // toGlobalId
+                hitLevel,       // FromLevel
+                storageId,      // FromStorageId
+                targetLevel,    // ToLevel
+                globalId,       // ToGlobalId
             ].join('-'))
         }
 
@@ -885,10 +837,11 @@ export default class GridLayer {
 
     removeGrid(storageId: number) {
         this.gridRecorder.removeGrid(storageId, this.updateGPUGrid)
+        this.map.triggerRepaint()
     }
 
-    subdivideGrid(level: number, globalId: number) {
-
+    subdivideGrid(info: string) {
+        const [ level, globalId ] = decodeInfo(info)
         this.gridRecorder.subdivideGrid(level, globalId, this.updateGPUGrids)
     }
 
@@ -897,9 +850,6 @@ export default class GridLayer {
         // if (this.hitSet.size === 0 && !this.typeChanged) return
 
         if (this._currentType === this.SUBDIVIDER_TYPE) {
-
-            const removeSet = new Set<number>()
-            const subdivideSet = new Set<string>()
 
             // Parse hitSet
             this.hitSet.forEach(hitActionInfo => {
@@ -913,26 +863,22 @@ export default class GridLayer {
                     parentGlobalId = this.gridRecorder.getParentGlobalId(parentLevel, parentGlobalId)
                 }
 
-                // Add storageId of removable grid
-                removeSet.add(fromStorageId)
+                // Remove grids
+                this.removeGrid(fromStorageId)
 
                 // Parse info about subdividable grid
+                const subdivideStack: Array<string> = []
                 parentGlobalId = this.gridRecorder.getParentGlobalId(toLevel, toGlobalId)
                 for (let parentLevel = toLevel - 1; parentLevel >= fromLevel; parentLevel--) {
-                    subdivideSet.add([ parentLevel, parentGlobalId ].join('-'))
+                    subdivideStack.push([ parentLevel, parentGlobalId ].join('-'))
                     parentGlobalId = this.gridRecorder.getParentGlobalId(parentLevel, parentGlobalId)
                 }
 
-            })
-
-            // Remove grids
-            removeSet.forEach(storageId => {
-                this.gridRecorder.removeGrid(storageId, this.updateGPUGrid)
-            })
-
-            // Subdivide grids
-            subdivideSet.forEach(info => {
-                this.gridRecorder.subdivideGrid(...decodeInfo(info) as [ number, number ], this.updateGPUGrids)
+                // Subdivide grids
+                while(subdivideStack.length) {
+                    const subdivideTask = subdivideStack.pop()!
+                    this.subdivideGrid(subdivideTask)
+                }
             })
 
         } else {
@@ -948,17 +894,50 @@ export default class GridLayer {
         this.typeChanged = false
     }
 
-    private _updateGPUGrid(info: [ storageId: number, level: number, vertices: Float32Array ]) {
+    async onAdd(_: NHMap, gl: WebGL2RenderingContext) {
 
-        this.writeGridInfoToTexture(info)
-        this._gl.flush()
+        this._gl = gl
+        await this.init()
+    }
+    
+    render(gl: WebGL2RenderingContext, _: number[]) {
+
+        // Skip if not ready
+        if (!this.isInitialized || !this.gridRecorder.isReady) return
+
+        // Tick logic
+        this.map.update()
+        this.tickGrids()
+
+        // Tick render: Mesh Pass
+        ;(!this.isTransparent) && this.drawGridMesh()
+        
+        // Tick render: Line Pass
+        this.drawGridLine()
+
+        // WebGL check
+        gll.errorCheck(gl)
+
+        // Update display of capacity
+        this.uiOption.capacity = this.gridRecorder.nextStorageId
+        this.capacityController.updateDisplay()
+    }
+
+    private _updateGPUGrid(info?: [ storageId: number, level: number, vertices: Float32Array ]) {
+
+        if (info) {
+            this.writeGridInfoToTexture(info)
+            this._gl.flush()
+        }
         this.map.triggerRepaint()
     }
 
-    private _updateGPUGrids(infos: [ fromStorageId: number, toStorageId: number, levels: Uint16Array, vertices: Float32Array ]) {
+    private _updateGPUGrids(infos?: [ fromStorageId: number, toStorageId: number, levels: Uint16Array, vertices: Float32Array ]) {
 
-        this.writeMultiGridInfoToTexture(infos)
-        this._gl.flush()
+        if (infos) {
+            this.writeMultiGridInfoToTexture(infos)
+            this._gl.flush()
+        }
         this.map.triggerRepaint()
     }
 }

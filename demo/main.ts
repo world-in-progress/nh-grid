@@ -17,7 +17,6 @@ document.body.appendChild(mapDiv)
 
 mapboxgl.accessToken = 'pk.eyJ1IjoieWNzb2t1IiwiYSI6ImNrenozdWdodDAza3EzY3BtdHh4cm5pangifQ.ZigfygDi2bK4HXY1pWh-wg'
 
-
 const map = new NHMap({
     style: 'mapbox://styles/ycsoku/cm3zhjxbs00pa01sd6hx7grtr',
     center: [ 114.051537, 22.446937 ],
@@ -33,14 +32,14 @@ const map = new NHMap({
         map,
         maxGridNum: 4096 * 4096,
         srcCS: 'ESRI:102140',
-        firstLevelSize: [ 300, 300 ],
+        firstLevelSize: [ 3000, 3000 ],
         subdivideRules: [
             // [1018, 382],
             // [4, 2],
             // [255, 200],
             // [20, 10],
             // [51, 40],
-            [10, 10],
+            [100, 100],
             [3, 3],
             // [3, 3],
             // [2, 2],
@@ -54,9 +53,10 @@ const map = new NHMap({
             [1, 1]
         ],
         boundaryCondition: [
-            // 113.9031065683563781, 22.3574937445505597, 114.1999667438311548, 22.5363807916184804
-            808357.5000000000000000, 824117.5000000000000000, 838897.5000000000000000, 843902.5000000000000000        
-    
+            808357.5000000000000000,
+            824117.5000000000000000,
+            838897.5000000000000000,
+            843902.5000000000000000,
         ]
     })
 
