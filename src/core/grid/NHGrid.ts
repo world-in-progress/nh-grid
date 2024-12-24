@@ -1,7 +1,7 @@
 import proj4 from 'proj4'
-import { BoundingBox2D } from '../util/boundingBox2D'
-import { MercatorCoordinate } from '../math/mercatorCoordinate'
 import { DbAction } from '../database/db'
+import BoundingBox2D from '../util/boundingBox2D'
+import { MercatorCoordinate } from '../math/mercatorCoordinate'
 
 export const EDGE_CODE_INVALID = -1
 export const EDGE_CODE_NORTH   = 0b00
@@ -379,7 +379,6 @@ export class GridNode {
 function lerp(a: number, b: number, t: number): number {
     return (1.0 - t) * a + t * b
 }
-
   
 function simplifyFraction(n: number, m: number): [ number, number ] {
 

@@ -30,7 +30,7 @@ const map = new NHMap({
 
     const gridLayer = new GridLayer({
         map,
-        maxGridNum: 4096 * 4096,
+        maxGridNum: 8192 * 8192,
         srcCS: 'ESRI:102140',
         firstLevelSize: [ 3000, 3000 ],
         subdivideRules: [

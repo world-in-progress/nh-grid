@@ -1,10 +1,9 @@
-import { DbAction } from './../database/db'
-import Dispatcher from "../message/dispatcher"
-import { EDGE_CODE, EDGE_CODE_EAST, EDGE_CODE_NORTH, EDGE_CODE_SOUTH, EDGE_CODE_WEST, GridEdge, GridNode, GridNodeRecord, GridNodeRenderInfo, GridNodeRenderInfoPack, SubdivideRules } from "./NHGrid"
-import { Callback } from '../types'
 import proj4 from 'proj4'
+
+import Dispatcher from '../message/dispatcher'
 import { MercatorCoordinate } from '../math/mercatorCoordinate'
 import UndoRedoManager, { UndoRedoOperation } from '../util/undoRedoManager'
+import { EDGE_CODE, EDGE_CODE_EAST, EDGE_CODE_NORTH, EDGE_CODE_SOUTH, EDGE_CODE_WEST, GridEdge, GridNode, GridNodeRecord, GridNodeRenderInfo, GridNodeRenderInfoPack, SubdivideRules } from './NHGrid'
 
 export class GridEdgeRecorder {
 
@@ -75,8 +74,6 @@ export interface GridLevelInfo {
     width: number
     height: number
 }
-
-const NODE_STORE = 'GridNode'
 
 export interface UndoRedoRecordOperation extends UndoRedoOperation {
     action: 'RemoveGrid' | 'SubdivideGrid'
@@ -302,21 +299,4 @@ export class GridNodeRecorder extends UndoRedoManager {
 
 function lerp(a: number, b: number, t: number): number {
     return (1.0 - t) * a + t * b
-}
-
-function gcd(a: number, b: number): number {
-
-    while (b !== 0) {
-        const temp = b
-        b = a % b
-        a = temp
-    }
-    
-    return a
-}
-  
-function simplifyFraction(n: number, m: number): [ number, number ] {
-
-    const divisor = gcd(n, m)
-    return [ n / divisor, m / divisor ]
 }

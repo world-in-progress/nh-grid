@@ -1,4 +1,4 @@
-export class VibrantColorGenerator {
+export default class VibrantColorGenerator {
 
     private _generatedColors: Set<string>
     private _step: number

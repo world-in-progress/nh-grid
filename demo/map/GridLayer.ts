@@ -1,17 +1,16 @@
 import axios from 'axios'
 import proj4 from 'proj4'
+import { mat4 } from 'gl-matrix'
 import { MapMouseEvent } from 'mapbox-gl'
 import { GUI, GUIController } from 'dat.gui'
 
 import gll from './GlLib'
 import NHMap from './NHMap'
-import { mat4 } from 'gl-matrix'
-import { BoundingBox2D } from '../../src/core/util/boundingBox2D'
-import { VibrantColorGenerator } from '../../src/core/util/vibrantColorGenerator'
-import { GridNode } from '../../src/core/grid/NHGrid'
-import { GridEdgeRecorder, GridNodeRecorder } from '../../src/core/grid/NHGridRecorder'
-import { createDB, deleteDB } from '../../src/core/database/db'
 import Dispatcher from '../../src/core/message/dispatcher'
+import BoundingBox2D from '../../src/core/util/boundingBox2D'
+import { createDB, deleteDB } from '../../src/core/database/db'
+import VibrantColorGenerator from '../../src/core/util/vibrantColorGenerator'
+import { GridEdgeRecorder, GridNodeRecorder } from '../../src/core/grid/NHGridRecorder'
 
 createDB('GridDB', 'GridNode', 'uuId')
 window.onbeforeunload = () => deleteDB('GridDB')
@@ -74,7 +73,6 @@ export default class GridLayer {
     // Grid render list
     indexList = new Array<number>()
     lineList = new Array<number>()
-    hitGridList = new Array<GridNode>()
     hitSet = new Set<string>
 
     storageTextureSize: number
@@ -92,7 +90,6 @@ export default class GridLayer {
     // Texture resource
     private _levelTexture: WebGLTexture = 0
     private _paletteTexture: WebGLTexture = 0
-    // private _lineIndexTexture: WebGLTexture = 0
     private _storageTextureArray: WebGLTexture = 0
 
     // Picking pass resource
@@ -236,8 +233,8 @@ export default class GridLayer {
             this.addSubdividerUIHandler()
 
             // Release cache
-            this.hitGridList.forEach(grid => grid.hit = true)
-            this.hitGridList = []
+            // this.hitGridList.forEach(grid => grid.hit = true)
+            // this.hitGridList = []
 
             // Refill palette texture
             const colorList = new Uint8Array(this.subdivideRules.length * 3)
@@ -252,13 +249,13 @@ export default class GridLayer {
     
     hitEditor(lon: number, lat: number) {
 
-        this.hitGridList.forEach(grid => {
-            if (grid.within(this.bBox, lon, lat)) {
-                grid.hit = true
-                // this.edgeRecorder.calcGridEdges(grid, this.gridRecorder)
-                console.log(grid.edges)
-            }
-        })
+        // this.hitGridList.forEach(grid => {
+        //     if (grid.within(this.bBox, lon, lat)) {
+        //         grid.hit = true
+        //         // this.edgeRecorder.calcGridEdges(grid, this.gridRecorder)
+        //         console.log(grid.edges)
+        //     }
+        // })
     }
     
     // Fast function to upload one grid rendering info to GPU stograge texture

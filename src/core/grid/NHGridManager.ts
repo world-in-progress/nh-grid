@@ -349,8 +349,6 @@ export class GridNodeManager {
                 grids: new Array<GridNode>(width * height)
             }
         })
-
-        // this._dbActions.push({ type: 'C', tableName: 'GridNode', data: rootGrid.record })
     }
 
     private _getNode(u: number, v: number, level: number): GridNode | undefined {
@@ -661,14 +659,4 @@ export class GridNodeManager {
 
 function lerp(a: number, b: number, t: number): number {
     return a + t * (b - a)
-}
-  
-function simplifyFraction(n: number, m: number): [ number, number ] {
-
-    let a = n, b = m
-    while (b !== 0) {
-        [a, b] = [b, a % b]
-    }
-
-    return [n / a, m / a]
 }
