@@ -1,48 +1,21 @@
 import axios from 'axios'
 import proj4 from 'proj4'
+import { mat4 } from 'gl-matrix'
 import { MapMouseEvent } from 'mapbox-gl'
 import { GUI, GUIController } from 'dat.gui'
 
 import gll from './GlLib'
 import NHMap from './NHMap'
-import { mat4 } from 'gl-matrix'
-import { BoundingBox2D } from '../../src/core/util/boundingBox2D'
-import { VibrantColorGenerator } from '../../src/core/util/vibrantColorGenerator'
-import { GridNode, GridNodeRenderInfo } from '../../src/core/grid/NHGrid'
-import { GridEdgeRecorder, GridNodeRecorder } from '../../src/core/grid/NHGridRecorder'
-import { createDB, deleteDB } from '../../src/core/database/db'
-import Dispatcher from '../../src/core/message/dispatcher'
+import BoundingBox2D from '../../src/core/util/boundingBox2D'
+import { GridNodeRecorder } from '../../src/core/grid/NHGridRecorder'
+import VibrantColorGenerator from '../../src/core/util/vibrantColorGenerator'
 
-createDB('GridDB', 'GridNode', 'uuId')
-window.onbeforeunload = () => deleteDB('GridDB')
 proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
 
 export interface GridLayerOptions {
-    map: NHMap
-    srcCS: string
-    maxGridNum: number
-    edgeProperties?: string[]
-    firstLevelSize: [ number, number ]
-    subdivideRules?: [ number, number ][]
-    boundaryCondition: [ number, number, number, number ]
-}
 
-export interface GridLayerSerializedInfo {
-    extent: [ number, number, number, number ]
-    grids: { 
-        id: number
-        xMinPercent: [ number, number ]
-        yMinPercent: [ number, number ]
-        xMaxPercent: [ number, number ]
-        yMaxPercent: [ number, number ] 
-    }[]
-    edges: {
-        id: number
-        edgeCode: number
-        minPercent: [ number, number ]
-        maxPercent: [ number, number ]
-        adjGrids: [ number | null, number | null ]
-    }[]
+    maxGridNum?: number
+    edgeProperties?: string[]
 }
 
 export default class GridLayer {
@@ -53,34 +26,22 @@ export default class GridLayer {
     id = 'GridLayer'
     renderingMode = '3d'
     isInitialized = false
-    map: NHMap
 
     // Function-related //////////////////////////////////////////////////
 
-    // Message dispatcher
-    dispatcher = new Dispatcher(this, 4)
-
     // Grid properties
-    srcCS: string
     maxGridNum: number
     bBox: BoundingBox2D
+    hitSet = new Set<string>
     projConverter: proj4.Converter
     gridRecorder: GridNodeRecorder
-    edgeRecorder: GridEdgeRecorder
-    firstLevelSize: [ number, number ]
     subdivideRules: [ number, number ][]
     subdivideStacks = new Array<[ level: number, globalId: number ][]>()
 
-    // Grid render list
-    indexList = new Array<number>()
-    lineList = new Array<number>()
-    hitGridList = new Array<GridNode>()
-    hitSet = new Set<string>
+    // GPU-related //////////////////////////////////////////////////
 
     storageTextureSize: number
     paletteColorList: Uint8Array
-
-    // GPU-related //////////////////////////////////////////////////
 
     private _gl: WebGL2RenderingContext
 
@@ -92,7 +53,6 @@ export default class GridLayer {
     // Texture resource
     private _levelTexture: WebGLTexture = 0
     private _paletteTexture: WebGLTexture = 0
-    // private _lineIndexTexture: WebGLTexture = 0
     private _storageTextureArray: WebGLTexture = 0
 
     // Picking pass resource
@@ -105,62 +65,72 @@ export default class GridLayer {
     updateGPUGrids: Function
 
     // Interaction-related //////////////////////////////////////////////////
-
-    isShiftClick = false
-    isDeleteMode = false
-
-    mouseupHandler: Function
-    mousedownHandler: Function
-    mousemoveHandler: Function
     
-    // Mode
+    // Interaction mode
     typeChanged = false
     EDITOR_TYPE = 0b01
     SUBDIVIDER_TYPE = 0b11
     private _currentType = 0b11
 
-    uiOption: { capacity: number, level: number }
+    isShiftClick = false
+    isDeleteMode = false
+    isTransparent = false
+
+    mouseupHandler: Function
+    mousedownHandler: Function
+    mousemoveHandler: Function
     
     // Dat.GUI
     gui: GUI
     capacityController: GUIController
+    uiOption: { capacity: number, level: number }
 
-    constructor(options: GridLayerOptions) {
+    constructor(
+        public  map:                NHMap,
+        public  srcCS:              string,
+        public  firstLevelSize:     [ number, number ],
+                subdivideRules:     [ number, number ][],
+                boundaryCondition:  [ number, number, number, number ],
+                options:            GridLayerOptions = {}
+    ) {
 
-        this.map = options.map
-        this.srcCS = options.srcCS
-        this._gl = this.map.painter.context.gl
+        // Set basic members
         this.projConverter = proj4(this.srcCS, 'EPSG:4326')
-        this.firstLevelSize = options.firstLevelSize
-        this.subdivideRules = [[ 1, 1 ]]
-        options.subdivideRules?.forEach(rule => {
-            this.subdivideRules.push(rule)
-        })
+        this.maxGridNum = options.maxGridNum || 4096 * 4096
 
-        this.maxGridNum = options.maxGridNum
-        const boundary = options.boundaryCondition
-        boundary[2] = boundary[0] + Math.floor((boundary[2] - boundary[0]) / this.firstLevelSize[0]) * this.firstLevelSize[0] 
-        boundary[3] = boundary[1] + Math.floor((boundary[3] - boundary[1]) / this.firstLevelSize[1]) * this.firstLevelSize[1]
-        this.bBox = new BoundingBox2D(...boundary)
-        this.subdivideRules[0] = [
-            Math.ceil((boundary[2] - boundary[0]) / this.firstLevelSize[0]),
-            Math.ceil((boundary[3] - boundary[1]) / this.firstLevelSize[1]),
-        ]
-        this.edgeRecorder = new GridEdgeRecorder(options.edgeProperties)
-        this.gridRecorder = new GridNodeRecorder(this.dispatcher, {
+        // Resize boundary condition by the first level size
+        boundaryCondition[2] = boundaryCondition[0] + Math.ceil((boundaryCondition[2] - boundaryCondition[0]) / this.firstLevelSize[0]) * this.firstLevelSize[0] 
+        boundaryCondition[3] = boundaryCondition[1] + Math.ceil((boundaryCondition[3] - boundaryCondition[1]) / this.firstLevelSize[1]) * this.firstLevelSize[1]
+        this.bBox = new BoundingBox2D(...boundaryCondition)
+
+        // Set first level rule of subdivide rules by new boundary condition
+        this.subdivideRules = [[  
+            (boundaryCondition[2] - boundaryCondition[0]) / this.firstLevelSize[0],
+            (boundaryCondition[3] - boundaryCondition[1]) / this.firstLevelSize[1],
+        ]]
+        // Add other level rules to subdivide rules
+        this.subdivideRules.push(...subdivideRules)
+
+        // Create core recorders
+        this.gridRecorder = new GridNodeRecorder({
             bBox: this.bBox,
             srcCS: this.srcCS,
             targetCS: 'EPSG:4326',
             rules: this.subdivideRules
+        }, 
+        this.maxGridNum,
+        {  
+            workerCount: 4,
+            operationCapacity: 1000,
         })
 
-        this.updateGPUGrid = this._updateGPUGrid.bind(this)
-        this.updateGPUGrids = this._updateGPUGrids.bind(this)
+        // Set WebGL2 context
+        this._gl = this.map.painter.context.gl
 
-        // Storage texture memory
-        this.storageTextureSize = Math.ceil(Math.sqrt(options.maxGridNum))
+        // Set storage texture memory
+        this.storageTextureSize = Math.ceil(Math.sqrt(this.maxGridNum))
 
-        // Palette color list
+        // Make palette color list
         const colorGenerator = new VibrantColorGenerator()
         this.paletteColorList = new Uint8Array(this.subdivideRules.length * 3)
         for (let i = 0; i < this.subdivideRules.length; i++) {
@@ -168,19 +138,20 @@ export default class GridLayer {
             this.paletteColorList.set(color, i * 3)
         }
 
-        // Event handler
+        // Bind callbacks and event handlers
+        this.updateGPUGrid = this._updateGPUGrid.bind(this)
+        this.updateGPUGrids = this._updateGPUGrids.bind(this)
         this.mouseupHandler = this._mouseupHandler.bind(this)
         this.mousedownHandler = this._mousedownHandler.bind(this)
         this.mousemoveHandler = this._mousemoveHandler.bind(this)
 
-        // Interaction option
+        // Init interaction option
         this.uiOption = {
+            level: 2,
             capacity: 0.0,
-            // level: this.subdivideRules.length - 1
-            level: 2
         }
 
-        // Dat.GUI
+        // Launch Dat.GUI
         this.gui = new GUI()
         const brushFolder = this.gui.addFolder('Brush')
         brushFolder.add(this.uiOption, 'level', 1, this.subdivideRules.length - 1, 1)
@@ -190,7 +161,6 @@ export default class GridLayer {
         this.capacityController = this.gui.__controllers[0]
         this.capacityController.setValue(0.0)
         this.capacityController.domElement.style.pointerEvents = 'none'
-
     }
     
     set currentType(type: number) {
@@ -230,8 +200,8 @@ export default class GridLayer {
             this.addSubdividerUIHandler()
 
             // Release cache
-            this.hitGridList.forEach(grid => grid.hit = true)
-            this.hitGridList = []
+            // this.hitGridList.forEach(grid => grid.hit = true)
+            // this.hitGridList = []
 
             // Refill palette texture
             const colorList = new Uint8Array(this.subdivideRules.length * 3)
@@ -246,16 +216,16 @@ export default class GridLayer {
     
     hitEditor(lon: number, lat: number) {
 
-        this.hitGridList.forEach(grid => {
-            if (grid.within(this.bBox, lon, lat)) {
-                grid.hit = true
-                // this.edgeRecorder.calcGridEdges(grid, this.gridRecorder)
-                console.log(grid.edges)
-            }
-        })
+        // this.hitGridList.forEach(grid => {
+        //     if (grid.within(this.bBox, lon, lat)) {
+        //         grid.hit = true
+        //         // this.edgeRecorder.calcGridEdges(grid, this.gridRecorder)
+        //         console.log(grid.edges)
+        //     }
+        // })
     }
     
-    // Fast function to just upload one grid rendering info to GPU stograge texture
+    // Fast function to upload one grid rendering info to GPU stograge texture
     writeGridInfoToTexture(info: [ storageId: number, level: number, vertices: Float32Array ]) {
 
         const gl = this._gl
@@ -299,11 +269,11 @@ export default class GridLayer {
             const size_within_fromStorageV_toStorageV = this.storageTextureSize * fullBlockRows
             const size_within_0_toStorageU = toStorageU + 1
 
-            // Use the maximum size to allocate the memory
+            // Use the maximum size to allocate this memory
             const subBlockSize = Math.max(size_within_0_toStorageU, Math.max(size_within_fromStorageU_textureSize, size_within_fromStorageV_toStorageV))
             const subVertices = new Float32Array(subBlockSize * 8)
 
-            // Update grid info for situation 1
+            // Update grid info for situation 1 //////////////////////////////////////////////////
             let srcOffset = 0
             let updateBlockWidth = this.storageTextureSize - fromStorageU
             let elementSize = updateBlockWidth * 2
@@ -314,7 +284,7 @@ export default class GridLayer {
             gll.fillSubTexture2DArrayByArray(gl, this._storageTextureArray, 0, fromStorageU, fromStorageV, 0, updateBlockWidth, 1, 4, gl.RG, gl.FLOAT, subVertices)
             gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, fromStorageU, fromStorageV, updateBlockWidth, 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, levels, srcOffset)
 
-            // Update grid info for situation 2
+            // Update grid info for situation 2 //////////////////////////////////////////////////
             srcOffset += updateBlockWidth
             if (fullBlockRows > 0) {
 
@@ -328,7 +298,7 @@ export default class GridLayer {
                 gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, 0, fromStorageV + 1, updateBlockWidth, fullBlockRows, gl.RED_INTEGER, gl.UNSIGNED_SHORT, levels, srcOffset)
             }
 
-            // Update grid info for situation 3
+            // Update grid info for situation 3 //////////////////////////////////////////////////
             srcOffset += updateBlockWidth * fullBlockRows
             updateBlockWidth = toStorageU + 1
             elementSize = updateBlockWidth * 2
@@ -340,51 +310,15 @@ export default class GridLayer {
             gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, 0, toStorageV, updateBlockWidth, 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, levels, srcOffset)
         }
     }
-
-    // tickSubdivider() {
-
-    //     this.indexList = Array.from(this.gridRecorder.uuId_storageId_map.values())
-    //     this.writeIndicesToTexture(this.indexList, this._indexTexture)
-    // }
-
-    // _tickSubdivider() {
-
-    //     this.fillList = []
-    //     this.lineList = []
-
-    //     const stack = [ this.gridRecorder.getGrid(0, 0) ]
-    //     while(stack.length > 0) {
-
-    //         const grid = stack.pop()
-    //         if (!grid) continue
-
-    //         // Add hit grid to render list
-    //         if (grid.hit || grid.children.length === 0) {
-
-    //             const storageId = this.gridRecorder.uuId_storageId_map.get(grid.uuId)!
-    //             this.lineList.push(storageId)
-    //             grid.hit && this.fillList.push(storageId)
-                
-    //         } else {
-    //             stack.push(...this.gridRecorder.getGridChildren(grid))
-    //         }
-    //     }
-    //     this.writeIndicesToTexture(this.fillList, this._fillIndexTexture)
-    //     this.writeIndicesToTexture(this.lineList, this._lineIndexTexture)
-    // }
-
-    // tickEditor() {
-        
-    //     this.indexList = this.hitGridList.filter(grid => grid.hit).map(grid => this.gridRecorder.uuId_storageId_map.get(grid.uuId)!)
-    //     this.writeIndicesToTexture(this.indexList, this._indexTexture)
-    //     // this.writeIndicesToTexture(this.lineList, this._lineIndexTexture)
-    // }
     
     async init() {
 
         // Init DOM Elements and handlers ////////////////////////////////////////////////////////////
 
-        // [1] Subdivider Type Button
+        // [1] Remove Event handler for map boxZoom
+        this.map.boxZoom.disable()
+
+        // [2] Subdivider Type Button
         const subdividerButton = document.createElement('button')
         subdividerButton.title = 'Grid Subdivider'
         subdividerButton.addEventListener('click', () => this.currentType = this.SUBDIVIDER_TYPE)
@@ -417,7 +351,7 @@ export default class GridLayer {
         subdividerButton.classList.add('active') // add blooming effect
         this.addSubdividerUIHandler()
 
-        // [2] Editor Type Button
+        // [3] Editor Type Button
         const editorButton = document.createElement('button')
         editorButton.title = 'Grid Editor'
         editorButton.addEventListener('click', () => this.currentType = this.EDITOR_TYPE)
@@ -447,29 +381,22 @@ export default class GridLayer {
         })
         addButtonClickListener(editorButton)
 
-        // [3] Remove Event handler for map boxZoom
-        this.map.boxZoom.disable()
-
-        // [4] Add event listener for <Shift + S> (Download serialization json)
-        document.addEventListener('keydown', e => {
-
-            if (e.shiftKey && e.key === 'S') {
-                let data = this.serialize()
-                let jsonData = JSON.stringify(data)
-                let blob = new Blob([ jsonData ], { type: 'application/json' })
-                let link = document.createElement('a')
-                link.href = URL.createObjectURL(blob)
-                link.download = 'gridInfo.json'
-                link.click()
-            }
-        })
-
-        // [5] Add event listner for <Shift + D> (Open removing grid mode)
+        // [4] Add event listner for <Shift + D> (Open removing grid mode)
         document.addEventListener('keydown', e => {
 
             if (e.shiftKey && e.key === 'D') {
                 this.isDeleteMode = !this.isDeleteMode 
                 console.log(`Delete Mode: ${ this.isDeleteMode ? 'ON' : 'OFF' }`)
+            }
+        })
+
+        // [5] Add event listner for <Shift + T> (Set grid transparent or not)
+        document.addEventListener('keydown', e => {
+
+            if (e.shiftKey && e.key === 'T') {
+                this.isTransparent = !this.isTransparent 
+                console.log(`Grid Transparent: ${ this.isTransparent ? 'ON' : 'OFF' }`)
+                this.map.triggerRepaint()
             }
         })
 
@@ -514,7 +441,7 @@ export default class GridLayer {
         for (let i = 0; i < this.subdivideRules.length; i++) {
             colorList.set([ 0, 127, 127 ], i * 3)
         }
-        gll.fillSubTexture2DByArray(gl, this._paletteTexture, 0, 0, 0, this.subdivideRules.length, 1, gl.RGB, gl.UNSIGNED_BYTE, colorList)
+        gll.fillSubTexture2DByArray(gl, this._paletteTexture, 0, 0, 0, this.subdivideRules.length, 1, gl.RGB, gl.UNSIGNED_BYTE, this.paletteColorList)
         
         // Init workers of gridRecorder ////////////////////////////////////////////////////////////
 
@@ -523,177 +450,10 @@ export default class GridLayer {
             this.gridRecorder.subdivideGrid(0, 0, (infos: any) => {
                 this.updateGPUGrids(infos)
 
-                // Raise flage when the root grid (level: 0, globalId: 0) has been subdivided
+                // Raise flag when the root grid (level: 0, globalId: 0) has been subdivided
                 this.isInitialized = true
             })
         })
-    }
-
-    serialize() {}
-    // serialize() {
-
-    //     const serializedData: GridLayerSerializedInfo = {
-    //         grids: [], edges: [],
-    //         extent: this.bBox.boundary
-    //     }
-
-    //     const grids = serializedData.grids
-    //     const edges = serializedData.edges
-    //     const levelGlobalId_serializedId_Map: Map<string, number> = new Map<string, number>()
-
-    //     // Serialized edge recoder used to record valid edges
-    //     const sEdgeRecoder = new GridEdgeRecorder()
-
-    //     // Serialize grids //////////////////////////////////////////////////
-
-    //     // Iterate hit grids in Editor Type
-    //     if (this._currentType === this.EDITOR_TYPE) {
-    //         this.hitGridList.forEach((grid, index) => {
-
-    //             const { xMinPercent, yMinPercent, xMaxPercent, yMaxPercent } = grid.serialization
-    //             grids.push({
-    //                 id: index,
-    //                 xMinPercent, yMinPercent,
-    //                 xMaxPercent, yMaxPercent
-    //             })
-    //             const key = [ grid.level, grid.globalId ].join('-')
-    //             levelGlobalId_serializedId_Map.set(key, index)
-
-    //             // Avoid edge miss and record valid key
-    //             this.edgeRecorder.calcGridEdges(grid, this.gridRecorder)
-    //             grid.edgeKeys.forEach(key => {
-    //                 const edge = this.edgeRecorder.getEdgeByKey(key)
-    //                 sEdgeRecoder.addEdge(edge)
-    //             })
-    //         })
-    //     }
-    //     // Iterate hit grids in Subdivider Type
-    //     else {
-
-    //         // Find neighbours for all grids
-    //         this.gridRecorder.findNeighbours()
-            
-    //         let index = 0
-    //         this.gridRecorder.uuId_gridNode_map.forEach(grid => {
-    //             if (grid.hit) {
-
-    //                 const { xMinPercent, yMinPercent, xMaxPercent, yMaxPercent } = grid.serialization
-    //                 grids.push({
-    //                     id: index,
-    //                     xMinPercent, yMinPercent,
-    //                     xMaxPercent, yMaxPercent
-    //                 })
-
-    //                 const key = [ grid.level, grid.globalId ].join('-')
-    //                 levelGlobalId_serializedId_Map.set(key, index)
-    //                 index++
-
-    //                 // Avoid edge miss and record valid key
-    //                 this.edgeRecorder.calcGridEdges(grid, this.gridRecorder)
-    //                 grid.edgeKeys.forEach(key => {
-    //                     const edge = this.edgeRecorder.getEdgeByKey(key)
-    //                     sEdgeRecoder.addEdge(edge)
-    //                 })
-    //             }
-    //         })
-    //     }
-
-    //     // Serialize edges //////////////////////////////////////////////////
-
-    //     let index = 0
-    //     sEdgeRecoder.edges.forEach(edge => {
-
-    //         const { adjGrids, minPercent, maxPercent, edgeCode } = edge.serialization
-    //         const grid1 = adjGrids[0] !== 'null-null' ? levelGlobalId_serializedId_Map.get(adjGrids[0])! : null
-    //         const grid2 = adjGrids[1] !== 'null-null' ? levelGlobalId_serializedId_Map.get(adjGrids[1])! : null
-
-    //         edges.push({
-    //             id: index++,
-    //             adjGrids: [ grid1, grid2 ],
-    //             minPercent,
-    //             maxPercent,
-    //             edgeCode
-    //         })
-    //     })
-
-    //     return serializedData
-    // }
-
-    private _calcPickingMatrix(e: MapMouseEvent) {
-
-        const canvas = this._gl.canvas
-        const offsetX = e.originalEvent.clientX
-        const offsetY = e.originalEvent.clientY
-
-        const pixelRatio = window.devicePixelRatio || 1
-        const canvasWidth = canvas.width
-        const canvasHeight = canvas.height
-
-        const ndcX = (offsetX * pixelRatio + 0.5) / canvasWidth * 2.0 - 1.0
-        const ndcY = 1.0 - (offsetY * pixelRatio + 0.5) / canvasHeight * 2.0
-
-        const pickingMatrix = mat4.create()
-        mat4.scale(pickingMatrix, pickingMatrix, [ canvasWidth * 0.5, canvasHeight * 0.5, 1.0 ])
-        mat4.translate(pickingMatrix, pickingMatrix, [ -ndcX, -ndcY, 0.0 ])
-
-        return pickingMatrix
-    }
-    
-    _mousedownHandler(e: MapMouseEvent) {
-        
-        if (e.originalEvent.shiftKey && e.originalEvent.button === 0) {
-            this.isShiftClick = true
-            this.map.dragPan.disable()
-        }
-    }
-
-    _mouseupHandler(e: MapMouseEvent) {
-
-        if (this.isShiftClick) {
-            this.map.dragPan.enable()
-            this.isShiftClick = false
-
-            const storageId = this.picking(this._calcPickingMatrix(e))
-            storageId >= 0 && this.hit(storageId, e.lngLat.toArray())
-
-            // GPU Picking Vs CPU Picking
-            if (0) {
-                // let start = 0, end = 0
-
-                // // GPU Picking
-                // start = Date.now()
-                // let uuid: string | null = this.picking(this._calcPickingMatrix(e))
-                // if (uuid) {
-                //     const [ level, globalId ] = uuid.split('-').map(key => Number(key))
-                //     console.log(level, globalId)
-                //     end = Date.now()
-                //     console.log(`GPU Picking: ${end - start} ms`)
-                // }
-
-                // // CPU Picking
-                // uuid = ''
-                // start = Date.now()
-                // const [ lon, lat ] = this.projConverter.inverse(e.lngLat.toArray())
-                // this.gridRecorder.storageId_uuId_map.values()
-                // .filter(uuId => node.hit && node.within(this.bBox, lon, lat)).forEach(node => uuid = node.uuId)
-                // if (uuid !== '') {
-                //     const [ level, globalId ] = uuid.split('-').map(key => Number(key))
-                //     console.log(level, globalId)
-                //     end = Date.now()
-                //     console.log(`CPU Picking: ${end - start} ms`)
-                // }
-            }
-        }
-    }
-
-    _mousemoveHandler(e: MapMouseEvent) {
-
-        if (this.isShiftClick) {
-            this.map.dragPan.disable()
-
-            const storageId = this.picking(this._calcPickingMatrix(e))
-            storageId >= 0 && this.hit(storageId, e.lngLat.toArray())
-        }
     }
 
     removeUIHandler() {
@@ -722,50 +482,108 @@ export default class GridLayer {
         .on('mouseup', this.mouseupHandler as any)
         .on('mousedown', this.mousedownHandler as any)
     }
+
+    hit(storageId: number, coordinates: [ number, number ]) {
+
+        // Delete mode
+        if (this.isDeleteMode) {
+
+            this.gridRecorder.removeGrid(storageId, this.updateGPUGrid)
+        }
+        // Subdivider type
+        else if (this._currentType === this.SUBDIVIDER_TYPE) {
+
+            const maxLevel = this.subdivideRules.length - 1
+            const [ hitLevel ] = this.gridRecorder.getGridInfoByStorageId(storageId)
     
-    drawGridMesh() {
+            // Nothing will happen if the hit grid has the maximize level
+            if (hitLevel === maxLevel) return
+    
+            const targetLevel = Math.min(this.uiOption.level, maxLevel)
 
-        const gl = this._gl
+            // Nothing will happen if subdivide grids more than one level
+            // Or target subdivided level equals to hitLevel
+            if (targetLevel - hitLevel > 1 || targetLevel == hitLevel) return
 
-        gl.enable(gl.BLEND)
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+            const [ lon, lat ] = this.projConverter.inverse(coordinates)
+            const { width, height } = this.gridRecorder.levelInfos[targetLevel]
+            const normalizedX = (lon - this.bBox.xMin) / (this.bBox.xMax - this.bBox.xMin)
+            const normalizedY = (lat - this.bBox.yMin) / (this.bBox.yMax - this.bBox.yMin)
+    
+            // Nothing will happen if mouse is out of boundary condition
+            if (normalizedX < 0 || normalizedX > 1 || normalizedY < 0 || normalizedY > 1) return
 
-        gl.enable(gl.DEPTH_TEST)
-        gl.depthFunc(gl.LESS)
+            // Calculate globalId of the target grid
+            const col = Math.floor(normalizedX * (width - 1))
+            const row = Math.floor(normalizedY * (height - 1))
+            const globalId = row * width + col
 
-        gl.useProgram(this._terrainMeshShader)
+            this.hitSet.add([ 
+                hitLevel,       // FromLevel
+                storageId,      // FromStorageId
+                targetLevel,    // ToLevel
+                globalId,       // ToGlobalId
+            ].join('-'))
+        }
 
-        gl.activeTexture(gl.TEXTURE0)
-        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this._storageTextureArray)
-        gl.activeTexture(gl.TEXTURE1)
-        gl.bindTexture(gl.TEXTURE_2D, this._levelTexture)
-        gl.activeTexture(gl.TEXTURE2)
-        gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture)
-
-        gl.uniform2fv(gl.getUniformLocation(this._terrainMeshShader, 'centerLow'), this.map.centerLow)
-        gl.uniform2fv(gl.getUniformLocation(this._terrainMeshShader, 'centerHigh'), this.map.centerHigh)
-        gl.uniformMatrix4fv(gl.getUniformLocation(this._terrainMeshShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
-
-        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.gridRecorder.nextStorageId)
+        this.map.triggerRepaint()
     }
 
-    drawGridLine() {
+    removeGrid(storageId: number) {
+        this.gridRecorder.removeGrid(storageId, this.updateGPUGrid)
+        this.map.triggerRepaint()
+    }
 
-        const gl = this._gl
+    subdivideGrid(info: string) {
+        const [ level, globalId ] = decodeInfo(info)
+        this.gridRecorder.subdivideGrid(level, globalId, this.updateGPUGrids)
+    }
 
-        gl.disable(gl.BLEND)
-        gl.disable(gl.DEPTH_TEST)
+    tickGrids() {
 
-        gl.useProgram(this._terrainLineShader)
+        if (this._currentType === this.SUBDIVIDER_TYPE) {
 
-        gl.activeTexture(gl.TEXTURE0)
-        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this._storageTextureArray)
+            // Parse hitSet
+            this.hitSet.forEach(hitActionInfo => {
+                const [ fromLevel, fromStorageId, toLevel, toGlobalId ] = decodeInfo(hitActionInfo)
+                const removableGlobalId = this.gridRecorder.getGridInfoByStorageId(fromStorageId)[1]
 
-        gl.uniform2fv(gl.getUniformLocation(this._terrainLineShader, 'centerLow'), this.map.centerLow)
-        gl.uniform2fv(gl.getUniformLocation(this._terrainLineShader, 'centerHigh'), this.map.centerHigh)
-        gl.uniformMatrix4fv(gl.getUniformLocation(this._terrainLineShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
+                // Check if valid
+                let parentGlobalId = this.gridRecorder.getParentGlobalId(toLevel, toGlobalId)
+                for (let parentLevel = toLevel - 1; parentLevel >= fromLevel; parentLevel--) {
+                    if (parentLevel === fromLevel && removableGlobalId !== parentGlobalId) return
+                    parentGlobalId = this.gridRecorder.getParentGlobalId(parentLevel, parentGlobalId)
+                }
 
-        gl.drawArraysInstanced(gl.LINE_LOOP, 0, 4, this.gridRecorder.nextStorageId)
+                // Remove grids
+                this.removeGrid(fromStorageId)
+
+                // Parse info about subdividable grid
+                const subdivideStack: Array<string> = []
+                parentGlobalId = this.gridRecorder.getParentGlobalId(toLevel, toGlobalId)
+                for (let parentLevel = toLevel - 1; parentLevel >= fromLevel; parentLevel--) {
+                    subdivideStack.push([ parentLevel, parentGlobalId ].join('-'))
+                    parentGlobalId = this.gridRecorder.getParentGlobalId(parentLevel, parentGlobalId)
+                }
+
+                // Subdivide grids
+                while(subdivideStack.length) {
+                    const subdivideTask = subdivideStack.pop()!
+                    this.subdivideGrid(subdivideTask)
+                }
+            })
+
+        } else {
+
+            // (this.hitSet as Set<{ lon: number, lat: number }>).forEach(({ lon, lat }) => {
+            //     this.hitEditor(lon, lat)
+            // })
+            
+            // this.tickEditor()
+        }
+
+        this.hitSet.clear()
+        this.typeChanged = false
     }
 
     async onAdd(_: NHMap, gl: WebGL2RenderingContext) {
@@ -784,7 +602,7 @@ export default class GridLayer {
         this.tickGrids()
 
         // Tick render: Mesh Pass
-        this.drawGridMesh()
+        ;(!this.isTransparent) && this.drawGridMesh()
         
         // Tick render: Line Pass
         this.drawGridLine()
@@ -840,126 +658,145 @@ export default class GridLayer {
         // Return storageId of the picked grid
         return pixel[0] + (pixel[1] << 8) + (pixel[2] << 16) + (pixel[3] << 24)
     }
+    
+    drawGridMesh() {
 
-    hit(storageId: number, coordinates: [ number, number ]) {
+        const gl = this._gl
 
-        // Delete mode
-        if (this.isDeleteMode) {
+        gl.enable(gl.BLEND)
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-            this.gridRecorder.removeGrid(storageId, this.updateGPUGrid)
+        gl.enable(gl.DEPTH_TEST)
+        gl.depthFunc(gl.LESS)
+
+        gl.useProgram(this._terrainMeshShader)
+
+        gl.activeTexture(gl.TEXTURE0)
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this._storageTextureArray)
+        gl.activeTexture(gl.TEXTURE1)
+        gl.bindTexture(gl.TEXTURE_2D, this._levelTexture)
+        gl.activeTexture(gl.TEXTURE2)
+        gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture)
+
+        gl.uniform2fv(gl.getUniformLocation(this._terrainMeshShader, 'centerLow'), this.map.centerLow)
+        gl.uniform2fv(gl.getUniformLocation(this._terrainMeshShader, 'centerHigh'), this.map.centerHigh)
+        gl.uniformMatrix4fv(gl.getUniformLocation(this._terrainMeshShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
+
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.gridRecorder.nextStorageId)
+    }
+
+    drawGridLine() {
+
+        const gl = this._gl
+
+        gl.disable(gl.BLEND)
+        gl.disable(gl.DEPTH_TEST)
+
+        gl.useProgram(this._terrainLineShader)
+
+        gl.activeTexture(gl.TEXTURE0)
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this._storageTextureArray)
+
+        gl.uniform2fv(gl.getUniformLocation(this._terrainLineShader, 'centerLow'), this.map.centerLow)
+        gl.uniform2fv(gl.getUniformLocation(this._terrainLineShader, 'centerHigh'), this.map.centerHigh)
+        gl.uniformMatrix4fv(gl.getUniformLocation(this._terrainLineShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
+
+        gl.drawArraysInstanced(gl.LINE_LOOP, 0, 4, this.gridRecorder.nextStorageId)
+    }
+
+    private _updateGPUGrid(info?: [ storageId: number, level: number, vertices: Float32Array ]) {
+
+        if (info) {
+            this.writeGridInfoToTexture(info)
+            this._gl.flush()
         }
-        // Subdivider type
-        else if (this._currentType === this.SUBDIVIDER_TYPE) {
-
-            const maxLevel = this.subdivideRules.length - 1
-            const [ hitLevel ] = this.gridRecorder.getGridInfoByStorageId(storageId)
-    
-            // Nothing will happen if the hit grid has the maximize level
-            if (hitLevel === maxLevel) return
-    
-            const targetLevel = Math.min(this.uiOption.level, maxLevel)
-            const [ lon, lat ] = this.projConverter.inverse(coordinates)
-
-            const { width, height } = this.gridRecorder.levelInfos[targetLevel]
-            const normalizedX = (lon - this.bBox.xMin) / (this.bBox.xMax - this.bBox.xMin)
-            const normalizedY = (lat - this.bBox.yMin) / (this.bBox.yMax - this.bBox.yMin)
-    
-            if (normalizedX < 0 || normalizedX > 1 || normalizedY < 0 || normalizedY > 1) return
-
-            const col = Math.floor(normalizedX * (width - 1))
-            const row = Math.floor(normalizedY * (height - 1))
-            const globalId = row * width + col
-
-            if (targetLevel - hitLevel > 1 || targetLevel == hitLevel) return
-
-            this.hitSet.add([ 
-                hitLevel,       // fromLevel
-                storageId,      // fromStorageId
-                targetLevel,    // toLevel
-                globalId,       // toGlobalId
-            ].join('-'))
-        }
-
         this.map.triggerRepaint()
     }
 
-    removeGrid(storageId: number) {
-        this.gridRecorder.removeGrid(storageId, this.updateGPUGrid)
+    private _updateGPUGrids(infos?: [ fromStorageId: number, toStorageId: number, levels: Uint16Array, vertices: Float32Array ]) {
+
+        if (infos) {
+            this.writeMultiGridInfoToTexture(infos)
+            this._gl.flush()
+        }
+        this.map.triggerRepaint()
     }
 
-    subdivideGrid(level: number, globalId: number) {
+    private _calcPickingMatrix(e: MapMouseEvent) {
 
-        this.gridRecorder.subdivideGrid(level, globalId, this.updateGPUGrids)
+        const canvas = this._gl.canvas
+        const offsetX = e.originalEvent.clientX
+        const offsetY = e.originalEvent.clientY
+
+        const pixelRatio = window.devicePixelRatio || 1
+        const canvasWidth = canvas.width
+        const canvasHeight = canvas.height
+
+        const ndcX = (offsetX * pixelRatio + 0.5) / canvasWidth * 2.0 - 1.0
+        const ndcY = 1.0 - (offsetY * pixelRatio + 0.5) / canvasHeight * 2.0
+
+        const pickingMatrix = mat4.create()
+        mat4.scale(pickingMatrix, pickingMatrix, [ canvasWidth * 0.5, canvasHeight * 0.5, 1.0 ])
+        mat4.translate(pickingMatrix, pickingMatrix, [ -ndcX, -ndcY, 0.0 ])
+
+        return pickingMatrix
     }
-
-    tickGrids() {
+    
+    private _mousedownHandler(e: MapMouseEvent) {
         
-        // if (this.hitSet.size === 0 && !this.typeChanged) return
-
-        if (this._currentType === this.SUBDIVIDER_TYPE) {
-
-            const removeSet = new Set<number>()
-            const subdivideSet = new Set<string>()
-
-            // Parse hitSet
-            this.hitSet.forEach(hitActionInfo => {
-                const [ fromLevel, fromStorageId, toLevel, toGlobalId ] = decodeInfo(hitActionInfo)
-                const removableGlobalId = this.gridRecorder.getGridInfoByStorageId(fromStorageId)[1]
-
-                // Check if valid
-                let parentGlobalId = this.gridRecorder.getParentGlobalId(toLevel, toGlobalId)
-                for (let parentLevel = toLevel - 1; parentLevel >= fromLevel; parentLevel--) {
-                    if (parentLevel === fromLevel && removableGlobalId !== parentGlobalId) return
-                    parentGlobalId = this.gridRecorder.getParentGlobalId(parentLevel, parentGlobalId)
-                }
-
-                // Add storageId of removable grid
-                removeSet.add(fromStorageId)
-
-                // Parse info about subdividable grid
-                parentGlobalId = this.gridRecorder.getParentGlobalId(toLevel, toGlobalId)
-                for (let parentLevel = toLevel - 1; parentLevel >= fromLevel; parentLevel--) {
-                    subdivideSet.add([ parentLevel, parentGlobalId ].join('-'))
-                    parentGlobalId = this.gridRecorder.getParentGlobalId(parentLevel, parentGlobalId)
-                }
-
-            })
-
-            // Remove grids
-            removeSet.forEach(storageId => {
-                this.gridRecorder.removeGrid(storageId, this.updateGPUGrid)
-            })
-
-            // Subdivide grids
-            subdivideSet.forEach(info => {
-                this.gridRecorder.subdivideGrid(...decodeInfo(info) as [ number, number ], this.updateGPUGrids)
-            })
-
-        } else {
-
-            // (this.hitSet as Set<{ lon: number, lat: number }>).forEach(({ lon, lat }) => {
-            //     this.hitEditor(lon, lat)
-            // })
-            
-            // this.tickEditor()
+        if (e.originalEvent.shiftKey && e.originalEvent.button === 0) {
+            this.isShiftClick = true
+            this.map.dragPan.disable()
         }
-
-        this.hitSet.clear()
-        this.typeChanged = false
     }
 
-    private _updateGPUGrid(info: [ storageId: number, level: number, vertices: Float32Array ]) {
+    private _mouseupHandler(e: MapMouseEvent) {
 
-        this.writeGridInfoToTexture(info)
-        this._gl.flush()
-        this.map.triggerRepaint()
+        if (this.isShiftClick) {
+            this.map.dragPan.enable()
+            this.isShiftClick = false
+
+            const storageId = this.picking(this._calcPickingMatrix(e))
+            storageId >= 0 && this.hit(storageId, e.lngLat.toArray())
+
+            // GPU Picking Vs CPU Picking
+            if (0) {
+                // let start = 0, end = 0
+
+                // // GPU Picking
+                // start = Date.now()
+                // let uuid: string | null = this.picking(this._calcPickingMatrix(e))
+                // if (uuid) {
+                //     const [ level, globalId ] = uuid.split('-').map(key => Number(key))
+                //     console.log(level, globalId)
+                //     end = Date.now()
+                //     console.log(`GPU Picking: ${end - start} ms`)
+                // }
+
+                // // CPU Picking
+                // uuid = ''
+                // start = Date.now()
+                // const [ lon, lat ] = this.projConverter.inverse(e.lngLat.toArray())
+                // this.gridRecorder.storageId_uuId_map.values()
+                // .filter(uuId => node.hit && node.within(this.bBox, lon, lat)).forEach(node => uuid = node.uuId)
+                // if (uuid !== '') {
+                //     const [ level, globalId ] = uuid.split('-').map(key => Number(key))
+                //     console.log(level, globalId)
+                //     end = Date.now()
+                //     console.log(`CPU Picking: ${end - start} ms`)
+                // }
+            }
+        }
     }
 
-    private _updateGPUGrids(infos: [ fromStorageId: number, toStorageId: number, levels: Uint16Array, vertices: Float32Array ]) {
+    private _mousemoveHandler(e: MapMouseEvent) {
 
-        this.writeMultiGridInfoToTexture(infos)
-        this._gl.flush()
-        this.map.triggerRepaint()
+        if (this.isShiftClick) {
+            this.map.dragPan.disable()
+
+            const storageId = this.picking(this._calcPickingMatrix(e))
+            storageId >= 0 && this.hit(storageId, e.lngLat.toArray())
+        }
     }
 }
 

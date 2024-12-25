@@ -321,8 +321,6 @@ export class GridNodeManager {
     private _projConverter: proj4.Converter
     private _subdivideRules: SubdivideRules
 
-    // storageId_uuId_map = new Map<number, string>()
-    // uuId_storageId_map = new Map<string, number>()
     uuId_gridNode_map = new Map<string, GridNode>()
 
     constructor(subdivideRules: SubdivideRules) {
@@ -351,23 +349,9 @@ export class GridNodeManager {
                 grids: new Array<GridNode>(width * height)
             }
         })
-
-        // this._dbActions.push({ type: 'C', tableName: 'GridNode', data: rootGrid.record })
-    }
-
-    private _getNode(u: number, v: number, level: number): GridNode | undefined {
-
-        const width = this._levelInfos[level].width
-        const height = this._levelInfos[level].height
-
-        if (u < 0 || u >= width || v < 0 || v > height) return undefined
-
-        const globalId = v * width + u
-        return this._levelInfos[level].grids[globalId]
     }
 
     get levelInfos() {
-
         return this._levelInfos
     }
 
@@ -536,35 +520,6 @@ export class GridNodeManager {
         return Math.floor(v / subHeight) * this._levelInfos[level - 1].width + Math.floor(u / subWidth)
     }
 
-    removeGrid(grid: GridNode, callback?: Function) {
-
-        // if (!grid) return
-
-        // // Find last valid grid
-        // const [ level, globalId ] = this.storageId_uuId_map.get(this.storageId_uuId_map.size)!.split('-').map(key => Number(key))
-        // const lastValidGrid = this.getGrid(level, globalId)!
-        // this.storageId_uuId_map.delete(this.storageId_uuId_map.size)
-
-        // // Overwrite the texture data of this deleted grid to the valid one
-        // if (!lastValidGrid.equal(grid)) {
-
-        //     const storageId = this.uuId_storageId_map.get(grid.uuId)!
-        //     this.uuId_storageId_map.delete(grid.uuId)
-
-        //     this.storageId_uuId_map.set(storageId, lastValidGrid.uuId)
-        //     this.uuId_storageId_map.set(lastValidGrid.uuId, storageId)
-        //     callback && callback(lastValidGrid)
-        // }
-
-        // // Remove record from parent
-        // const parent = this.getGridParent(grid)
-        // if (parent) parent.children[grid.localId] = null
-
-        // // Remove grid
-        // this._levelInfos[grid.level].grids[grid.globalId] = undefined
-        // grid.release()
-    }
-
     getGrid(uuId: string): GridNode | undefined
     getGrid(level: number, globalId: number): GridNode | undefined
     getGrid(uuIdOrLevel?: string | number, globalId?: number): GridNode | undefined {
@@ -646,6 +601,17 @@ export class GridNodeManager {
 
         return renderInfoPack
     }
+
+    private _getNode(u: number, v: number, level: number): GridNode | undefined {
+
+        const width = this._levelInfos[level].width
+        const height = this._levelInfos[level].height
+
+        if (u < 0 || u >= width || v < 0 || v > height) return undefined
+
+        const globalId = v * width + u
+        return this._levelInfos[level].grids[globalId]
+    }
     
     private _createNodeRenderInfo(
         level: number, 
@@ -692,14 +658,4 @@ export class GridNodeManager {
 
 function lerp(a: number, b: number, t: number): number {
     return a + t * (b - a)
-}
-  
-function simplifyFraction(n: number, m: number): [ number, number ] {
-
-    let a = n, b = m
-    while (b !== 0) {
-        [a, b] = [b, a % b]
-    }
-
-    return [n / a, m / a]
 }
