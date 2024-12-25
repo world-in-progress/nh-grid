@@ -351,19 +351,7 @@ export class GridNodeManager {
         })
     }
 
-    private _getNode(u: number, v: number, level: number): GridNode | undefined {
-
-        const width = this._levelInfos[level].width
-        const height = this._levelInfos[level].height
-
-        if (u < 0 || u >= width || v < 0 || v > height) return undefined
-
-        const globalId = v * width + u
-        return this._levelInfos[level].grids[globalId]
-    }
-
     get levelInfos() {
-
         return this._levelInfos
     }
 
@@ -612,6 +600,17 @@ export class GridNodeManager {
         }
 
         return renderInfoPack
+    }
+
+    private _getNode(u: number, v: number, level: number): GridNode | undefined {
+
+        const width = this._levelInfos[level].width
+        const height = this._levelInfos[level].height
+
+        if (u < 0 || u >= width || v < 0 || v > height) return undefined
+
+        const globalId = v * width + u
+        return this._levelInfos[level].grids[globalId]
     }
     
     private _createNodeRenderInfo(

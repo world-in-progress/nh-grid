@@ -28,12 +28,11 @@ const map = new NHMap({
 
 }).on('load', () => {
 
-    const gridLayer = new GridLayer({
+    const gridLayer = new GridLayer(
         map,
-        maxGridNum: 8192 * 8192,
-        srcCS: 'ESRI:102140',
-        firstLevelSize: [ 3000, 3000 ],
-        subdivideRules: [
+        'ESRI:102140',
+        [ 3000, 3000 ],
+        [
             // [1018, 382],
             // [4, 2],
             // [255, 200],
@@ -52,13 +51,16 @@ const map = new NHMap({
             // [2, 2],
             [1, 1]
         ],
-        boundaryCondition: [
+        [
             808357.5000000000000000,
             824117.5000000000000000,
             838897.5000000000000000,
             843902.5000000000000000,
-        ]
-    })
+        ],
+        {
+            maxGridNum: 8192 * 8192
+        }
+    )
 
     map.addLayer(gridLayer as unknown as CustomLayerInterface)
 })

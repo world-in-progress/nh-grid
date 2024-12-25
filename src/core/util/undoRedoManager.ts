@@ -11,10 +11,10 @@ class UndoRedoManager {
     private _undoBuffer: RingBuffer<UndoRedoOperation>
     private _redoBuffer: RingBuffer<UndoRedoOperation>
 
-    constructor(size: number) {
+    constructor(operationCapacity: number) {
         
-        this._undoBuffer = new RingBuffer<UndoRedoOperation>(size)
-        this._redoBuffer = new RingBuffer<UndoRedoOperation>(size)
+        this._undoBuffer = new RingBuffer<UndoRedoOperation>(operationCapacity)
+        this._redoBuffer = new RingBuffer<UndoRedoOperation>(operationCapacity)
         this._registerKeyboardShortcuts()
     }
 

@@ -6,49 +6,22 @@ import { GUI, GUIController } from 'dat.gui'
 
 import gll from './GlLib'
 import NHMap from './NHMap'
-import Dispatcher from '../../src/core/message/dispatcher'
 import BoundingBox2D from '../../src/core/util/boundingBox2D'
-import { createDB, deleteDB } from '../../src/core/database/db'
+import { GridNodeRecorder } from '../../src/core/grid/NHGridRecorder'
 import VibrantColorGenerator from '../../src/core/util/vibrantColorGenerator'
-import { GridEdgeRecorder, GridNodeRecorder } from '../../src/core/grid/NHGridRecorder'
 
-createDB('GridDB', 'GridNode', 'uuId')
-window.onbeforeunload = () => deleteDB('GridDB')
 proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
 
 export interface GridLayerOptions {
-    map: NHMap
-    srcCS: string
-    maxGridNum: number
-    edgeProperties?: string[]
-    firstLevelSize: [ number, number ]
-    subdivideRules?: [ number, number ][]
-    boundaryCondition: [ number, number, number, number ]
-}
 
-export interface GridLayerSerializedInfo {
-    extent: [ number, number, number, number ]
-    grids: { 
-        id: number
-        xMinPercent: [ number, number ]
-        yMinPercent: [ number, number ]
-        xMaxPercent: [ number, number ]
-        yMaxPercent: [ number, number ] 
-    }[]
-    edges: {
-        id: number
-        edgeCode: number
-        minPercent: [ number, number ]
-        maxPercent: [ number, number ]
-        adjGrids: [ number | null, number | null ]
-    }[]
+    maxGridNum?: number
+    edgeProperties?: string[]
 }
 
 export default class GridLayer {
 
     // Layer-related //////////////////////////////////////////////////
 
-    map: NHMap
     type = 'custom'
     id = 'GridLayer'
     renderingMode = '3d'
@@ -56,29 +29,19 @@ export default class GridLayer {
 
     // Function-related //////////////////////////////////////////////////
 
-    // Message dispatcher
-    dispatcher = new Dispatcher(this, 4)
-
     // Grid properties
-    srcCS: string
     maxGridNum: number
     bBox: BoundingBox2D
+    hitSet = new Set<string>
     projConverter: proj4.Converter
     gridRecorder: GridNodeRecorder
-    edgeRecorder: GridEdgeRecorder
-    firstLevelSize: [ number, number ]
     subdivideRules: [ number, number ][]
     subdivideStacks = new Array<[ level: number, globalId: number ][]>()
 
-    // Grid render list
-    indexList = new Array<number>()
-    lineList = new Array<number>()
-    hitSet = new Set<string>
+    // GPU-related //////////////////////////////////////////////////
 
     storageTextureSize: number
     paletteColorList: Uint8Array
-
-    // GPU-related //////////////////////////////////////////////////
 
     private _gl: WebGL2RenderingContext
 
@@ -102,6 +65,12 @@ export default class GridLayer {
     updateGPUGrids: Function
 
     // Interaction-related //////////////////////////////////////////////////
+    
+    // Interaction mode
+    typeChanged = false
+    EDITOR_TYPE = 0b01
+    SUBDIVIDER_TYPE = 0b11
+    private _currentType = 0b11
 
     isShiftClick = false
     isDeleteMode = false
@@ -111,55 +80,55 @@ export default class GridLayer {
     mousedownHandler: Function
     mousemoveHandler: Function
     
-    // Mode
-    typeChanged = false
-    EDITOR_TYPE = 0b01
-    SUBDIVIDER_TYPE = 0b11
-    private _currentType = 0b11
-
-    uiOption: { capacity: number, level: number }
-    
     // Dat.GUI
     gui: GUI
     capacityController: GUIController
+    uiOption: { capacity: number, level: number }
 
-    constructor(options: GridLayerOptions) {
+    constructor(
+        public  map:                NHMap,
+        public  srcCS:              string,
+        public  firstLevelSize:     [ number, number ],
+                subdivideRules:     [ number, number ][],
+                boundaryCondition:  [ number, number, number, number ],
+                options:            GridLayerOptions = {}
+    ) {
 
-        // Set map
-        this.map = options.map
-        this._gl = this.map.painter.context.gl
-
-        this.srcCS = options.srcCS
-        this.maxGridNum = options.maxGridNum
-        this.firstLevelSize = options.firstLevelSize
+        // Set basic members
         this.projConverter = proj4(this.srcCS, 'EPSG:4326')
+        this.maxGridNum = options.maxGridNum || 4096 * 4096
 
         // Resize boundary condition by the first level size
-        const boundary = options.boundaryCondition
-        boundary[2] = boundary[0] + Math.ceil((boundary[2] - boundary[0]) / this.firstLevelSize[0]) * this.firstLevelSize[0] 
-        boundary[3] = boundary[1] + Math.ceil((boundary[3] - boundary[1]) / this.firstLevelSize[1]) * this.firstLevelSize[1]
-        this.bBox = new BoundingBox2D(...boundary)
+        boundaryCondition[2] = boundaryCondition[0] + Math.ceil((boundaryCondition[2] - boundaryCondition[0]) / this.firstLevelSize[0]) * this.firstLevelSize[0] 
+        boundaryCondition[3] = boundaryCondition[1] + Math.ceil((boundaryCondition[3] - boundaryCondition[1]) / this.firstLevelSize[1]) * this.firstLevelSize[1]
+        this.bBox = new BoundingBox2D(...boundaryCondition)
 
-        // Set subdivide rules by new boundary condition
+        // Set first level rule of subdivide rules by new boundary condition
         this.subdivideRules = [[  
-            (boundary[2] - boundary[0]) / this.firstLevelSize[0],
-            (boundary[3] - boundary[1]) / this.firstLevelSize[1],
+            (boundaryCondition[2] - boundaryCondition[0]) / this.firstLevelSize[0],
+            (boundaryCondition[3] - boundaryCondition[1]) / this.firstLevelSize[1],
         ]]
-        options.subdivideRules?.forEach(rule => {
-            this.subdivideRules.push(rule)
-        })
+        // Add other level rules to subdivide rules
+        this.subdivideRules.push(...subdivideRules)
 
         // Create core recorders
-        this.edgeRecorder = new GridEdgeRecorder(options.edgeProperties)
-        this.gridRecorder = new GridNodeRecorder(this.dispatcher, {
+        this.gridRecorder = new GridNodeRecorder({
             bBox: this.bBox,
             srcCS: this.srcCS,
             targetCS: 'EPSG:4326',
             rules: this.subdivideRules
+        }, 
+        this.maxGridNum,
+        {  
+            workerCount: 4,
+            operationCapacity: 1000,
         })
 
+        // Set WebGL2 context
+        this._gl = this.map.painter.context.gl
+
         // Set storage texture memory
-        this.storageTextureSize = Math.ceil(Math.sqrt(options.maxGridNum))
+        this.storageTextureSize = Math.ceil(Math.sqrt(this.maxGridNum))
 
         // Make palette color list
         const colorGenerator = new VibrantColorGenerator()
@@ -178,9 +147,8 @@ export default class GridLayer {
 
         // Init interaction option
         this.uiOption = {
+            level: 2,
             capacity: 0.0,
-            // level: this.subdivideRules.length - 1
-            level: 2
         }
 
         // Launch Dat.GUI
@@ -193,7 +161,6 @@ export default class GridLayer {
         this.capacityController = this.gui.__controllers[0]
         this.capacityController.setValue(0.0)
         this.capacityController.domElement.style.pointerEvents = 'none'
-
     }
     
     set currentType(type: number) {
@@ -348,7 +315,10 @@ export default class GridLayer {
 
         // Init DOM Elements and handlers ////////////////////////////////////////////////////////////
 
-        // [1] Subdivider Type Button
+        // [1] Remove Event handler for map boxZoom
+        this.map.boxZoom.disable()
+
+        // [2] Subdivider Type Button
         const subdividerButton = document.createElement('button')
         subdividerButton.title = 'Grid Subdivider'
         subdividerButton.addEventListener('click', () => this.currentType = this.SUBDIVIDER_TYPE)
@@ -381,7 +351,7 @@ export default class GridLayer {
         subdividerButton.classList.add('active') // add blooming effect
         this.addSubdividerUIHandler()
 
-        // [2] Editor Type Button
+        // [3] Editor Type Button
         const editorButton = document.createElement('button')
         editorButton.title = 'Grid Editor'
         editorButton.addEventListener('click', () => this.currentType = this.EDITOR_TYPE)
@@ -411,24 +381,7 @@ export default class GridLayer {
         })
         addButtonClickListener(editorButton)
 
-        // [3] Remove Event handler for map boxZoom
-        this.map.boxZoom.disable()
-
-        // [4] Add event listener for <Shift + S> (Download serialization json)
-        document.addEventListener('keydown', e => {
-
-            if (e.shiftKey && e.key === 'S') {
-                let data = this.serialize()
-                let jsonData = JSON.stringify(data)
-                let blob = new Blob([ jsonData ], { type: 'application/json' })
-                let link = document.createElement('a')
-                link.href = URL.createObjectURL(blob)
-                link.download = 'gridInfo.json'
-                link.click()
-            }
-        })
-
-        // [5] Add event listner for <Shift + D> (Open removing grid mode)
+        // [4] Add event listner for <Shift + D> (Open removing grid mode)
         document.addEventListener('keydown', e => {
 
             if (e.shiftKey && e.key === 'D') {
@@ -437,7 +390,7 @@ export default class GridLayer {
             }
         })
 
-        // [6] Add event listner for <Shift + T> (Set grid transparent or not)
+        // [5] Add event listner for <Shift + T> (Set grid transparent or not)
         document.addEventListener('keydown', e => {
 
             if (e.shiftKey && e.key === 'T') {
@@ -503,173 +456,6 @@ export default class GridLayer {
         })
     }
 
-    serialize() {}
-    // serialize() {
-
-    //     const serializedData: GridLayerSerializedInfo = {
-    //         grids: [], edges: [],
-    //         extent: this.bBox.boundary
-    //     }
-
-    //     const grids = serializedData.grids
-    //     const edges = serializedData.edges
-    //     const levelGlobalId_serializedId_Map: Map<string, number> = new Map<string, number>()
-
-    //     // Serialized edge recoder used to record valid edges
-    //     const sEdgeRecoder = new GridEdgeRecorder()
-
-    //     // Serialize grids //////////////////////////////////////////////////
-
-    //     // Iterate hit grids in Editor Type
-    //     if (this._currentType === this.EDITOR_TYPE) {
-    //         this.hitGridList.forEach((grid, index) => {
-
-    //             const { xMinPercent, yMinPercent, xMaxPercent, yMaxPercent } = grid.serialization
-    //             grids.push({
-    //                 id: index,
-    //                 xMinPercent, yMinPercent,
-    //                 xMaxPercent, yMaxPercent
-    //             })
-    //             const key = [ grid.level, grid.globalId ].join('-')
-    //             levelGlobalId_serializedId_Map.set(key, index)
-
-    //             // Avoid edge miss and record valid key
-    //             this.edgeRecorder.calcGridEdges(grid, this.gridRecorder)
-    //             grid.edgeKeys.forEach(key => {
-    //                 const edge = this.edgeRecorder.getEdgeByKey(key)
-    //                 sEdgeRecoder.addEdge(edge)
-    //             })
-    //         })
-    //     }
-    //     // Iterate hit grids in Subdivider Type
-    //     else {
-
-    //         // Find neighbours for all grids
-    //         this.gridRecorder.findNeighbours()
-            
-    //         let index = 0
-    //         this.gridRecorder.uuId_gridNode_map.forEach(grid => {
-    //             if (grid.hit) {
-
-    //                 const { xMinPercent, yMinPercent, xMaxPercent, yMaxPercent } = grid.serialization
-    //                 grids.push({
-    //                     id: index,
-    //                     xMinPercent, yMinPercent,
-    //                     xMaxPercent, yMaxPercent
-    //                 })
-
-    //                 const key = [ grid.level, grid.globalId ].join('-')
-    //                 levelGlobalId_serializedId_Map.set(key, index)
-    //                 index++
-
-    //                 // Avoid edge miss and record valid key
-    //                 this.edgeRecorder.calcGridEdges(grid, this.gridRecorder)
-    //                 grid.edgeKeys.forEach(key => {
-    //                     const edge = this.edgeRecorder.getEdgeByKey(key)
-    //                     sEdgeRecoder.addEdge(edge)
-    //                 })
-    //             }
-    //         })
-    //     }
-
-    //     // Serialize edges //////////////////////////////////////////////////
-
-    //     let index = 0
-    //     sEdgeRecoder.edges.forEach(edge => {
-
-    //         const { adjGrids, minPercent, maxPercent, edgeCode } = edge.serialization
-    //         const grid1 = adjGrids[0] !== 'null-null' ? levelGlobalId_serializedId_Map.get(adjGrids[0])! : null
-    //         const grid2 = adjGrids[1] !== 'null-null' ? levelGlobalId_serializedId_Map.get(adjGrids[1])! : null
-
-    //         edges.push({
-    //             id: index++,
-    //             adjGrids: [ grid1, grid2 ],
-    //             minPercent,
-    //             maxPercent,
-    //             edgeCode
-    //         })
-    //     })
-
-    //     return serializedData
-    // }
-
-    private _calcPickingMatrix(e: MapMouseEvent) {
-
-        const canvas = this._gl.canvas
-        const offsetX = e.originalEvent.clientX
-        const offsetY = e.originalEvent.clientY
-
-        const pixelRatio = window.devicePixelRatio || 1
-        const canvasWidth = canvas.width
-        const canvasHeight = canvas.height
-
-        const ndcX = (offsetX * pixelRatio + 0.5) / canvasWidth * 2.0 - 1.0
-        const ndcY = 1.0 - (offsetY * pixelRatio + 0.5) / canvasHeight * 2.0
-
-        const pickingMatrix = mat4.create()
-        mat4.scale(pickingMatrix, pickingMatrix, [ canvasWidth * 0.5, canvasHeight * 0.5, 1.0 ])
-        mat4.translate(pickingMatrix, pickingMatrix, [ -ndcX, -ndcY, 0.0 ])
-
-        return pickingMatrix
-    }
-    
-    _mousedownHandler(e: MapMouseEvent) {
-        
-        if (e.originalEvent.shiftKey && e.originalEvent.button === 0) {
-            this.isShiftClick = true
-            this.map.dragPan.disable()
-        }
-    }
-
-    _mouseupHandler(e: MapMouseEvent) {
-
-        if (this.isShiftClick) {
-            this.map.dragPan.enable()
-            this.isShiftClick = false
-
-            const storageId = this.picking(this._calcPickingMatrix(e))
-            storageId >= 0 && this.hit(storageId, e.lngLat.toArray())
-
-            // GPU Picking Vs CPU Picking
-            if (0) {
-                // let start = 0, end = 0
-
-                // // GPU Picking
-                // start = Date.now()
-                // let uuid: string | null = this.picking(this._calcPickingMatrix(e))
-                // if (uuid) {
-                //     const [ level, globalId ] = uuid.split('-').map(key => Number(key))
-                //     console.log(level, globalId)
-                //     end = Date.now()
-                //     console.log(`GPU Picking: ${end - start} ms`)
-                // }
-
-                // // CPU Picking
-                // uuid = ''
-                // start = Date.now()
-                // const [ lon, lat ] = this.projConverter.inverse(e.lngLat.toArray())
-                // this.gridRecorder.storageId_uuId_map.values()
-                // .filter(uuId => node.hit && node.within(this.bBox, lon, lat)).forEach(node => uuid = node.uuId)
-                // if (uuid !== '') {
-                //     const [ level, globalId ] = uuid.split('-').map(key => Number(key))
-                //     console.log(level, globalId)
-                //     end = Date.now()
-                //     console.log(`CPU Picking: ${end - start} ms`)
-                // }
-            }
-        }
-    }
-
-    _mousemoveHandler(e: MapMouseEvent) {
-
-        if (this.isShiftClick) {
-            this.map.dragPan.disable()
-
-            const storageId = this.picking(this._calcPickingMatrix(e))
-            storageId >= 0 && this.hit(storageId, e.lngLat.toArray())
-        }
-    }
-
     removeUIHandler() {
     
         this.map
@@ -695,95 +481,6 @@ export default class GridLayer {
         this.map
         .on('mouseup', this.mouseupHandler as any)
         .on('mousedown', this.mousedownHandler as any)
-    }
-    
-    drawGridMesh() {
-
-        const gl = this._gl
-
-        gl.enable(gl.BLEND)
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-
-        gl.enable(gl.DEPTH_TEST)
-        gl.depthFunc(gl.LESS)
-
-        gl.useProgram(this._terrainMeshShader)
-
-        gl.activeTexture(gl.TEXTURE0)
-        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this._storageTextureArray)
-        gl.activeTexture(gl.TEXTURE1)
-        gl.bindTexture(gl.TEXTURE_2D, this._levelTexture)
-        gl.activeTexture(gl.TEXTURE2)
-        gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture)
-
-        gl.uniform2fv(gl.getUniformLocation(this._terrainMeshShader, 'centerLow'), this.map.centerLow)
-        gl.uniform2fv(gl.getUniformLocation(this._terrainMeshShader, 'centerHigh'), this.map.centerHigh)
-        gl.uniformMatrix4fv(gl.getUniformLocation(this._terrainMeshShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
-
-        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.gridRecorder.nextStorageId)
-    }
-
-    drawGridLine() {
-
-        const gl = this._gl
-
-        gl.disable(gl.BLEND)
-        gl.disable(gl.DEPTH_TEST)
-
-        gl.useProgram(this._terrainLineShader)
-
-        gl.activeTexture(gl.TEXTURE0)
-        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this._storageTextureArray)
-
-        gl.uniform2fv(gl.getUniformLocation(this._terrainLineShader, 'centerLow'), this.map.centerLow)
-        gl.uniform2fv(gl.getUniformLocation(this._terrainLineShader, 'centerHigh'), this.map.centerHigh)
-        gl.uniformMatrix4fv(gl.getUniformLocation(this._terrainLineShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
-
-        gl.drawArraysInstanced(gl.LINE_LOOP, 0, 4, this.gridRecorder.nextStorageId)
-    }
-
-    /**
-     * @param pickingMatrix 
-     * @returns { number } StorageId of the picked grid
-     */
-    picking(pickingMatrix: mat4): number {
-
-        const gl = this._gl
-
-        gl.bindFramebuffer(gl.FRAMEBUFFER, this._pickingFBO)
-        gl.viewport(0, 0, 1, 1)
-
-        gl.clearColor(1.0, 1.0, 1.0, 1.0)
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
-
-        gl.disable(gl.BLEND)
-
-        gl.depthFunc(gl.LESS)
-        gl.enable(gl.DEPTH_TEST)
-
-        gl.useProgram(this._pickingShader)
-
-        gl.activeTexture(gl.TEXTURE0)
-        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this._storageTextureArray)
-        gl.activeTexture(gl.TEXTURE1)
-        gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture)
-
-        gl.uniform2fv(gl.getUniformLocation(this._pickingShader, 'centerLow'), this.map.centerLow)
-        gl.uniform2fv(gl.getUniformLocation(this._pickingShader, 'centerHigh'), this.map.centerHigh)
-        gl.uniformMatrix4fv(gl.getUniformLocation(this._pickingShader, 'pickingMatrix'), false, pickingMatrix)
-        gl.uniformMatrix4fv(gl.getUniformLocation(this._pickingShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
-
-        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.gridRecorder.nextStorageId)
-
-        gl.flush()
-
-        const pixel = new Uint8Array(4)
-        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
-
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null)
- 
-        // Return storageId of the picked grid
-        return pixel[0] + (pixel[1] << 8) + (pixel[2] << 16) + (pixel[3] << 24)
     }
 
     hit(storageId: number, coordinates: [ number, number ]) {
@@ -843,8 +540,6 @@ export default class GridLayer {
     }
 
     tickGrids() {
-        
-        // if (this.hitSet.size === 0 && !this.typeChanged) return
 
         if (this._currentType === this.SUBDIVIDER_TYPE) {
 
@@ -920,6 +615,95 @@ export default class GridLayer {
         this.capacityController.updateDisplay()
     }
 
+    /**
+     * @param pickingMatrix 
+     * @returns { number } StorageId of the picked grid
+     */
+    picking(pickingMatrix: mat4): number {
+
+        const gl = this._gl
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this._pickingFBO)
+        gl.viewport(0, 0, 1, 1)
+
+        gl.clearColor(1.0, 1.0, 1.0, 1.0)
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+
+        gl.disable(gl.BLEND)
+
+        gl.depthFunc(gl.LESS)
+        gl.enable(gl.DEPTH_TEST)
+
+        gl.useProgram(this._pickingShader)
+
+        gl.activeTexture(gl.TEXTURE0)
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this._storageTextureArray)
+        gl.activeTexture(gl.TEXTURE1)
+        gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture)
+
+        gl.uniform2fv(gl.getUniformLocation(this._pickingShader, 'centerLow'), this.map.centerLow)
+        gl.uniform2fv(gl.getUniformLocation(this._pickingShader, 'centerHigh'), this.map.centerHigh)
+        gl.uniformMatrix4fv(gl.getUniformLocation(this._pickingShader, 'pickingMatrix'), false, pickingMatrix)
+        gl.uniformMatrix4fv(gl.getUniformLocation(this._pickingShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
+
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.gridRecorder.nextStorageId)
+
+        gl.flush()
+
+        const pixel = new Uint8Array(4)
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+ 
+        // Return storageId of the picked grid
+        return pixel[0] + (pixel[1] << 8) + (pixel[2] << 16) + (pixel[3] << 24)
+    }
+    
+    drawGridMesh() {
+
+        const gl = this._gl
+
+        gl.enable(gl.BLEND)
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+        gl.enable(gl.DEPTH_TEST)
+        gl.depthFunc(gl.LESS)
+
+        gl.useProgram(this._terrainMeshShader)
+
+        gl.activeTexture(gl.TEXTURE0)
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this._storageTextureArray)
+        gl.activeTexture(gl.TEXTURE1)
+        gl.bindTexture(gl.TEXTURE_2D, this._levelTexture)
+        gl.activeTexture(gl.TEXTURE2)
+        gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture)
+
+        gl.uniform2fv(gl.getUniformLocation(this._terrainMeshShader, 'centerLow'), this.map.centerLow)
+        gl.uniform2fv(gl.getUniformLocation(this._terrainMeshShader, 'centerHigh'), this.map.centerHigh)
+        gl.uniformMatrix4fv(gl.getUniformLocation(this._terrainMeshShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
+
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.gridRecorder.nextStorageId)
+    }
+
+    drawGridLine() {
+
+        const gl = this._gl
+
+        gl.disable(gl.BLEND)
+        gl.disable(gl.DEPTH_TEST)
+
+        gl.useProgram(this._terrainLineShader)
+
+        gl.activeTexture(gl.TEXTURE0)
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this._storageTextureArray)
+
+        gl.uniform2fv(gl.getUniformLocation(this._terrainLineShader, 'centerLow'), this.map.centerLow)
+        gl.uniform2fv(gl.getUniformLocation(this._terrainLineShader, 'centerHigh'), this.map.centerHigh)
+        gl.uniformMatrix4fv(gl.getUniformLocation(this._terrainLineShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
+
+        gl.drawArraysInstanced(gl.LINE_LOOP, 0, 4, this.gridRecorder.nextStorageId)
+    }
+
     private _updateGPUGrid(info?: [ storageId: number, level: number, vertices: Float32Array ]) {
 
         if (info) {
@@ -936,6 +720,83 @@ export default class GridLayer {
             this._gl.flush()
         }
         this.map.triggerRepaint()
+    }
+
+    private _calcPickingMatrix(e: MapMouseEvent) {
+
+        const canvas = this._gl.canvas
+        const offsetX = e.originalEvent.clientX
+        const offsetY = e.originalEvent.clientY
+
+        const pixelRatio = window.devicePixelRatio || 1
+        const canvasWidth = canvas.width
+        const canvasHeight = canvas.height
+
+        const ndcX = (offsetX * pixelRatio + 0.5) / canvasWidth * 2.0 - 1.0
+        const ndcY = 1.0 - (offsetY * pixelRatio + 0.5) / canvasHeight * 2.0
+
+        const pickingMatrix = mat4.create()
+        mat4.scale(pickingMatrix, pickingMatrix, [ canvasWidth * 0.5, canvasHeight * 0.5, 1.0 ])
+        mat4.translate(pickingMatrix, pickingMatrix, [ -ndcX, -ndcY, 0.0 ])
+
+        return pickingMatrix
+    }
+    
+    private _mousedownHandler(e: MapMouseEvent) {
+        
+        if (e.originalEvent.shiftKey && e.originalEvent.button === 0) {
+            this.isShiftClick = true
+            this.map.dragPan.disable()
+        }
+    }
+
+    private _mouseupHandler(e: MapMouseEvent) {
+
+        if (this.isShiftClick) {
+            this.map.dragPan.enable()
+            this.isShiftClick = false
+
+            const storageId = this.picking(this._calcPickingMatrix(e))
+            storageId >= 0 && this.hit(storageId, e.lngLat.toArray())
+
+            // GPU Picking Vs CPU Picking
+            if (0) {
+                // let start = 0, end = 0
+
+                // // GPU Picking
+                // start = Date.now()
+                // let uuid: string | null = this.picking(this._calcPickingMatrix(e))
+                // if (uuid) {
+                //     const [ level, globalId ] = uuid.split('-').map(key => Number(key))
+                //     console.log(level, globalId)
+                //     end = Date.now()
+                //     console.log(`GPU Picking: ${end - start} ms`)
+                // }
+
+                // // CPU Picking
+                // uuid = ''
+                // start = Date.now()
+                // const [ lon, lat ] = this.projConverter.inverse(e.lngLat.toArray())
+                // this.gridRecorder.storageId_uuId_map.values()
+                // .filter(uuId => node.hit && node.within(this.bBox, lon, lat)).forEach(node => uuid = node.uuId)
+                // if (uuid !== '') {
+                //     const [ level, globalId ] = uuid.split('-').map(key => Number(key))
+                //     console.log(level, globalId)
+                //     end = Date.now()
+                //     console.log(`CPU Picking: ${end - start} ms`)
+                // }
+            }
+        }
+    }
+
+    private _mousemoveHandler(e: MapMouseEvent) {
+
+        if (this.isShiftClick) {
+            this.map.dragPan.disable()
+
+            const storageId = this.picking(this._calcPickingMatrix(e))
+            storageId >= 0 && this.hit(storageId, e.lngLat.toArray())
+        }
     }
 }
 

@@ -1,6 +1,7 @@
 import proj4 from 'proj4'
 
 import Dispatcher from '../message/dispatcher'
+import { createDB, deleteDB } from '../database/db'
 import { MercatorCoordinate } from '../math/mercatorCoordinate'
 import UndoRedoManager, { UndoRedoOperation } from '../util/undoRedoManager'
 import { EDGE_CODE, EDGE_CODE_EAST, EDGE_CODE_NORTH, EDGE_CODE_SOUTH, EDGE_CODE_WEST, GridEdge, GridNode, GridNodeRecord, GridNodeRenderInfo, GridNodeRenderInfoPack, SubdivideRules } from './NHGrid'
@@ -71,12 +72,39 @@ export class GridEdgeRecorder {
 }
 
 export interface GridLevelInfo {
+
     width: number
     height: number
 }
 
+export interface GridLayerSerializedInfo {
+    extent: [ number, number, number, number ]
+    grids: { 
+        id: number
+        xMinPercent: [ number, number ]
+        yMinPercent: [ number, number ]
+        xMaxPercent: [ number, number ]
+        yMaxPercent: [ number, number ] 
+    }[]
+    edges: {
+        id: number
+        edgeCode: number
+        minPercent: [ number, number ]
+        maxPercent: [ number, number ]
+        adjGrids: [ number | null, number | null ]
+    }[]
+}
+
 export interface UndoRedoRecordOperation extends UndoRedoOperation {
     action: 'RemoveGrid' | 'SubdivideGrid'
+}
+
+export interface GridNodeRecordOptions {
+
+    workerCount?: number
+    dispatcher?: Dispatcher
+    operationCapacity?: number
+    autoDeleteIndexedDB?: boolean
 }
 
 export class GridNodeRecorder extends UndoRedoManager {
@@ -85,11 +113,14 @@ export class GridNodeRecorder extends UndoRedoManager {
 
     isReady = false
     nextStorageId = 0
+    dispatcher: Dispatcher
     levelInfos: GridLevelInfo[]
-    storageId_gridInfo_cache = new Array() // [ level_0, globalId_0, level_1, globalId_1, ... , level_n, globalId_n ]
+    storageId_gridInfo_cache: Array<number | undefined> // [ level_0, globalId_0, level_1, globalId_1, ... , level_n, globalId_n ]
 
-    constructor(private _dispatcher: Dispatcher, private _subdivideRules: SubdivideRules, capacity: number = 1000) {
-        super(capacity)
+    constructor(private _subdivideRules: SubdivideRules, maxGridNum?: number, options: GridNodeRecordOptions = {}) {
+        super(options.operationCapacity || 1000)
+
+        this.dispatcher =  options.dispatcher || new Dispatcher(this,options.workerCount || 4)
 
         // Init projConverter
         this._projConverter = proj4(this._subdivideRules.srcCS, this._subdivideRules.targetCS)
@@ -108,11 +139,35 @@ export class GridNodeRecorder extends UndoRedoManager {
             }
             this.levelInfos[level] = { width, height }
         })
+
+        // Init grid cache
+        console.log(maxGridNum)
+        this.storageId_gridInfo_cache = maxGridNum ? new Array<number>(maxGridNum * 2) : []
+
+        // Create IndexedDB
+        createDB('GridDB', 'GridNode', 'uuId')
+        if (options.autoDeleteIndexedDB === undefined ? true : options.autoDeleteIndexedDB) {
+            window.onbeforeunload = () => deleteDB('GridDB')
+        }
+
+        // Add event listener for <Shift + S> (Download serialization json)
+        document.addEventListener('keydown', e => {
+
+            if (e.shiftKey && e.key === 'S') {
+                let data = this.serialize()
+                let jsonData = JSON.stringify(data)
+                let blob = new Blob([ jsonData ], { type: 'application/json' })
+                let link = document.createElement('a')
+                link.href = URL.createObjectURL(blob)
+                link.download = 'gridInfo.json'
+                link.click()
+            }
+        })
     }
 
     init(callback?: Function) {
 
-        this._dispatcher.broadcast('init', this._subdivideRules, () => {
+        this.dispatcher.broadcast('init', this._subdivideRules, () => {
             this.isReady = true
             
             // Create root node in indexedDB
@@ -146,6 +201,98 @@ export class GridNodeRecorder extends UndoRedoManager {
         this._actor.send('parseTopology', this.storageId_gridInfo_cache, () => {})
     }
 
+    serialize() {
+
+    }
+    // serialize() {
+
+    //     const serializedData: GridLayerSerializedInfo = {
+    //         grids: [], edges: [],
+    //         extent: this.bBox.boundary
+    //     }
+
+    //     const grids = serializedData.grids
+    //     const edges = serializedData.edges
+    //     const levelGlobalId_serializedId_Map: Map<string, number> = new Map<string, number>()
+
+    //     // Serialized edge recoder used to record valid edges
+    //     const sEdgeRecoder = new GridEdgeRecorder()
+
+    //     // Serialize grids //////////////////////////////////////////////////
+
+    //     // Iterate hit grids in Editor Type
+    //     if (this._currentType === this.EDITOR_TYPE) {
+    //         this.hitGridList.forEach((grid, index) => {
+
+    //             const { xMinPercent, yMinPercent, xMaxPercent, yMaxPercent } = grid.serialization
+    //             grids.push({
+    //                 id: index,
+    //                 xMinPercent, yMinPercent,
+    //                 xMaxPercent, yMaxPercent
+    //             })
+    //             const key = [ grid.level, grid.globalId ].join('-')
+    //             levelGlobalId_serializedId_Map.set(key, index)
+
+    //             // Avoid edge miss and record valid key
+    //             this.edgeRecorder.calcGridEdges(grid, this.gridRecorder)
+    //             grid.edgeKeys.forEach(key => {
+    //                 const edge = this.edgeRecorder.getEdgeByKey(key)
+    //                 sEdgeRecoder.addEdge(edge)
+    //             })
+    //         })
+    //     }
+    //     // Iterate hit grids in Subdivider Type
+    //     else {
+
+    //         // Find neighbours for all grids
+    //         this.gridRecorder.findNeighbours()
+            
+    //         let index = 0
+    //         this.gridRecorder.uuId_gridNode_map.forEach(grid => {
+    //             if (grid.hit) {
+
+    //                 const { xMinPercent, yMinPercent, xMaxPercent, yMaxPercent } = grid.serialization
+    //                 grids.push({
+    //                     id: index,
+    //                     xMinPercent, yMinPercent,
+    //                     xMaxPercent, yMaxPercent
+    //                 })
+
+    //                 const key = [ grid.level, grid.globalId ].join('-')
+    //                 levelGlobalId_serializedId_Map.set(key, index)
+    //                 index++
+
+    //                 // Avoid edge miss and record valid key
+    //                 this.edgeRecorder.calcGridEdges(grid, this.gridRecorder)
+    //                 grid.edgeKeys.forEach(key => {
+    //                     const edge = this.edgeRecorder.getEdgeByKey(key)
+    //                     sEdgeRecoder.addEdge(edge)
+    //                 })
+    //             }
+    //         })
+    //     }
+
+    //     // Serialize edges //////////////////////////////////////////////////
+
+    //     let index = 0
+    //     sEdgeRecoder.edges.forEach(edge => {
+
+    //         const { adjGrids, minPercent, maxPercent, edgeCode } = edge.serialization
+    //         const grid1 = adjGrids[0] !== 'null-null' ? levelGlobalId_serializedId_Map.get(adjGrids[0])! : null
+    //         const grid2 = adjGrids[1] !== 'null-null' ? levelGlobalId_serializedId_Map.get(adjGrids[1])! : null
+
+    //         edges.push({
+    //             id: index++,
+    //             adjGrids: [ grid1, grid2 ],
+    //             minPercent,
+    //             maxPercent,
+    //             edgeCode
+    //         })
+    //     })
+
+    //     return serializedData
+    // }
+
     getGridInfoByStorageId(storageId: number): [ level: number, globalId: number ] {
 
         return this.storageId_gridInfo_cache.slice(storageId * 2, (storageId + 1) * 2) as [ level: number, globalId: number ]
@@ -176,11 +323,11 @@ export class GridNodeRecorder extends UndoRedoManager {
     }
 
     private get _actor() {
-        return this._dispatcher.actor
+        return this.dispatcher.actor
     }
 
     private get _dbActor() {
-        return this._dispatcher.dbActor
+        return this.dispatcher.dbActor
     }
         
     private _createNodeRenderVertices(level: number, globalId: number) {
