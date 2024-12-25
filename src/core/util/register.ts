@@ -1,6 +1,7 @@
 import { Class, Klass } from '../types'
+
+import BoundingBox2D from './boundingBox2D'
 import { GridNode, GridNodeRecord } from '../grid/NHGrid'
-import { BoundingBox2D } from './boundingBox2D'
 
 export type Registry = {
     [ key: string ]: {

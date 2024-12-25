@@ -1,13 +1,13 @@
 import proj4 from 'proj4'
-import { BoundingBox2D } from '../util/boundingBox2D'
-import { MercatorCoordinate } from '../math/mercatorCoordinate'
 import { DbAction } from '../database/db'
+import BoundingBox2D from '../util/boundingBox2D'
+import { MercatorCoordinate } from '../math/mercatorCoordinate'
 
+export const EDGE_CODE_INVALID = -1
 export const EDGE_CODE_NORTH   = 0b00
 export const EDGE_CODE_WEST    = 0b01
 export const EDGE_CODE_SOUTH   = 0b10
 export const EDGE_CODE_EAST    = 0b11
-export const EDGE_CODE_INVALID = -1
 
 export type EDGE_CODE = typeof EDGE_CODE_NORTH | typeof EDGE_CODE_WEST | typeof EDGE_CODE_SOUTH | typeof EDGE_CODE_EAST
 
@@ -36,9 +36,9 @@ export interface GridNodeSerializedInfo {
 }
 
 export interface GridNodeParams {
-    localId: number,
-    globalId: number,
-    parent?: GridNode,
+    localId: number
+    globalId: number
+    parent?: GridNode
     globalRange?: [ number, number ]
 }
 
@@ -374,31 +374,19 @@ export class GridNode {
     }
 }
 
-export class Grid {
-
-    
-}
-
 // Helpers //////////////////////////////////////////////////////////////////////////////////////////////////////
 
 function lerp(a: number, b: number, t: number): number {
     return (1.0 - t) * a + t * b
 }
-
-function gcd(a: number, b: number): number {
-
-    while (b !== 0) {
-        const temp = b
-        b = a % b
-        a = temp
-    }
-    
-    return a
-}
   
 function simplifyFraction(n: number, m: number): [ number, number ] {
 
-    const divisor = gcd(n, m)
-    return [ n / divisor, m / divisor ]
+    let a = n, b = m
+    while (b !== 0) {
+        [a, b] = [b, a % b]
+    }
+
+    return [n / a, m / a]
 }
   

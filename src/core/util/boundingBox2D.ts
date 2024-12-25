@@ -1,6 +1,6 @@
 import { Vec4f } from '../math/vec4f'
 
-export class BoundingBox2D extends Vec4f {
+export default class BoundingBox2D extends Vec4f {
 
     constructor(xMin: number, yMin: number, xMax: number, yMax: number) {
 

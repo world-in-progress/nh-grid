@@ -63,7 +63,8 @@ export function updateData(store: IDBObjectStore, data: any) {
     request.onerror = (e) => console.error((e.target as any).error)
 }
 
-function getData(store: IDBObjectStore, id: string | number): Promise<any> {
+export function getData(store: IDBObjectStore, id: string | number): Promise<any> {
+    
     return new Promise((resolve, reject) => {
         const request = store.get(id)
 
