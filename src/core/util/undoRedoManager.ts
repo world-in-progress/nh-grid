@@ -59,12 +59,12 @@ class UndoRedoManager {
 
             const ctrlOrCmd = isMacOS() ? event.metaKey : event.ctrlKey
 
-            if (ctrlOrCmd && event.key === 'z' && !event.shiftKey) {
+            if (ctrlOrCmd && event.key.toLocaleLowerCase() === 'z' && !event.shiftKey) {
                 event.preventDefault()
                 this.undo()
             }
 
-            if (ctrlOrCmd && event.key === 'z' && event.shiftKey) {
+            if (ctrlOrCmd && event.key.toLocaleLowerCase() === 'z' && event.shiftKey) {
                 event.preventDefault()
                 this.redo()
             }

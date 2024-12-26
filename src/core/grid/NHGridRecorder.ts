@@ -141,7 +141,6 @@ export class GridNodeRecorder extends UndoRedoManager {
         })
 
         // Init grid cache
-        console.log(maxGridNum)
         this.storageId_gridInfo_cache = maxGridNum ? new Array<number>(maxGridNum * 2) : []
 
         // Create IndexedDB
