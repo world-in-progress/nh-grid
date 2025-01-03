@@ -47,13 +47,20 @@ export default class GridLayer {
 
     // Shader
     private _pickingShader: WebGLProgram = 0
-    private _terrainMeshShader: WebGLProgram = 0
-    private _terrainLineShader: WebGLProgram = 0
+    private _gridMeshShader: WebGLProgram = 0
+    private _gridLineShader: WebGLProgram = 0
 
     // Texture resource
     private _levelTexture: WebGLTexture = 0
     private _paletteTexture: WebGLTexture = 0
     private _storageTextureArray: WebGLTexture = 0
+
+    private _tlStorageBuffer: WebGLBuffer = 0
+    private _trStorageBuffer: WebGLBuffer = 0
+    private _blStorageBuffer: WebGLBuffer = 0
+    private _brStorageBuffer: WebGLBuffer = 0
+    private _levelStorageBuffer: WebGLBuffer = 0
+    private _storageVAO: WebGLVertexArrayObject = 0
 
     // Picking pass resource
     private _pickingFBO: WebGLFramebuffer = 0
@@ -237,8 +244,52 @@ export default class GridLayer {
         gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, storageU, storageV, 1, 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, new Uint16Array([level]))
     }
 
+    writeGridinfoToStorageBuffer(info: [ storageid: number, level: number, vertices: Float32Array ]) {
+
+        const gl = this._gl
+        const levelByteStride = 1 * 2
+        const vertexByteStride = 2 * 4
+        const [ storageId, level, vertices ] = info
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._tlStorageBuffer)
+        gl.bufferSubData(gl.ARRAY_BUFFER, storageId * vertexByteStride, vertices, 0, 2)
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._trStorageBuffer)
+        gl.bufferSubData(gl.ARRAY_BUFFER, storageId * vertexByteStride, vertices, 2, 2)
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._blStorageBuffer)
+        gl.bufferSubData(gl.ARRAY_BUFFER, storageId * vertexByteStride, vertices, 4, 2)
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._brStorageBuffer)
+        gl.bufferSubData(gl.ARRAY_BUFFER, storageId * vertexByteStride, vertices, 6, 2)
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._levelStorageBuffer)
+        gl.bufferSubData(gl.ARRAY_BUFFER, storageId * levelByteStride, new Uint16Array([level]), 0, 1)
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, null)
+    }
+
     // Optimized function to upload multiple grid rendering info to GPU storage texture
     // Note: grids must have continuous storageIds between 'fromStorageId' and 'toStogrageId'
+    writeMultiGridInfoToStorageBuffer(infos: [ fromStorageId: number, toStorageId: number, levels: Uint16Array, vertices: Float32Array ]) {
+        const gl = this._gl
+        const [ fromStorageId, _, levels, vertices ] = infos
+        const levelByteStride = 1 * 2
+        const vertexByteStride = 2 * 4
+        const gridCount = vertices.length / 8
+        const lengthPerAttribute = 2 * gridCount
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._tlStorageBuffer)
+        gl.bufferSubData(gl.ARRAY_BUFFER, fromStorageId * vertexByteStride, vertices, lengthPerAttribute * 0, lengthPerAttribute)
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._trStorageBuffer)
+        gl.bufferSubData(gl.ARRAY_BUFFER, fromStorageId * vertexByteStride, vertices, lengthPerAttribute * 1, lengthPerAttribute)
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._blStorageBuffer)
+        gl.bufferSubData(gl.ARRAY_BUFFER, fromStorageId * vertexByteStride, vertices, lengthPerAttribute * 2, lengthPerAttribute)
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._brStorageBuffer)
+        gl.bufferSubData(gl.ARRAY_BUFFER, fromStorageId * vertexByteStride, vertices, lengthPerAttribute * 3, lengthPerAttribute)
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._levelStorageBuffer)
+        gl.bufferSubData(gl.ARRAY_BUFFER, fromStorageId * levelByteStride, levels)
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, null)
+    }
+
+    /** @deprecated */
     writeMultiGridInfoToTexture(infos: [ fromStorageId: number, toStorageId: number, levels: Uint16Array, vertices: Float32Array ]) {
 
         const gl = this._gl
@@ -408,23 +459,53 @@ export default class GridLayer {
 
         // Create shader
         this._pickingShader = await gll.createShader(gl, '/shaders/picking.glsl')
-        this._terrainLineShader = await gll.createShader(gl, '/shaders/gridLine.glsl')
-        this._terrainMeshShader = await gll.createShader(gl, '/shaders/gridMesh.glsl')
+        this._gridLineShader = await gll.createShader(gl, '/shaders/gridLine.glsl')
+        this._gridMeshShader = await gll.createShader(gl, '/shaders/gridMesh.glsl')
 
         // Set static uniform in shaders
-        gl.useProgram(this._terrainLineShader)
-        gl.uniform1i(gl.getUniformLocation(this._terrainLineShader, 'storageTexture'), 0)
-
-        gl.useProgram(this._terrainMeshShader)
-        gl.uniform1i(gl.getUniformLocation(this._terrainMeshShader, 'storageTexture'), 0)
-        gl.uniform1i(gl.getUniformLocation(this._terrainMeshShader, 'levelTexture'), 1)
-        gl.uniform1i(gl.getUniformLocation(this._terrainMeshShader, 'paletteTexture'), 2)
-
-        gl.useProgram(this._pickingShader)
-        gl.uniform1i(gl.getUniformLocation(this._pickingShader, 'storageTexture'), 0)
-        gl.uniform1i(gl.getUniformLocation(this._pickingShader, 'paletteTexture'), 1)
+        gl.useProgram(this._gridMeshShader)
+        gl.uniform1i(gl.getUniformLocation(this._gridMeshShader, 'paletteTexture'), 0)
 
         gl.useProgram(null)
+
+        // Create Storage buffer
+        this._storageVAO = gl.createVertexArray()
+        this._tlStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 2 * 4, gl.DYNAMIC_DRAW)!
+        this._trStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 2 * 4, gl.DYNAMIC_DRAW)!
+        this._blStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 2 * 4, gl.DYNAMIC_DRAW)!
+        this._brStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 2 * 4, gl.DYNAMIC_DRAW)!
+        this._levelStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 1 * 2, gl.DYNAMIC_DRAW)!
+
+        gl.bindVertexArray(this._storageVAO)
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._tlStorageBuffer)
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 2 * 4, 0)
+        gl.enableVertexAttribArray(0)
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._trStorageBuffer)
+        gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 2 * 4, 0)
+        gl.enableVertexAttribArray(1)
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._blStorageBuffer)
+        gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 2 * 4, 0)
+        gl.enableVertexAttribArray(2)
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._brStorageBuffer)
+        gl.vertexAttribPointer(3, 2, gl.FLOAT, false, 2 * 4, 0)
+        gl.enableVertexAttribArray(3)
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._levelStorageBuffer)
+        gl.vertexAttribIPointer(4, 1, gl.UNSIGNED_SHORT, 1 * 2, 0)
+        gl.enableVertexAttribArray(4)
+
+        gl.vertexAttribDivisor(0, 1)
+        gl.vertexAttribDivisor(1, 1)
+        gl.vertexAttribDivisor(2, 1)
+        gl.vertexAttribDivisor(3, 1)
+        gl.vertexAttribDivisor(4, 1)
+
+        gl.bindVertexArray(null)
+        gl.bindBuffer(gl.ARRAY_BUFFER, null)
 
         // Create texture
         this._paletteTexture = gll.createTexture2D(gl, 1, this.subdivideRules.length, 1, gl.RGB8)
@@ -505,17 +586,17 @@ export default class GridLayer {
             // Or target subdivided level equals to hitLevel
             if (targetLevel - hitLevel > 1 || targetLevel == hitLevel) return
 
-            const [ lon, lat ] = this.projConverter.inverse(coordinates)
+            const [ x, y ] = this.projConverter.inverse(coordinates)
             const { width, height } = this.gridRecorder.levelInfos[targetLevel]
-            const normalizedX = (lon - this.bBox.xMin) / (this.bBox.xMax - this.bBox.xMin)
-            const normalizedY = (lat - this.bBox.yMin) / (this.bBox.yMax - this.bBox.yMin)
+            const normalizedX = (x - this.bBox.xMin) / (this.bBox.xMax - this.bBox.xMin)
+            const normalizedY = (y - this.bBox.yMin) / (this.bBox.yMax - this.bBox.yMin)
     
             // Nothing will happen if mouse is out of boundary condition
-            if (normalizedX < 0 || normalizedX > 1 || normalizedY < 0 || normalizedY > 1) return
+            if (normalizedX < 0 || normalizedX >= 1 || normalizedY < 0 || normalizedY >= 1) return
 
             // Calculate globalId of the target grid
-            const col = Math.floor(normalizedX * (width - 1))
-            const row = Math.floor(normalizedY * (height - 1))
+            const col = Math.floor(normalizedX * width)
+            const row = Math.floor(normalizedY * height)
             const globalId = row * width + col
 
             this.hitSet.add([ 
@@ -635,11 +716,8 @@ export default class GridLayer {
         gl.enable(gl.DEPTH_TEST)
 
         gl.useProgram(this._pickingShader)
-
-        gl.activeTexture(gl.TEXTURE0)
-        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this._storageTextureArray)
-        gl.activeTexture(gl.TEXTURE1)
-        gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture)
+        
+        gl.bindVertexArray(this._storageVAO)
 
         gl.uniform2fv(gl.getUniformLocation(this._pickingShader, 'centerLow'), this.map.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this._pickingShader, 'centerHigh'), this.map.centerHigh)
@@ -669,18 +747,16 @@ export default class GridLayer {
         gl.enable(gl.DEPTH_TEST)
         gl.depthFunc(gl.LESS)
 
-        gl.useProgram(this._terrainMeshShader)
+        gl.useProgram(this._gridMeshShader)
 
+        gl.bindVertexArray(this._storageVAO)
+        
         gl.activeTexture(gl.TEXTURE0)
-        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this._storageTextureArray)
-        gl.activeTexture(gl.TEXTURE1)
-        gl.bindTexture(gl.TEXTURE_2D, this._levelTexture)
-        gl.activeTexture(gl.TEXTURE2)
         gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture)
 
-        gl.uniform2fv(gl.getUniformLocation(this._terrainMeshShader, 'centerLow'), this.map.centerLow)
-        gl.uniform2fv(gl.getUniformLocation(this._terrainMeshShader, 'centerHigh'), this.map.centerHigh)
-        gl.uniformMatrix4fv(gl.getUniformLocation(this._terrainMeshShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
+        gl.uniform2fv(gl.getUniformLocation(this._gridMeshShader, 'centerLow'), this.map.centerLow)
+        gl.uniform2fv(gl.getUniformLocation(this._gridMeshShader, 'centerHigh'), this.map.centerHigh)
+        gl.uniformMatrix4fv(gl.getUniformLocation(this._gridMeshShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
 
         gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.gridRecorder.nextStorageId)
     }
@@ -692,14 +768,13 @@ export default class GridLayer {
         gl.disable(gl.BLEND)
         gl.disable(gl.DEPTH_TEST)
 
-        gl.useProgram(this._terrainLineShader)
+        gl.useProgram(this._gridLineShader)
 
-        gl.activeTexture(gl.TEXTURE0)
-        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this._storageTextureArray)
+        gl.bindVertexArray(this._storageVAO)
 
-        gl.uniform2fv(gl.getUniformLocation(this._terrainLineShader, 'centerLow'), this.map.centerLow)
-        gl.uniform2fv(gl.getUniformLocation(this._terrainLineShader, 'centerHigh'), this.map.centerHigh)
-        gl.uniformMatrix4fv(gl.getUniformLocation(this._terrainLineShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
+        gl.uniform2fv(gl.getUniformLocation(this._gridLineShader, 'centerLow'), this.map.centerLow)
+        gl.uniform2fv(gl.getUniformLocation(this._gridLineShader, 'centerHigh'), this.map.centerHigh)
+        gl.uniformMatrix4fv(gl.getUniformLocation(this._gridLineShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
 
         gl.drawArraysInstanced(gl.LINE_LOOP, 0, 4, this.gridRecorder.nextStorageId)
     }
@@ -707,7 +782,8 @@ export default class GridLayer {
     private _updateGPUGrid(info?: [ storageId: number, level: number, vertices: Float32Array ]) {
 
         if (info) {
-            this.writeGridInfoToTexture(info)
+            // this.writeGridInfoToTexture(info)
+            this.writeGridinfoToStorageBuffer(info)
             this._gl.flush()
         }
         this.map.triggerRepaint()
@@ -716,7 +792,8 @@ export default class GridLayer {
     private _updateGPUGrids(infos?: [ fromStorageId: number, toStorageId: number, levels: Uint16Array, vertices: Float32Array ]) {
 
         if (infos) {
-            this.writeMultiGridInfoToTexture(infos)
+            // this.writeMultiGridInfoToTexture(infos)
+            this.writeMultiGridInfoToStorageBuffer(infos)
             this._gl.flush()
         }
         this.map.triggerRepaint()
@@ -724,16 +801,16 @@ export default class GridLayer {
 
     private _calcPickingMatrix(e: MapMouseEvent) {
 
-        const canvas = this._gl.canvas
+        const canvas = this._gl.canvas as HTMLCanvasElement
         const offsetX = e.originalEvent.clientX
         const offsetY = e.originalEvent.clientY
 
-        const pixelRatio = window.devicePixelRatio || 1
-        const canvasWidth = canvas.width
-        const canvasHeight = canvas.height
+        const computedStyle = window.getComputedStyle(canvas)
+        const canvasWidth = +computedStyle.width.split('px')[0]
+        const canvasHeight = +computedStyle.height.split('px')[0]
 
-        const ndcX = ((offsetX + 0.5) * pixelRatio) / canvasWidth * 2.0 - 1.0
-        const ndcY = 1.0 - ((offsetY + 0.5) * pixelRatio) / canvasHeight * 2.0
+        const ndcX = offsetX / canvasWidth * 2.0 - 1.0
+        const ndcY = 1.0 - offsetY / canvasHeight * 2.0
 
         const pickingMatrix = mat4.create()
         mat4.scale(pickingMatrix, pickingMatrix, [ canvasWidth * 0.5, canvasHeight * 0.5, 1.0 ])

@@ -1,7 +1,6 @@
 import proj4 from 'proj4'
 
 import { 
-    GridEdge, 
     GridNode, 
     SubdivideRules,
 
@@ -317,8 +316,8 @@ export type GridInfo = {
 export default class GridManager {
 
     private _levelInfos: GridLevelInfo[]
-    private _projConverter: proj4.Converter
     private _subdivideRules: SubdivideRules
+    private _projConverter: proj4.Converter
 
     constructor(subdivideRules: SubdivideRules) {
     
@@ -515,31 +514,30 @@ export default class GridManager {
         // Collect results /////////////////////////////////////////////////
 
         const edge_gridStorageIds_map = edgeManager.edge_gridStorageIds_map
-        const edgeKeys = Array.from(edge_gridStorageIds_map.keys())
-        const adjGrids = Array.from(edge_gridStorageIds_map.values())
+        const edgeKeys = [ ...edge_gridStorageIds_map.keys() ]
+        const adjGrids = [ ...edge_gridStorageIds_map.values() ]
 
-        const storageId_edgeKeys_set = new Array<[ Set<string>, Set<string>, Set<string>, Set<string> ]>(gridNum)
-        for (let storageId = 0; storageId < gridNum; storageId++) {
-            storageId_edgeKeys_set[storageId] = [ new Set<string>(), new Set<string>(), new Set<string>(), new Set<string>() ]
-        }
+        const storageId_edgeKeys_set : [ Set<string>, Set<string>, Set<string>, Set<string> ][]
+        = Array.from({ length: gridNum }, () => [ new Set<string>(), new Set<string>(), new Set<string>(), new Set<string>() ])
 
         // Fill storageId_edgeKeys_set
-        storageId_grid_cache.forEach(grid => {
+        for (const grid of storageId_grid_cache) {
 
             const storageId = grid.storageId
-            const edgeKeys = grid.edgeKeys
+            const edges = grid.edges
 
-            edgeKeys.forEach((edgeKey, edgeCode) => {
+            edges.forEach((edgeSet, edgeCode) => {
 
-                storageId_edgeKeys_set[storageId][edgeCode].add(edgeKey)
+                for (const edgeKey of edgeSet) {
+                    storageId_edgeKeys_set[storageId][edgeCode].add(edgeKey)
+                }
             })
-        })
-
-        return {
-            edgeKeys,
-            adjGrids,
-            storageId_edgeKeys_set,
         }
+
+        return [
+            edgeKeys, adjGrids,
+            storageId_edgeKeys_set,
+        ]
 
         // Local helpers /////////////////////////////////////////////////
 
@@ -707,3 +705,28 @@ export default class GridManager {
 function lerp(a: number, b: number, t: number): number {
     return a + t * (b - a)
 }
+
+// function encodeStringsToArrayBuffer(strings: string[]): ArrayBuffer {
+    
+//     let totalLength = 0
+//     const encoder = new TextEncoder()
+
+//     const encodedStrings = strings.map(str => {
+//         const encoded = encoder.encode(str)
+//         totalLength += 4 + encoded.length
+//         return encoded
+//     })
+
+//     const buffer = new ArrayBuffer(totalLength)
+//     const view = new DataView(buffer)
+
+//     let offset = 0
+//     for (const encoded of encodedStrings) {
+//         view.setUint32(offset, encoded.length, true)
+//         offset += 4
+//         new Uint8Array(buffer, offset, encoded.length).set(encoded)
+//         offset += encoded.length
+//     }
+
+//     return buffer
+// }
