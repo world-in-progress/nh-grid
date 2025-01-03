@@ -54,6 +54,33 @@ async function createShader(gl: WebGL2RenderingContext, url: string) {
     }
 }
 
+function createArrayBuffer(gl: WebGL2RenderingContext, dataOrSize: ArrayBuffer | ArrayBufferView | number, usage: number = gl.STATIC_DRAW) {
+    
+    const buffer = gl.createBuffer()
+    if (!buffer) {
+        console.error('Failed to create buffer')
+        return null
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
+
+    if (typeof dataOrSize === 'number')
+        gl.bufferData(gl.ARRAY_BUFFER, dataOrSize, usage)
+    else
+        gl.bufferData(gl.ARRAY_BUFFER, dataOrSize, usage)
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, null)
+    return buffer
+}
+
+function updateArrayBufferByArray(gl: WebGL2RenderingContext, buffer: WebGLBuffer, array: ArrayBufferView, bufferOffset: number = 0, arrayOffset: number = 0, length?: number) {
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
+
+    gl.bufferSubData(gl.ARRAY_BUFFER, bufferOffset, array, arrayOffset, length ? length : array.byteLength - arrayOffset)
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, null)
+}
+
 function createFrameBuffer(gl: WebGL2RenderingContext, textures: WebGLTexture[], depthTexture: WebGLTexture, renderBuffer: WebGLRenderbuffer) {
 
     const frameBuffer = gl.createFramebuffer()
@@ -252,6 +279,7 @@ const gll = {
     createShader,
     getMaxMipLevel,
     createTexture2D,
+    createArrayBuffer,
     createFrameBuffer,
     createRenderBuffer,
     enableAllExtensions,
@@ -259,6 +287,7 @@ const gll = {
     getWebGLErrorMessage,
     fillTexture2DByArray,
     fillSubTexture2DByArray,
+    updateArrayBufferByArray,
     fillSubTexture2DArrayByArray
 }
 

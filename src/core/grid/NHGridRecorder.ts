@@ -198,7 +198,8 @@ export default class GridNodeRecorder extends UndoRedoManager {
 
         // Dispatch a worker to parse the topology about all grids
         this._actor.send('parseTopology', this.storageId_gridInfo_cache.slice(0, this.nextStorageId * 2), (_, topologyInfo: GridTopologyInfo) => {
-            console.log(topologyInfo)
+            const [ edgekeys, adjGrids,  storageId_edgeKeys_set ] = topologyInfo
+            console.log(edgekeys, adjGrids, storageId_edgeKeys_set)
         })
     }
 
@@ -448,3 +449,21 @@ export default class GridNodeRecorder extends UndoRedoManager {
 function lerp(a: number, b: number, t: number): number {
     return (1.0 - t) * a + t * b
 }
+
+// function decodeArrayBufferToStrings(buffer: ArrayBuffer): string[] {
+
+//     const strings: string[] = []
+//     const view = new DataView(buffer)
+//     const decoder = new TextDecoder()
+
+//     let offset = 0
+//     while (offset < buffer.byteLength) {
+//         const length = view.getUint32(offset, true)
+//         offset += 4
+//         const encoded = new Uint8Array(buffer, offset, length)
+//         strings.push(decoder.decode(encoded))
+//         offset += length
+//     }
+
+//     return strings
+// }

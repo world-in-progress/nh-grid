@@ -52,11 +52,7 @@ export type SubdivideRules = {
     rules: [ number, number ][]
 }
 
-export type GridTopologyInfo = {
-    edgeKeys: string[]
-    adjGrids: number[][]
-    storageId_edgeKeys_set: Array<[ Set<string>, Set<string>, Set<string>, Set<string> ]>
-}
+export type GridTopologyInfo = [ edgeKeys: string[], adjGrids: number[][], storageId_edgeKeys_set: Array<[ Set<string>, Set<string>, Set<string>, Set<string> ]> ]
 
 /*
    ----- 0b00 -----
