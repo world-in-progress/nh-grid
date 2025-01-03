@@ -16,6 +16,17 @@ body, html {
     margin: 0px;
 }
 
+#canvas2d{
+    position: absolute;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    background-color: transparent;
+    z-index: 2;
+}
+
+
 button {
     z-index: 1000;
     width: 64px;
