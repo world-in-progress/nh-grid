@@ -1,98 +1,99 @@
-import { DbAction } from './../database/db'
-import Dispatcher from "../message/dispatcher"
-import { EDGE_CODE, EDGE_CODE_EAST, EDGE_CODE_NORTH, EDGE_CODE_SOUTH, EDGE_CODE_WEST, GridEdge, GridNode, GridNodeRecord, GridNodeRenderInfo, GridNodeRenderInfoPack, SubdivideRules } from "./NHGrid"
-import { Callback } from '../types'
 import proj4 from 'proj4'
+
+import { 
+    GridEdge, 
+    GridNode, 
+    SubdivideRules,
+
+    EDGE_CODE_WEST, 
+    EDGE_CODE_EAST, 
+    EDGE_CODE_NORTH, 
+    EDGE_CODE_SOUTH, 
+    EDGE_CODE_INVALID, 
+
+    type EDGE_CODE, 
+    type GridNodeRenderInfoPack, 
+    GridTopologyInfo
+} from './NHGrid'
 import { MercatorCoordinate } from '../math/mercatorCoordinate'
-proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
 
-export class GridEdgeRecorder {
+proj4.defs('ESRI:102140', '+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs')
 
-    private _edgeMap: Map<string, GridEdge>
-    private _properties: string[] | undefined
+export class GridEdgeManager {
 
-    constructor(properties?: string[]) {
+    // private _edgeMap: Map<string, GridEdge>
+    // private _properties: string[] | undefined
 
-        this._edgeMap = new Map<string, GridEdge>()
-        this._properties = properties
+    edge_gridStorageIds_map: Map<string, Array<number>> = new Map()
+
+    constructor() {
+
+        // this._edgeMap = new Map<string, GridEdge>()
+        // this._properties = properties
     }
 
-    get edges(): MapIterator<GridEdge> {
+    // get edges(): MapIterator<GridEdge> {
 
-        return this._edgeMap.values()
-    }
+    //     return this._edgeMap.values()
+    // }
 
-    getEdgeByInfo(grid1: GridNode | null, grid2: GridNode | null, edgeCode: number, range: [ number, number, number, number ]): GridEdge {
+    getEdgeKeyByInfo(grid1: GridNode | null, grid2: GridNode | null, range: [ xMin: [ number, number ], yMin: [ number, number ], xMax: [ number, number ], yMax: [ number, number ] ]): string {
 
-        const key = GridEdge.createKey(grid1, grid2, edgeCode, range)
-        const opKey = GridEdge.getOpKey(key)
-
-        const existingEdge = this._edgeMap.get(key) || this._edgeMap.get(opKey)
-    
-        if (existingEdge) {
-
-            return existingEdge
-
-        } else {
-
-            const edge = new GridEdge(key, this._properties)
-            this._edgeMap.set(key, edge)
-            return edge
-
-        }
-    }
-
-    addEdge(edge: GridEdge | null | undefined): void {
-
-        if (!edge) return
-
-        const key = edge.key
-        const opKey = GridEdge.getOpKey(key)
-
-        const existingEdge = this._edgeMap.get(key) || this._edgeMap.get(opKey)
-        if (!existingEdge) {
-            this._edgeMap.set(key, edge)
-        }
-    }
-    
-    getEdgeByKey(key: string): GridEdge | null {
-
-        const opKey = GridEdge.getOpKey(key)
-        const existingEdge = this._edgeMap.get(key) || this._edgeMap.get(opKey)
+        const key = range.flatMap(coord => coord).join('-')
+        const existingEdge = this.edge_gridStorageIds_map.has(key)
 
         if (existingEdge) {
 
-            return existingEdge
+            return key
 
         } else {
+
+            // const edge = new GridEdge(key, this._properties)
+            // this._edgeMap.set(key, edge)
+
+            const girds = new Array<number>()
+            if (grid1) girds.push(grid1.storageId)
+            if (grid2) girds.push(grid2.storageId)
+            this.edge_gridStorageIds_map.set(key, girds)
+
+            return key
+        }
+    }
+    
+    // getEdgeByKey(key: string): GridEdge | null {
+
+    //     const opKey = GridEdge.getOpKey(key)
+    //     const existingEdge = this._edgeMap.get(key) || this._edgeMap.get(opKey)
+
+    //     if (existingEdge) {
+
+    //         return existingEdge
+
+    //     } else {
             
-            return null
-        }
-    }
+    //         return null
+    //     }
+    // }
 
-    calcGridEdges(grid: GridNode, nodeRecorder: GridNodeManager): void {
-
-        if (grid.edgeCalculated) return
+    calcGridEdges(grid: GridNode, neighbours: [ GridNode[], GridNode[], GridNode[], GridNode[] ]): void {
 
         // Calculate north edges
-        this._calcHorizontalEdges(grid, nodeRecorder.getGridNeighbours(grid, EDGE_CODE_NORTH), EDGE_CODE_NORTH, EDGE_CODE_SOUTH)
+        this._calcHorizontalEdges(grid, neighbours[EDGE_CODE_NORTH], EDGE_CODE_NORTH, EDGE_CODE_SOUTH, grid.yMaxPercent)
         // Calculate sourth edges
-        this._calcHorizontalEdges(grid, nodeRecorder.getGridNeighbours(grid, EDGE_CODE_SOUTH), EDGE_CODE_SOUTH, EDGE_CODE_NORTH)
+        this._calcHorizontalEdges(grid, neighbours[EDGE_CODE_SOUTH], EDGE_CODE_SOUTH, EDGE_CODE_NORTH, grid.yMinPercent)
         // Calculate west edges
-        this._calcVerticalEdges(grid, nodeRecorder.getGridNeighbours(grid, EDGE_CODE_SOUTH), EDGE_CODE_WEST, EDGE_CODE_EAST)
+        this._calcVerticalEdges(grid, neighbours[EDGE_CODE_WEST], EDGE_CODE_WEST, EDGE_CODE_EAST, grid.xMinPercent)
         // Calculate east edges
-        this._calcVerticalEdges(grid, nodeRecorder.getGridNeighbours(grid, EDGE_CODE_SOUTH), EDGE_CODE_EAST, EDGE_CODE_WEST)
-        
-        grid.edgeCalculated = true
+        this._calcVerticalEdges(grid, neighbours[EDGE_CODE_EAST], EDGE_CODE_EAST, EDGE_CODE_WEST, grid.xMaxPercent)
     }
     
-    private _calcHorizontalEdges(grid: GridNode, neighbours: GridNode[], edgeCode: number, opEdgeCode: number): void {
+    private _calcHorizontalEdges(grid: GridNode, neighbours: GridNode[], edgeCode: number, opEdgeCode: number, sharedCoord: [ number, number ]): void {
 
         // Case when neighbour has lower level /////////////////////////////////////////////////////
 
         if (neighbours.length === 1 && neighbours[0].level < grid.level) {
 
-            const edge = this.getEdgeByInfo(grid, neighbours[0], edgeCode, [ ...grid.xMinPercent, ...grid.xMaxPercent ])
+            const edge = this.getEdgeKeyByInfo(grid, neighbours[0], [ grid.xMinPercent, sharedCoord, grid.xMaxPercent, sharedCoord ])
             grid.addEdge(edge, edgeCode)
             neighbours[0].addEdge(edge, opEdgeCode)
             return
@@ -138,10 +139,9 @@ export class GridEdgeRecorder {
             if (fromIndex === toIndex && fromIndex !== -1) {
 
                 const neighbour = neighbours[fromIndex]
-                const edge = this.getEdgeByInfo(grid, neighbour, edgeCode, [ ...neighbour.xMinPercent, ...neighbour.xMaxPercent ])
+                const edge = this.getEdgeKeyByInfo(grid, neighbour, [ neighbour.xMinPercent, sharedCoord, neighbour.xMaxPercent, sharedCoord ])
                 grid.addEdge(edge, edgeCode)
                 neighbour.addEdge(edge, opEdgeCode)
-
             }
 
             // Situation 2 - Case 1
@@ -151,9 +151,8 @@ export class GridEdgeRecorder {
 
             else if (fromIndex === toIndex && fromIndex === -1) {
 
-                const edge = this.getEdgeByInfo(grid, null, edgeCode, [ ...grid.xMinPercent, ...grid.xMaxPercent ])
+                const edge = this.getEdgeKeyByInfo(grid, null, [ grid.xMinPercent, sharedCoord, grid.xMaxPercent, sharedCoord ])
                 grid.addEdge(edge, edgeCode)
-
             }
 
             // Situation 2 - Case 2
@@ -165,9 +164,8 @@ export class GridEdgeRecorder {
 
                 const fromNeighbour = neighbours[fromIndex]
                 const toNeighbour = neighbours[toIndex]
-                const edge = this.getEdgeByInfo(grid, null, edgeCode, [ ...fromNeighbour.xMaxPercent, ...toNeighbour.xMinPercent ])
+                const edge = this.getEdgeKeyByInfo(grid, null, [ fromNeighbour.xMaxPercent, sharedCoord, toNeighbour.xMinPercent, sharedCoord ])
                 grid.addEdge(edge, edgeCode)
-
             } 
 
             // Situation 2 - Case 3
@@ -178,9 +176,8 @@ export class GridEdgeRecorder {
             else if (fromIndex !== -1 && toIndex === -1) {
 
                 const fromNeighbour = neighbours[fromIndex]
-                const edge = this.getEdgeByInfo(grid, null, edgeCode, [ ...fromNeighbour.xMaxPercent, ...grid.xMaxPercent ])
+                const edge = this.getEdgeKeyByInfo(grid, null, [ fromNeighbour.xMaxPercent, sharedCoord, grid.xMaxPercent, sharedCoord ])
                 grid.addEdge(edge, edgeCode)
-
             } 
 
             // Situation 2 - Case 4
@@ -191,19 +188,19 @@ export class GridEdgeRecorder {
             else if (fromIndex === -1 && toIndex !== -1) {
 
                 const toNeighbour = neighbours[toIndex]
-                const edge = this.getEdgeByInfo(grid, null, edgeCode, [ ...grid.xMinPercent, ...toNeighbour.xMinPercent ])
+                const edge = this.getEdgeKeyByInfo(grid, null, [ grid.xMinPercent, sharedCoord, toNeighbour.xMinPercent, sharedCoord ])
                 grid.addEdge(edge, edgeCode)
             }
         }
     }
     
-    private _calcVerticalEdges(grid: GridNode, neighbours: GridNode[], edgeCode: number, opEdgeCode: number): void {
+    private _calcVerticalEdges(grid: GridNode, neighbours: GridNode[], edgeCode: number, opEdgeCode: number, sharedCoord: [ number, number ]): void {
 
         // Case when neighbour has lower level /////////////////////////////////////////////////////
 
         if (neighbours.length === 1 && neighbours[0].level < grid.level) {
 
-            const edge = this.getEdgeByInfo(grid, neighbours[0], edgeCode, [ ...grid.yMinPercent, ...grid.yMaxPercent ])
+            const edge = this.getEdgeKeyByInfo(grid, neighbours[0], [ sharedCoord, grid.yMinPercent, sharedCoord, grid.yMaxPercent ])
             grid.addEdge(edge, edgeCode)
             neighbours[0].addEdge(edge, opEdgeCode)
             return
@@ -249,10 +246,9 @@ export class GridEdgeRecorder {
             if (fromIndex === toIndex && fromIndex !== -1) {
 
                 const neighbour = neighbours[fromIndex]
-                const edge = this.getEdgeByInfo(grid, neighbour, edgeCode, [ ...neighbour.yMinPercent, ...neighbour.yMaxPercent ])
+                const edge = this.getEdgeKeyByInfo(grid, neighbour, [ sharedCoord, neighbour.yMinPercent, sharedCoord, neighbour.yMaxPercent ])
                 grid.addEdge(edge, edgeCode)
                 neighbour.addEdge(edge, opEdgeCode)
-
             }
 
             // Situation 2 - Case 1
@@ -262,9 +258,8 @@ export class GridEdgeRecorder {
 
             else if (fromIndex === toIndex && fromIndex === -1) {
 
-                const edge = this.getEdgeByInfo(grid, null, edgeCode, [ ...grid.yMinPercent, ...grid.yMaxPercent ])
+                const edge = this.getEdgeKeyByInfo(grid, null, [ sharedCoord, grid.yMinPercent, sharedCoord, grid.yMaxPercent ])
                 grid.addEdge(edge, edgeCode)
-
             }
 
             // Situation 2 - Case 2
@@ -276,9 +271,8 @@ export class GridEdgeRecorder {
 
                 const fromNeighbour = neighbours[fromIndex]
                 const toNeighbour = neighbours[toIndex]
-                const edge = this.getEdgeByInfo(grid, null, edgeCode, [ ...fromNeighbour.yMaxPercent, ...toNeighbour.yMinPercent ])
+                const edge = this.getEdgeKeyByInfo(grid, null, [ sharedCoord, fromNeighbour.yMaxPercent, sharedCoord, toNeighbour.yMinPercent ])
                 grid.addEdge(edge, edgeCode)
-
             } 
 
             // Situation 2 - Case 3
@@ -289,9 +283,8 @@ export class GridEdgeRecorder {
             else if (fromIndex !== -1 && toIndex === -1) {
 
                 const fromNeighbour = neighbours[fromIndex]
-                const edge = this.getEdgeByInfo(grid, null, edgeCode, [ ...fromNeighbour.yMaxPercent, ...grid.yMaxPercent ])
+                const edge = this.getEdgeKeyByInfo(grid, null, [ sharedCoord, fromNeighbour.yMaxPercent, sharedCoord, grid.yMaxPercent ])
                 grid.addEdge(edge, edgeCode)
-
             } 
 
             // Situation 2 - Case 4
@@ -302,197 +295,48 @@ export class GridEdgeRecorder {
             else if (fromIndex === -1 && toIndex !== -1) {
 
                 const toNeighbour = neighbours[toIndex]
-                const edge = this.getEdgeByInfo(grid, null, edgeCode, [ ...grid.yMinPercent, ...toNeighbour.yMinPercent ])
+                const edge = this.getEdgeKeyByInfo(grid, null, [ sharedCoord, grid.yMinPercent, sharedCoord, toNeighbour.yMinPercent ])
                 grid.addEdge(edge, edgeCode)
             }
         }
     }
 }
 
-export interface GridLevelInfo {
+interface GridLevelInfo {
     width: number
     height: number
-    grids: (GridNode | undefined)[]
 }
 
-export class GridNodeManager {
+export type GridInfo = {
+    uuId: string
+    level: number
+    localId: number
+    globalId: number
+}
+
+export default class GridManager {
 
     private _levelInfos: GridLevelInfo[]
     private _projConverter: proj4.Converter
     private _subdivideRules: SubdivideRules
 
-    uuId_gridNode_map = new Map<string, GridNode>()
-
     constructor(subdivideRules: SubdivideRules) {
     
         this._projConverter = proj4(subdivideRules.srcCS, subdivideRules.targetCS)
-
-        const rootGrid = new GridNode({ localId: 0, globalId: 0 })
-        this.uuId_gridNode_map.set(rootGrid.uuId, rootGrid)
-        this._levelInfos = [
-            {
-                width: 1,
-                height: 1,
-                grids: [ rootGrid ]
-            }
-        ]
+        this._levelInfos = [ { width: 1, height: 1 } ]
 
         this._subdivideRules = subdivideRules
         this._subdivideRules.rules.forEach((_, level, rules) => {
-            if (level == 0) return
 
-            const width = this._levelInfos[level - 1].width * rules[level - 1][0]
-            const height = this._levelInfos[level - 1].height * rules[level - 1][1]
-
-            this._levelInfos[level] = {
-                width, height,
-                grids: new Array<GridNode>(width * height)
+            let width: number, height: number
+            if (level == 0) {
+                width = 1
+                height = 1
+            } else {
+                width = this._levelInfos[level - 1].width * rules[level - 1][0]
+                height = this._levelInfos[level - 1].height * rules[level - 1][1]
             }
-        })
-    }
-
-    get levelInfos() {
-        return this._levelInfos
-    }
-
-    findNeighbours(): void {
-            
-        /* ------------------------------------------------------------------
-                                            |
-            Neighbours around a grid        |       Edges around a node   
-                                            |
-                      tGrid                 |         ----- 0b00 -----
-                        |                   |        |                |
-             lGrid -- GRID -- rGrid         |        0b01   NODE   0b11
-                        |                   |        |                |
-                      bGrid                 |         ----- 0b10 ----- 
-                                            |
-        ------------------------------------------------------------------ */
-
-        /** 
-         * Get all valid grids.  
-         * 
-         * Features about so-called VALID:
-         * 1. Is always hit
-         * 2. Level is never 0
-         * 3. Is always a leaf grid
-        */
-        const validGrids: GridNode[] = []
-        this.uuId_gridNode_map.forEach(grid => {
-            if (grid.hit) validGrids.push(grid)
-        })
-
-        // Iterate all valid grids and find their neighbours
-        validGrids.forEach(grid => {
-
-            const level = grid.level
-            const width = this._levelInfos[level].width
-
-            const globalU = grid.globalId % width
-            const globalV = Math.floor(grid.globalId / width)
-
-            const tGrid = this._getNode(globalU, globalV + 1, level)
-            const lGrid = this._getNode(globalU - 1, globalV, level)
-            const bGrid = this._getNode(globalU, globalV - 1, level)
-            const rGrid = this._getNode(globalU + 1, globalV, level)
-
-            // Check top edge with tGrid
-            if (tGrid) {
-
-                // Get all children of tGrid, adjacent to grid
-
-                const adjChildren: GridNode[] = []
-                const stack: GridNode[] = [ tGrid ]
-                
-                while(stack.length) {
-                    const _grid = stack.pop()!
-
-                    if (_grid.children.length) {
-                        const children = this.getGridChildren(_grid)
-                        const subWidth = this._subdivideRules.rules[_grid.level][0]
-                        stack.push(...children.filter(child => child.localId < subWidth))
-                    } else adjChildren.push(_grid)
-                }
-
-                adjChildren.filter(child => child.hit).forEach(child => {
-                    grid.neighbours[EDGE_CODE_NORTH].add(child.uuId)
-                    child.neighbours[EDGE_CODE_SOUTH].add(grid.uuId)
-                })
-            }
-
-            // Check left edge with lGrid
-            if (lGrid) {
-
-                // Get all children of lGrid, adjacent to grid
-
-                const adjChildren: GridNode[] = []
-                const stack: GridNode[] = [ lGrid ]
-
-                while(stack.length) {
-                    const _grid = stack.pop()!
-
-                    if (_grid.children.length) {
-                        const children = this.getGridChildren(_grid)
-                        const subWidth = this._subdivideRules.rules[_grid.level][0]
-                        stack.push(...children.filter(child => child.localId % subWidth === subWidth - 1))
-                    } else adjChildren.push(_grid)
-                }
-
-                adjChildren.filter(child => child.hit).forEach(child => {
-                    grid.neighbours[EDGE_CODE_WEST].add(child.uuId)
-                    child.neighbours[EDGE_CODE_EAST].add(grid.uuId)
-                })
-            }
-
-            // Check bottom edge with rGrid
-            if (bGrid) {
-
-                // Get all children of bGrid, adjacent to grid
-
-                const adjChildren: GridNode[] = []
-                const stack: GridNode[] = [ bGrid ]
-
-                while(stack.length) {
-                    const _grid = stack.pop()!
-
-                    if (_grid.children.length) {
-                        const children = this.getGridChildren(_grid)
-                        const [ subWidth, subHeight ] = this._subdivideRules.rules[_grid.level]
-                        stack.push(...children.filter(child => child.localId >= subWidth * (subHeight - 1)))
-                    } else adjChildren.push(_grid)
-                }
-
-                adjChildren.filter(child => child.hit).forEach(child => {
-                    grid.neighbours[EDGE_CODE_SOUTH].add(child.uuId)
-                    child.neighbours[EDGE_CODE_NORTH].add(grid.uuId)
-                })
-            }
-
-            // Check right edge with rGrid
-            if (rGrid) {
-
-                // Get all children of rGrid, adjacent to grid
-                
-                const adjChildren: GridNode[] = []
-                const stack: GridNode[] = [ rGrid ]
-
-                while(stack.length) {
-                    const _grid = stack.pop()!
-
-                    if (_grid.children.length) {
-                        const children = this.getGridChildren(_grid)
-                        const subWidth = this._subdivideRules.rules[_grid.level][0]
-                        stack.push(...children.filter(child => child.localId % subWidth === 0))
-                    } else adjChildren.push(_grid)
-                }
-
-                adjChildren.filter(child => child.hit).forEach(child => {
-                    grid.neighbours[EDGE_CODE_EAST].add(child.uuId)
-                    child.neighbours[EDGE_CODE_WEST].add(grid.uuId)
-                })
-            }
-
-            grid.resetEdges()
+            this._levelInfos[level] = { width, height }
         })
     }
 
@@ -520,52 +364,31 @@ export class GridNodeManager {
         return Math.floor(v / subHeight) * this._levelInfos[level - 1].width + Math.floor(u / subWidth)
     }
 
-    getGrid(uuId: string): GridNode | undefined
-    getGrid(level: number, globalId: number): GridNode | undefined
-    getGrid(uuIdOrLevel?: string | number, globalId?: number): GridNode | undefined {
+    getGridChildren(level: number, globalId: number): number[] | null {
 
-        if (typeof uuIdOrLevel === 'string') {
-
-            const keys = uuIdOrLevel.split('-').map(key => Number(key))
-            if (keys.length !== 2 || isNaN(keys[0]) || isNaN(keys[1])) {
-                throw new Error(`Invalid uuId format: ${uuIdOrLevel}`)
-            }
-            const [ level, globalId ] = keys
-            
-            return this._levelInfos[level]?.grids[globalId]
-
-        } else if (typeof uuIdOrLevel === 'number' && typeof globalId === 'number') {
-
-            if (uuIdOrLevel < 0) {
-                throw new Error(`Invalid level ${uuIdOrLevel}`)
-            }
-
-            return this._levelInfos[uuIdOrLevel]?.grids[globalId]
-
-        } else {
-
-            throw new Error('Invalid calling of getGrid')
-        }
-    }
-
-    getGridParent(grid: GridNode): GridNode | undefined {
-
-        if (grid.level === 0) return undefined
+        if (level >= this._levelInfos.length || level < 0) return null
         
-        const parentId = this.getParentGlobalId(grid.level, grid.globalId)
-        return this.getGrid(grid.level - 1, parentId)
-    }
+        const { width: levelWidth } = this._levelInfos[level]
+        const globalU = globalId % levelWidth
+        const globalV = Math.floor(globalId / levelWidth)
 
-    getGridNeighbours(grid: GridNode, edgeCode: EDGE_CODE): GridNode[] {
+        const [ subWidth, subHeight ] = this._subdivideRules.rules[level]
+        const subCount = subWidth * subHeight
 
-        const neighbour_storageIds = [ ...grid.neighbours[edgeCode] ]
-        return neighbour_storageIds.map(id => this.uuId_gridNode_map.get(id)).filter(node => node !== undefined)
-    }
+        const children = new Array<number>(subCount)
+        const baseGlobalWidth = levelWidth * subWidth
+        for (let localId = 0; localId < subCount; localId++) {
 
-    getGridChildren(grid: GridNode): GridNode[] {
+            const subU = localId % subWidth
+            const subV = Math.floor(localId / subWidth)
 
-        return grid.children.filter(childId => childId !== null)
-        .map(childId => this.uuId_gridNode_map.get(childId)).filter(node => node !== undefined)
+            const subGlobalU = globalU * subWidth + subU
+            const subGlobalV = globalV * subHeight + subV
+            const subGlobalId = subGlobalV * baseGlobalWidth + subGlobalU
+            children[localId] = subGlobalId
+        }
+
+        return children
     }
     
     subdivideGrid(level: number, globalId: number): GridNodeRenderInfoPack {
@@ -602,15 +425,240 @@ export class GridNodeManager {
         return renderInfoPack
     }
 
-    private _getNode(u: number, v: number, level: number): GridNode | undefined {
+    parseTopology(gridInfo_cache: Array<number>): GridTopologyInfo {
 
-        const width = this._levelInfos[level].width
-        const height = this._levelInfos[level].height
+        const edgeManager = new GridEdgeManager()
+        const gridNum = gridInfo_cache.length / 2
+        const uuId_storageId_map = new Map<string, number>()
+        const storageId_grid_cache = new Array<GridNode>(gridNum)
+        const storageId_neighbourStorageId_cache = new Array<[ Set<number>, Set<number>, Set<number>, Set<number> ]>(gridNum)
 
-        if (u < 0 || u >= width || v < 0 || v > height) return undefined
+        // Fill uuId_storageId_map
+        for (let i = 0; i < gridNum; i++) {
+            const uuId = `${gridInfo_cache[i * 2]}-${gridInfo_cache[i * 2 + 1]}`
+            uuId_storageId_map.set(uuId, i)
+        }
+
+        // Fill storageId_neighbours_cache
+        for (let i = 0; i < gridNum; i++) {
+            storageId_neighbourStorageId_cache[i] = [ new Set<number>(), new Set<number>(), new Set<number>(), new Set<number>() ]
+        }
+    
+        // Set storageId_grid_cache
+        for (let i = 0; i < gridNum; i++) {
+
+            const level = gridInfo_cache[i * 2]
+            const globalId = gridInfo_cache[i * 2 + 1]
+            const { width, height } = this._levelInfos[level]
+
+            storageId_grid_cache[i] = new GridNode({ 
+                storageId: i,
+                level, globalId, 
+                globalRange: [ width, height ],
+                localId: this.getGridLocalId(level, globalId)
+            })
+        }
+
+        // Find neighbours /////////////////////////////////////////////////
+            
+        /* ------------------------------------------------------------------
+                                            |
+            Neighbours around a grid        |     Edges around a grid node   
+                                            |
+                      tGrid                 |         ----- 0b00 -----
+                        |                   |        |                |
+             lGrid -- GRID -- rGrid         |        0b01   NODE   0b11
+                        |                   |        |                |
+                      bGrid                 |         ----- 0b10 ----- 
+                                            |
+        ------------------------------------------------------------------ */
+
+        // Iterate all grids and find their neighbours
+        storageId_grid_cache.forEach(grid => {
+
+            // const [ level, globalId ] = grid.uuId.split('-').map(key => +key)
+
+            const width = this._levelInfos[grid.level].width
+
+            const globalU = grid.globalId % width
+            const globalV = Math.floor(grid.globalId / width)
+
+            const tGridInfo = this._getGridInfoFromUV(grid.level, globalU, globalV + 1)
+            const lGridinfo = this._getGridInfoFromUV(grid.level, globalU - 1, globalV)
+            const bGridInfo = this._getGridInfoFromUV(grid.level, globalU, globalV - 1)
+            const rGridInfo = this._getGridInfoFromUV(grid.level, globalU + 1, globalV)
+
+            // Check top edge with tGrid
+            tGridInfo && findNeighboursAlongEdge.call(this, grid, EDGE_CODE_NORTH, tGridInfo, (localId: number, subWidth: number, _: number) => localId < subWidth)
+
+            // Check left edge with lGrid
+            lGridinfo && findNeighboursAlongEdge.call(this, grid, EDGE_CODE_WEST, lGridinfo, (localId: number, subWidth: number, _: number) => localId % subWidth === subWidth - 1)
+
+            // Check bottom edge with rGrid
+            bGridInfo && findNeighboursAlongEdge.call(this, grid, EDGE_CODE_SOUTH, bGridInfo, (localId: number, subWidth: number, subHeight: number) => localId >= subWidth * (subHeight - 1))
+
+            // Check right edge with rGrid
+            rGridInfo && findNeighboursAlongEdge.call(this, grid, EDGE_CODE_EAST, rGridInfo, (localId: number, subWidth: number, _: number) => localId % subWidth === 0)
+            
+        })
+
+        // Parse edges /////////////////////////////////////////////////
+
+        let start = 0, end = 0
+        start = Date.now()
+
+        storageId_grid_cache.forEach(grid => edgeManager.calcGridEdges(grid, getGridNeighbours(grid.storageId)))
+
+        end = Date.now()
+        console.log('Cost time:', end - start)
+
+        // Collect results /////////////////////////////////////////////////
+
+        const edge_gridStorageIds_map = edgeManager.edge_gridStorageIds_map
+        const edgeKeys = Array.from(edge_gridStorageIds_map.keys())
+        const adjGrids = Array.from(edge_gridStorageIds_map.values())
+
+        const storageId_edgeKeys_set = new Array<[ Set<string>, Set<string>, Set<string>, Set<string> ]>(gridNum)
+        for (let storageId = 0; storageId < gridNum; storageId++) {
+            storageId_edgeKeys_set[storageId] = [ new Set<string>(), new Set<string>(), new Set<string>(), new Set<string>() ]
+        }
+
+        // Fill storageId_edgeKeys_set
+        storageId_grid_cache.forEach(grid => {
+
+            const storageId = grid.storageId
+            const edgeKeys = grid.edgeKeys
+
+            edgeKeys.forEach((edgeKey, edgeCode) => {
+
+                storageId_edgeKeys_set[storageId][edgeCode].add(edgeKey)
+            })
+        })
+
+        return {
+            edgeKeys,
+            adjGrids,
+            storageId_edgeKeys_set,
+        }
+
+        // Local helpers /////////////////////////////////////////////////
+
+        function findNeighboursAlongEdge(this: GridManager, grid: GridNode, edgeCode: EDGE_CODE, gridInfo: GridInfo, adjacentCheckFunc: Function) {
+
+            // Check if gridInfo has storageId (This grid is a leaf node)
+            const rootNeighbourGrid = uuId_storageId_map.get(gridInfo.uuId)
+            if (rootNeighbourGrid) {
+                
+                const rootNeighbour = storageId_grid_cache[rootNeighbourGrid]
+                updateGridNeighbour(grid.storageId, rootNeighbour, edgeCode)
+
+            } else {
+
+                // Get all children by gridInfo, adjacent to grid
+                const adjChildren: GridNode[] = []
+                const infoStack: GridInfo[] = [ gridInfo ]
+                
+                while(infoStack.length) {
+                    const { level: _level, globalId: _globalId } = infoStack.pop()!
+
+                    const children = this.getGridChildren(_level, _globalId)
+                    if (!children) continue
+
+                    const [ subWidth, subHeight ] = this._subdivideRules.rules[_level]
+                    children.forEach((childGlobalId, childLocalId) => {
+
+                        const isAdjacent = adjacentCheckFunc(childLocalId, subWidth, subHeight)
+                        if (!isAdjacent) return
+
+                        const childLevel = _level + 1
+                        const childId = `${childLevel}-${childGlobalId}`
+                        const child_storageId = uuId_storageId_map.get(childId)
+
+                        // Check if child has storageId (This child is a leaf node)
+                        if (child_storageId) {
+                            adjChildren.push(storageId_grid_cache[child_storageId])
+                        }
+                        else {
+
+                            infoStack.push({
+                                uuId: childId,
+                                level: childLevel,
+                                localId: childLocalId,
+                                globalId: childGlobalId,
+                            })
+                        }
+                    })
+                }
+
+                adjChildren.forEach(child => updateGridNeighbour(grid.storageId, child, edgeCode))
+            }
+        }
+
+        function updateGridNeighbour(storageId: number, neighbour: GridNode, edgeCode: EDGE_CODE) {
+
+            const oppoCode = getToggleEdgeCode(edgeCode) as EDGE_CODE
+            storageId_neighbourStorageId_cache[storageId][edgeCode].add(neighbour.storageId)
+            storageId_neighbourStorageId_cache[neighbour.storageId][oppoCode].add(storageId)
+        }
+
+        function getToggleEdgeCode(code: number): EDGE_CODE | typeof EDGE_CODE_INVALID {
+        
+            switch (code) {
+                case EDGE_CODE_NORTH:
+                    return EDGE_CODE_SOUTH
+        
+                case EDGE_CODE_WEST:
+                    return EDGE_CODE_EAST
+        
+                case EDGE_CODE_SOUTH:
+                    return EDGE_CODE_NORTH
+        
+                case EDGE_CODE_EAST:
+                    return EDGE_CODE_WEST
+                default:
+                    console.error('Provided edge code is invalid.')
+                    return EDGE_CODE_INVALID
+            }
+        }
+
+        function getGridNeighbours(storageId: number): [ GridNode[], GridNode[], GridNode[], GridNode[] ] {
+            
+            const grid = storageId_grid_cache[storageId]
+            const neighbourStorageIds = storageId_neighbourStorageId_cache[grid.storageId]
+            const neighbours:[ GridNode[], GridNode[], GridNode[], GridNode[] ] = [ 
+                new Array<GridNode>(neighbourStorageIds[EDGE_CODE_NORTH].size),
+                new Array<GridNode>(neighbourStorageIds[EDGE_CODE_WEST].size),
+                new Array<GridNode>(neighbourStorageIds[EDGE_CODE_SOUTH].size),
+                new Array<GridNode>(neighbourStorageIds[EDGE_CODE_EAST].size),
+            ]
+
+            let index: number
+            neighbourStorageIds.forEach((neighbourStorageIdSet, edgeCode) => {
+                index = 0
+                neighbourStorageIdSet.forEach(neighbourStorageId => {
+                    neighbours[edgeCode][index++] = storageId_grid_cache[neighbourStorageId]
+                })
+            })
+            return neighbours
+        }
+    }
+
+    private _getGridInfoFromUV(level: number, u: number, v: number): GridInfo | null {
+        
+        const { width, height } = this._levelInfos[level]
+
+        // Check if valid
+        if (u < 0 || u >= width || v < 0 || v >= height) return null
 
         const globalId = v * width + u
-        return this._levelInfos[level].grids[globalId]
+        const localId = this.getGridLocalId(level, globalId)
+
+        return {
+            level,
+            localId,
+            globalId,
+            uuId: `${level}-${globalId}`
+        }
     }
     
     private _createNodeRenderInfo(

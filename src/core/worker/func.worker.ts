@@ -1,24 +1,24 @@
-import { Callback, WorkerSelf } from '../types'
+import GridManager from '../grid/NHGridManager'
 import { SubdivideRules } from '../grid/NHGrid'
-import { GridNodeManager } from '../grid/NHGridManager'
+import { Callback, WorkerSelf } from '../types'
 
 export function checkIfReady(this: WorkerSelf, _: unknown, callback: Callback<any>) {
 
     callback()
 }
 
-export function init(this: WorkerSelf & Record<'nodeManager', GridNodeManager>, subdivideRules: SubdivideRules, callback: Callback<any>) {
+export function init(this: WorkerSelf & Record<'nodeManager', GridManager>, subdivideRules: SubdivideRules, callback: Callback<any>) {
 
-    this.nodeManager = new GridNodeManager(subdivideRules)
+    this.nodeManager = new GridManager(subdivideRules)
     callback()
 }
 
-export async function subdivideGrid(this: WorkerSelf & Record<'nodeManager', GridNodeManager>, [ level, globalId ]: [ level: number, globalId: number ], callback: Callback<any>) {
+export async function subdivideGrid(this: WorkerSelf & Record<'nodeManager', GridManager>, [ level, globalId ]: [ level: number, globalId: number ], callback: Callback<any>) {
 
     callback(null, this.nodeManager.subdivideGrid(level, globalId))
 }
 
-export async function parseTopology(this: WorkerSelf &  Record<'nodeManager', GridNodeManager>, storageId_gridInfo_cache: Array<number>, callback: Callback<any>) {
+export async function parseTopology(this: WorkerSelf &  Record<'nodeManager', GridManager>, storageId_gridInfo_cache: Array<number>, callback: Callback<any>) {
 
-    
+    callback(null, this.nodeManager.parseTopology(storageId_gridInfo_cache))
 }
