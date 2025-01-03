@@ -4,7 +4,7 @@ import Dispatcher from '../message/dispatcher'
 import { createDB, deleteDB } from '../database/db'
 import { MercatorCoordinate } from '../math/mercatorCoordinate'
 import UndoRedoManager, { UndoRedoOperation } from '../util/undoRedoManager'
-import { EDGE_CODE, EDGE_CODE_EAST, EDGE_CODE_NORTH, EDGE_CODE_SOUTH, EDGE_CODE_WEST, GridEdge, GridNode, GridNodeRecord, GridNodeRenderInfo, GridNodeRenderInfoPack, SubdivideRules } from './NHGrid'
+import { EDGE_CODE, EDGE_CODE_EAST, EDGE_CODE_NORTH, EDGE_CODE_SOUTH, EDGE_CODE_WEST, GridEdge, GridNode, GridNodeRecord, GridNodeRenderInfo, GridNodeRenderInfoPack, GridTopologyInfo, SubdivideRules } from './NHGrid'
 
 export class GridEdgeRecorder {
 
@@ -71,7 +71,7 @@ export class GridEdgeRecorder {
     }
 }
 
-export interface GridLevelInfo {
+interface GridLevelInfo {
 
     width: number
     height: number
@@ -107,7 +107,7 @@ export interface GridNodeRecordOptions {
     autoDeleteIndexedDB?: boolean
 }
 
-export class GridNodeRecorder extends UndoRedoManager {
+export default class GridNodeRecorder extends UndoRedoManager {
 
     private _projConverter: proj4.Converter
 
@@ -153,13 +153,13 @@ export class GridNodeRecorder extends UndoRedoManager {
         document.addEventListener('keydown', e => {
 
             if (e.shiftKey && e.key === 'S') {
-                let data = this.serialize()
-                let jsonData = JSON.stringify(data)
-                let blob = new Blob([ jsonData ], { type: 'application/json' })
-                let link = document.createElement('a')
-                link.href = URL.createObjectURL(blob)
-                link.download = 'gridInfo.json'
-                link.click()
+                let data = this.parseGridTopology()
+                // let jsonData = JSON.stringify(data)
+                // let blob = new Blob([ jsonData ], { type: 'application/json' })
+                // let link = document.createElement('a')
+                // link.href = URL.createObjectURL(blob)
+                // link.download = 'gridInfo.json'
+                // link.click()
             }
         })
     }
@@ -197,7 +197,9 @@ export class GridNodeRecorder extends UndoRedoManager {
     parseGridTopology(): void {
 
         // Dispatch a worker to parse the topology about all grids
-        this._actor.send('parseTopology', this.storageId_gridInfo_cache, () => {})
+        this._actor.send('parseTopology', this.storageId_gridInfo_cache.slice(0, this.nextStorageId * 2), (_, topologyInfo: GridTopologyInfo) => {
+            console.log(topologyInfo)
+        })
     }
 
     serialize() {

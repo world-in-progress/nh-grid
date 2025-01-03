@@ -18,7 +18,8 @@ document.body.appendChild(mapDiv)
 mapboxgl.accessToken = 'pk.eyJ1IjoieWNzb2t1IiwiYSI6ImNrenozdWdodDAza3EzY3BtdHh4cm5pangifQ.ZigfygDi2bK4HXY1pWh-wg'
 
 const map = new NHMap({
-    style: 'mapbox://styles/ycsoku/cm3zhjxbs00pa01sd6hx7grtr',
+    // style: 'mapbox://styles/ycsoku/cm3zhjxbs00pa01sd6hx7grtr',
+    style: 'mapbox://styles/ycsoku/clrjfv4jz00pe01pdfxgshp6z',
     center: [ 114.051537, 22.446937 ],
     projection: 'mercator',
     container: 'map',
@@ -40,6 +41,7 @@ const map = new NHMap({
             // [51, 40],
             [100, 100],
             [3, 3],
+            [2, 2],
             // [3, 3],
             // [2, 2],
             // [2, 2],
@@ -58,7 +60,7 @@ const map = new NHMap({
             843902.5000000000000000,
         ],
         {
-            maxGridNum: 8192 * 8192
+            maxGridNum: 4096 * 4096
         }
     )
 

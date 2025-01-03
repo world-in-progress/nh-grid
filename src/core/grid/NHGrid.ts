@@ -36,9 +36,11 @@ export interface GridNodeSerializedInfo {
 }
 
 export interface GridNodeParams {
+    level?: number
     localId: number
     globalId: number
     parent?: GridNode
+    storageId: number
     globalRange?: [ number, number ]
 }
 
@@ -48,6 +50,12 @@ export type SubdivideRules = {
     targetCS: string
     bBox: BoundingBox2D
     rules: [ number, number ][]
+}
+
+export type GridTopologyInfo = {
+    edgeKeys: string[]
+    adjGrids: number[][]
+    storageId_edgeKeys_set: Array<[ Set<string>, Set<string>, Set<string>, Set<string> ]>
 }
 
 /*
@@ -190,33 +198,30 @@ export class GridNodeRecord {
 export class GridNode {
 
     uuId: string
+    level: number
     localId: number
     globalId: number
+    storageId: number
 
     xMinPercent: [ number, number ]
     xMaxPercent: [ number, number ]
     yMinPercent: [ number, number ]
     yMaxPercent: [ number, number ]
     
-    level: number
-    children: Array<string | null>
     edges: [ Set<string>, Set<string>, Set<string>, Set<string> ]
-    neighbours: [ Set<string>, Set<string>, Set<string>, Set<string> ]
-
-    hit: boolean
-    edgeCalculated: boolean
 
     constructor(options: GridNodeParams) {
 
-        this.hit = false
-        this.edgeCalculated = false
-
         this.localId = options.localId
         this.globalId = options.globalId
-        this.level = options.parent !== undefined ? options.parent.level + 1 : 0
-        this.uuId = `${this.level}-${this.globalId}`
+        this.storageId = options.storageId
 
-        this.children = []
+        if (options.level === undefined) {
+            this.level = options.parent !== undefined ? options.parent.level + 1 : 0
+        } else {
+            this.level = options.level === undefined ? 0 : options.level
+        }
+        this.uuId = `${this.level}-${this.globalId}`
 
         // Division Coordinates [ numerator, denominator ] 
         // Use integer numerators and denominators to avoid coordinate precision issue
@@ -224,19 +229,12 @@ export class GridNode {
         this.xMaxPercent = [ 1, 1 ]
         this.yMinPercent = [ 0, 1 ]
         this.yMaxPercent = [ 1, 1 ]
-        
-        this.neighbours = [ 
-            new Set<string>(),
-            new Set<string>(),
-            new Set<string>(),
-            new Set<string>()
-        ]
 
         this.edges = [
             new Set<string>(),
             new Set<string>(),
             new Set<string>(),
-            new Set<string>()
+            new Set<string>(),
         ]
 
         // Update division coordinates if globalRange provided
@@ -254,35 +252,29 @@ export class GridNode {
     }
 
     get xMin(): number {
-
         return this.xMinPercent[0] / this.xMinPercent[1]
     }
 
     get xMax(): number {
-
         return this.xMaxPercent[0] / this.xMaxPercent[1]
     }
 
     get yMin(): number {
-
         return this.yMinPercent[0] / this.yMinPercent[1]
     }
 
     get yMax(): number {
-
         return this.yMaxPercent[0] / this.yMaxPercent[1]
     }
 
     resetEdges(): void {
-
-        this.edgeCalculated = false
         this.edges.forEach(edge => edge.clear())
     }
 
-    addEdge(edge: GridEdge, edgeCode: number): void {
+    addEdge(edgeKey: string, edgeCode: number): void {
 
-        if (!this.edges[edgeCode].has(edge.key) && !this.edges[edgeCode].has(edge.opKey)){
-            this.edges[edgeCode].add(edge.key)
+        if (!this.edges[edgeCode].has(edgeKey)){
+            this.edges[edgeCode].add(edgeKey)
         }
     }
 
@@ -337,22 +329,11 @@ export class GridNode {
         this.yMaxPercent = [ 0, 0 ]
 
         this.edges.forEach(edgeSet => edgeSet.clear())
-        // this.neighbours.forEach((gridSet, edgeCode) => {
-        //     gridSet.forEach(grid => {
-        //         const opEdge = GridEdge.getToggleEdgeCode(edgeCode) as EDGE_CODE
-        //         grid.neighbours[opEdge].delete(this)
-        //     })
-        // })
-
-        this.children = []
 
         this.uuId = ''
         this.globalId = -1
         this.localId = -1
         this.level = -1
-
-        this.edgeCalculated = false
-        this.hit = false
 
         return null
     }

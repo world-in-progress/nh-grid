@@ -7,7 +7,7 @@ import { GUI, GUIController } from 'dat.gui'
 import gll from './GlLib'
 import NHMap from './NHMap'
 import BoundingBox2D from '../../src/core/util/boundingBox2D'
-import { GridNodeRecorder } from '../../src/core/grid/NHGridRecorder'
+import GridNodeRecorder from '../../src/core/grid/NHGridRecorder'
 import VibrantColorGenerator from '../../src/core/util/vibrantColorGenerator'
 
 proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
@@ -605,7 +605,7 @@ export default class GridLayer {
         ;(!this.isTransparent) && this.drawGridMesh()
         
         // Tick render: Line Pass
-        this.drawGridLine()
+        ;(!this.isTransparent) && this.drawGridLine()
 
         // WebGL check
         gll.errorCheck(gl)
@@ -732,8 +732,8 @@ export default class GridLayer {
         const canvasWidth = canvas.width
         const canvasHeight = canvas.height
 
-        const ndcX = (offsetX * pixelRatio + 0.5) / canvasWidth * 2.0 - 1.0
-        const ndcY = 1.0 - (offsetY * pixelRatio + 0.5) / canvasHeight * 2.0
+        const ndcX = ((offsetX + 0.5) * pixelRatio) / canvasWidth * 2.0 - 1.0
+        const ndcY = 1.0 - ((offsetY + 0.5) * pixelRatio) / canvasHeight * 2.0
 
         const pickingMatrix = mat4.create()
         mat4.scale(pickingMatrix, pickingMatrix, [ canvasWidth * 0.5, canvasHeight * 0.5, 1.0 ])
