@@ -67,6 +67,7 @@ export default class GridLayer {
     private _pickingTexture: WebGLTexture = 0
     private _pickingRBO: WebGLRenderbuffer = 0
 
+    ////// ADDON
     // Box Picking pass resource
     private _boxPickingFBO: WebGLFramebuffer = 0
     private _boxPickingTexture: WebGLTexture = 0
@@ -74,6 +75,8 @@ export default class GridLayer {
 
     private _boxPickingStart: MapMouseEvent | null = null
     private _boxPickingEnd: MapMouseEvent | null = null
+
+    private ctx: CanvasRenderingContext2D | null = null
 
 
     // GPU grid update function
@@ -91,7 +94,7 @@ export default class GridLayer {
     isShiftClick = false
     isDeleteMode = false
     isTransparent = false
-    isBoxSelectMode = false
+    isBoxPickingMode = false
 
     mouseupHandler: Function
     mousedownHandler: Function
@@ -254,12 +257,12 @@ export default class GridLayer {
         gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, storageU, storageV, 1, 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, new Uint16Array([level]))
     }
 
-    writeGridinfoToStorageBuffer(info: [ storageid: number, level: number, vertices: Float32Array ]) {
+    writeGridinfoToStorageBuffer(info: [storageid: number, level: number, vertices: Float32Array]) {
 
         const gl = this._gl
         const levelByteStride = 1 * 2
         const vertexByteStride = 2 * 4
-        const [ storageId, level, vertices ] = info
+        const [storageId, level, vertices] = info
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this._tlStorageBuffer)
         gl.bufferSubData(gl.ARRAY_BUFFER, storageId * vertexByteStride, vertices, 0, 2)
@@ -277,9 +280,9 @@ export default class GridLayer {
 
     // Optimized function to upload multiple grid rendering info to GPU storage texture
     // Note: grids must have continuous storageIds between 'fromStorageId' and 'toStogrageId'
-    writeMultiGridInfoToStorageBuffer(infos: [ fromStorageId: number, toStorageId: number, levels: Uint16Array, vertices: Float32Array ]) {
+    writeMultiGridInfoToStorageBuffer(infos: [fromStorageId: number, toStorageId: number, levels: Uint16Array, vertices: Float32Array]) {
         const gl = this._gl
-        const [ fromStorageId, _, levels, vertices ] = infos
+        const [fromStorageId, _, levels, vertices] = infos
         const levelByteStride = 1 * 2
         const vertexByteStride = 2 * 4
         const gridCount = vertices.length / 8
@@ -300,7 +303,7 @@ export default class GridLayer {
     }
 
     /** @deprecated */
-    writeMultiGridInfoToTexture(infos: [ fromStorageId: number, toStorageId: number, levels: Uint16Array, vertices: Float32Array ]) {
+    writeMultiGridInfoToTexture(infos: [fromStorageId: number, toStorageId: number, levels: Uint16Array, vertices: Float32Array]) {
 
         const gl = this._gl
         const [fromStorageId, toStorageId, levels, vertices] = infos
@@ -376,7 +379,10 @@ export default class GridLayer {
 
         // Init DOM Elements and handlers ////////////////////////////////////////////////////////////
         const canvas2d = document.querySelector('#canvas2d') as HTMLCanvasElement
-        const ctx = canvas2d.getContext('2d')
+        const rect = canvas2d.getBoundingClientRect();
+        canvas2d.width = rect.width;
+        canvas2d.height = rect.height;
+        this.ctx = canvas2d.getContext('2d')
 
         // [1] Remove Event handler for map boxZoom
         this.map.boxZoom.disable()
@@ -453,8 +459,8 @@ export default class GridLayer {
             }
 
             if (e.key === 'B') {
-                this.isBoxSelectMode = !this.isBoxSelectMode
-                console.log(`Box Select Mode: ${this.isBoxSelectMode ? 'ON' : 'OFF'}`)
+                this.isBoxPickingMode = !this.isBoxPickingMode
+                console.log(`Box-Picking Mode: ${this.isBoxPickingMode ? 'ON' : 'OFF'}`)
             }
         })
 
@@ -551,6 +557,7 @@ export default class GridLayer {
         this.gridRecorder.init(() => {
 
             this.gridRecorder.subdivideGrid(0, 0, (infos: any) => {
+
                 this.updateGPUGrids(infos)
 
                 // Raise flag when the root grid (level: 0, globalId: 0) has been subdivided
@@ -587,7 +594,7 @@ export default class GridLayer {
     }
 
     hit(storageId: number, coordinates: [number, number]) {
-
+        console.log("hit", storageId)
         // Delete mode
         if (this.isDeleteMode) {
 
@@ -608,11 +615,11 @@ export default class GridLayer {
             // Or target subdivided level equals to hitLevel
             if (targetLevel - hitLevel > 1 || targetLevel == hitLevel) return
 
-            const [ x, y ] = this.projConverter.inverse(coordinates)
+            const [x, y] = this.projConverter.inverse(coordinates)
             const { width, height } = this.gridRecorder.levelInfos[targetLevel]
             const normalizedX = (x - this.bBox.xMin) / (this.bBox.xMax - this.bBox.xMin)
             const normalizedY = (y - this.bBox.yMin) / (this.bBox.yMax - this.bBox.yMin)
-    
+
             // Nothing will happen if mouse is out of boundary condition
             if (normalizedX < 0 || normalizedX >= 1 || normalizedY < 0 || normalizedY >= 1) return
 
@@ -654,6 +661,7 @@ export default class GridLayer {
                 // Check if valid
                 let parentGlobalId = this.gridRecorder.getParentGlobalId(toLevel, toGlobalId)
                 for (let parentLevel = toLevel - 1; parentLevel >= fromLevel; parentLevel--) {
+                    console.log("HHHHHHH")
                     if (parentLevel === fromLevel && removableGlobalId !== parentGlobalId) return
                     parentGlobalId = this.gridRecorder.getParentGlobalId(parentLevel, parentGlobalId)
                 }
@@ -738,7 +746,7 @@ export default class GridLayer {
         gl.enable(gl.DEPTH_TEST)
 
         gl.useProgram(this._pickingShader)
-        
+
         gl.bindVertexArray(this._storageVAO)
 
         gl.uniform2fv(gl.getUniformLocation(this._pickingShader, 'centerLow'), this.map.centerLow)
@@ -752,35 +760,39 @@ export default class GridLayer {
 
         const pixel = new Uint8Array(4)
         gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
-        console.log(pixel)
         gl.bindFramebuffer(gl.FRAMEBUFFER, null)
 
         // Return storageId of the picked grid
         return pixel[0] + (pixel[1] << 8) + (pixel[2] << 16) + (pixel[3] << 24)
     }
 
-
     ///// ADDON
-
     boxPicking(pickingBox: number[]) {
 
         const gl = this._gl
         const canvas = gl.canvas as HTMLCanvasElement
+        const computedStyle = window.getComputedStyle(canvas)
+        const canvasWidth = +computedStyle.width.split('px')[0]
+        const canvasHeight = +computedStyle.height.split('px')[0]
 
-        const [mouseX, mouseY, endX, endY] = pickingBox
+        const minx = Math.min(pickingBox[0], pickingBox[2])
+        const miny = Math.max(pickingBox[1], pickingBox[3])
+        const maxx = Math.max(pickingBox[0], pickingBox[2])
+        const maxy = Math.min(pickingBox[1], pickingBox[3])
 
-        const pixelX = mouseX * canvas.width / canvas.clientWidth;
-        const pixelY = canvas.height - mouseY * canvas.height / canvas.clientHeight - 1;
-        const pixelEndX = endX * canvas.width / canvas.clientWidth;
-        const pixelEndY = canvas.height - endY * canvas.height / canvas.clientHeight - 1;
+        const [startX, startY, endX, endY] = [minx, miny, maxx, maxy]
 
-        const width = Math.round(Math.abs(pixelX - pixelEndX))
-        const height = Math.round(Math.abs(pixelY - pixelEndY))
+        const pixelX = startX;
+        const pixelY = canvasHeight - startY - 1;
+        const pixelEndX = endX;
+        const pixelEndY = canvasHeight - endY - 1;
+        const width = Math.ceil(pixelEndX - pixelX)
+        const height = Math.ceil(pixelEndY - pixelY)
 
-        const boxPickingMatrix = this._calcBoxPickingMatrix(pickingBox)
+        const boxPickingMatrix = mat4.create()
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, this._boxPickingFBO)
-        gl.viewport(0, 0, width, height)
+        gl.viewport(0, 0, canvasWidth, canvasHeight)
 
         gl.clearColor(1.0, 1.0, 1.0, 1.0)
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
@@ -792,10 +804,7 @@ export default class GridLayer {
 
         gl.useProgram(this._pickingShader)
 
-        gl.activeTexture(gl.TEXTURE0)
-        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this._storageTextureArray)
-        gl.activeTexture(gl.TEXTURE1)
-        gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture)
+        gl.bindVertexArray(this._storageVAO)
 
         gl.uniform2fv(gl.getUniformLocation(this._pickingShader, 'centerLow'), this.map.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this._pickingShader, 'centerHigh'), this.map.centerHigh)
@@ -806,37 +815,35 @@ export default class GridLayer {
 
         gl.flush()
 
-        console.log(width, height)
         const pixel = new Uint8Array(4 * width * height)
-        gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
-        console.log(pixel)
+        gl.readPixels(pixelX, pixelY, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
         gl.bindFramebuffer(gl.FRAMEBUFFER, null)
 
         //// for coordinate
         const startLngLat = this._boxPickingStart?.lngLat.toArray()!
         const endLngLat = this._boxPickingEnd?.lngLat.toArray()!
+        const set = new Set<number>()
+        const [minLng, minLat, maxLng, maxLat] = [
+            Math.min(startLngLat[0], endLngLat[0]),
+            Math.min(startLngLat[1], endLngLat[1]),
+            Math.max(startLngLat[0], endLngLat[0]),
+            Math.max(startLngLat[1], endLngLat[1])
+        ]
         for (let i = 0; i < height; i += 1) {
             for (let j = 0; j < width; j += 1) {
+
                 const storageId = pixel[4 * (i * width + j)] + (pixel[4 * (i * width + j) + 1] << 8) + (pixel[4 * (i * width + j) + 2] << 16) + (pixel[4 * (i * width + j) + 3] << 24)
 
-                const [minLng, maxLng, minLat, maxLat] = minMax(startLngLat, endLngLat)
-                const coord = [
+                if (storageId < 0 || set.has(storageId)) continue
+                set.add(storageId)
+
+                this.hit(storageId, [
                     minLng + (maxLng - minLng) * j / width,
                     minLat + (maxLat - minLat) * i / height
-                ] as [number, number]
-
-                storageId >= 0 && this.hit(storageId, coord)
+                ])
             }
         }
-
-        // Return storageId of the picked grid
-        return
-
-
     }
-
-
-
 
     drawGridMesh() {
 
@@ -851,7 +858,7 @@ export default class GridLayer {
         gl.useProgram(this._gridMeshShader)
 
         gl.bindVertexArray(this._storageVAO)
-        
+
         gl.activeTexture(gl.TEXTURE0)
         gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture)
 
@@ -914,12 +921,11 @@ export default class GridLayer {
         const ndcY = 1.0 - offsetY / canvasHeight * 2.0
 
         const pickingMatrix = mat4.create()
-        mat4.scale(pickingMatrix, pickingMatrix, [ canvasWidth * 0.5, canvasHeight * 0.5, 1.0 ])
-        mat4.translate(pickingMatrix, pickingMatrix, [ -ndcX, -ndcY, 0.0 ])
+        mat4.scale(pickingMatrix, pickingMatrix, [canvasWidth * 0.5, canvasHeight * 0.5, 1.0])
+        mat4.translate(pickingMatrix, pickingMatrix, [-ndcX, -ndcY, 0.0])
 
         return pickingMatrix
     }
-
     private _mousedownHandler(e: MapMouseEvent) {
 
         if (e.originalEvent.shiftKey && e.originalEvent.button === 0) {
@@ -927,10 +933,11 @@ export default class GridLayer {
             this.map.dragPan.disable()
         }
         //// ADDON 
-        if (this.isBoxSelectMode) {
+        if (this.isBoxPickingMode) {
             this.map.dragPan.disable()
             this._boxPickingStart = e
-            console.log("box start ", e.point)
+            this._boxPickingEnd = e
+            // drawRectangle(this.ctx,)
         }
     }
 
@@ -971,32 +978,20 @@ export default class GridLayer {
                 // }
             }
         }
-        //// ADDON  
-        if (this.isBoxSelectMode) {
+        //// ADDON 2025/1/3
+        if (this.isBoxPickingMode) {
+
             this.map.dragPan.enable()
-            // this._boxPickingStart = e
             this._boxPickingEnd = e
-            console.log("box end ", e.point)
-            //////
-            // const [startX, startY] = [e.originalEvent.clientX, e.originalEvent.clientY]
-            // const [endX, endY] = [Math.round(startX + 100 * Math.random()), Math.round(startY + 100 * Math.random())]
-            // const pickingRect = [startX, startY, endX, endY]
-            // this.boxPicking(pickingRect)
 
+            const canvas = this._gl.canvas as HTMLCanvasElement
+            const box = genPickingBox(canvas, this._boxPickingStart!, this._boxPickingEnd!)
+            this.boxPicking(box)
 
-            const gl = this._gl
-            const canvas = gl.canvas as HTMLCanvasElement
-            const rect = canvas.getBoundingClientRect()
-
-            const [startX, startY] = [
-                this._boxPickingStart!.point.x - rect.left, this._boxPickingStart!.point.y - rect.top
-            ]
-            const [endX, endY] = [
-                this._boxPickingEnd!.point.x - rect.left, this._boxPickingEnd!.point.y - rect.top
-            ]
-            const pickingRect = <number[]>[startX, startY, endX, endY]
-
-            this.boxPicking(pickingRect)
+            // reset
+            clear(this.ctx!)
+            this._boxPickingStart = null
+            this._boxPickingEnd = null
 
         }
 
@@ -1008,8 +1003,15 @@ export default class GridLayer {
             this.map.dragPan.disable()
 
             const storageId = this.picking(this._calcPickingMatrix(e))
-            console.log(e.lngLat.toArray())
             storageId >= 0 && this.hit(storageId, e.lngLat.toArray())
+        }
+
+        //// ADDON 
+        if (this.isBoxPickingMode && this._boxPickingStart) {
+            this._boxPickingEnd = e
+            const canvas = this._gl.canvas as HTMLCanvasElement
+            const box = genPickingBox(canvas, this._boxPickingStart, this._boxPickingEnd!)
+            drawRectangle(this.ctx!, box)
         }
     }
 }
@@ -1031,12 +1033,40 @@ function decodeInfo(infoKey: string): Array<number> {
     return infoKey.split('-').map(key => +key)
 }
 
-function minMax(A: [number, number], B: [number, number]) {
-    const minX = Math.min(A[0], B[0]);
-    const maxX = Math.max(A[0], B[0]);
-    const minY = Math.min(A[1], B[1]);
-    const maxY = Math.max(A[1], B[1]);
-    // return { minx: minX, maxx: maxX, miny: minY, maxy: maxY };
-    return [minX, maxX, minY, maxY]
+// canvas 2d
+function drawRectangle(ctx: CanvasRenderingContext2D, pickingBox: [number, number, number, number]) {
+
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+
+    let [startX, startY, endX, endY] = pickingBox
+
+    if (startX > endX) { [startX, endX] = [endX, startX] }
+    if (startY > endY) { [startY, endY] = [endY, startY] }
+
+    const width = (endX - startX)
+    const height = (endY - startY)
+
+    ctx.strokeStyle = 'rgba(227, 102, 0, 0.67)'
+    ctx.fillStyle = 'rgba(235, 190, 148, 0.52)';
+    ctx.lineWidth = 2
+    ctx.setLineDash([5, 3])
+    ctx.strokeRect(startX, startY, width, height)
+    ctx.fillRect(startX, startY, width, height)
 }
 
+function clear(ctx: CanvasRenderingContext2D) {
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+}
+
+function genPickingBox(canvas: HTMLCanvasElement, startEvent: MapMouseEvent, endEvent: MapMouseEvent) {
+
+    const rect = canvas.getBoundingClientRect()
+    const _pickingBox = [
+        startEvent.point.x - rect.left,
+        startEvent.point.y - rect.top,
+        endEvent.point.x - rect.left,
+        endEvent.point.y - rect.top
+    ]
+    return _pickingBox as [number, number, number, number]
+
+}
