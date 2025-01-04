@@ -99,6 +99,8 @@ export default class GridLayer {
     mouseupHandler: Function
     mousedownHandler: Function
     mousemoveHandler: Function
+    mouseoutHandler: Function
+    resizeHandler: Function
 
     // Dat.GUI
     gui: GUI
@@ -164,6 +166,8 @@ export default class GridLayer {
         this.mouseupHandler = this._mouseupHandler.bind(this)
         this.mousedownHandler = this._mousedownHandler.bind(this)
         this.mousemoveHandler = this._mousemoveHandler.bind(this)
+        this.mouseoutHandler = this._mouseoutHandler.bind(this)
+        this.resizeHandler = this._resizeHandler.bind(this)
 
         // Init interaction option
         this.uiOption = {
@@ -572,6 +576,9 @@ export default class GridLayer {
             .off('mouseup', this.mouseupHandler as any)
             .off('mousedown', this.mousedownHandler as any)
             .off('mousemove', this.mousemoveHandler as any)
+            .off('mouseout', this.mouseoutHandler as any)
+            .off('resize', this.resizeHandler as any)
+
     }
 
     addSubdividerUIHandler() {
@@ -582,6 +589,8 @@ export default class GridLayer {
             .on('mouseup', this.mouseupHandler as any)
             .on('mousedown', this.mousedownHandler as any)
             .on('mousemove', this.mousemoveHandler as any)
+            .on('mouseout', this.mouseoutHandler as any)
+            .on('resize', this.resizeHandler as any)
     }
 
     addEditorUIHandler() {
@@ -594,7 +603,7 @@ export default class GridLayer {
     }
 
     hit(storageId: number, coordinates: [number, number]) {
-        console.log("hit", storageId)
+        this.isBoxPickingMode && console.log("hit", storageId)
         // Delete mode
         if (this.isDeleteMode) {
 
@@ -615,24 +624,24 @@ export default class GridLayer {
             // Or target subdivided level equals to hitLevel
             if (targetLevel - hitLevel > 1 || targetLevel == hitLevel) return
 
-            const [x, y] = this.projConverter.inverse(coordinates)
-            const { width, height } = this.gridRecorder.levelInfos[targetLevel]
-            const normalizedX = (x - this.bBox.xMin) / (this.bBox.xMax - this.bBox.xMin)
-            const normalizedY = (y - this.bBox.yMin) / (this.bBox.yMax - this.bBox.yMin)
+            // const [x, y] = this.projConverter.inverse(coordinates)
+            // const { width, height } = this.gridRecorder.levelInfos[targetLevel]
+            // const normalizedX = (x - this.bBox.xMin) / (this.bBox.xMax - this.bBox.xMin)
+            // const normalizedY = (y - this.bBox.yMin) / (this.bBox.yMax - this.bBox.yMin)
 
-            // Nothing will happen if mouse is out of boundary condition
-            if (normalizedX < 0 || normalizedX >= 1 || normalizedY < 0 || normalizedY >= 1) return
+            // // Nothing will happen if mouse is out of boundary condition
+            // if (normalizedX < 0 || normalizedX >= 1 || normalizedY < 0 || normalizedY >= 1) return
 
-            // Calculate globalId of the target grid
-            const col = Math.floor(normalizedX * width)
-            const row = Math.floor(normalizedY * height)
-            const globalId = row * width + col
+            // // Calculate globalId of the target grid
+            // const col = Math.floor(normalizedX * width)
+            // const row = Math.floor(normalizedY * height)
+            // const globalId = row * width + col
 
             this.hitSet.add([
-                hitLevel,       // FromLevel
+                // hitLevel,       // FromLevel
                 storageId,      // FromStorageId
                 targetLevel,    // ToLevel
-                globalId,       // ToGlobalId
+                // globalId,       // ToGlobalId
             ].join('-'))
         }
 
@@ -655,33 +664,36 @@ export default class GridLayer {
 
             // Parse hitSet
             this.hitSet.forEach(hitActionInfo => {
-                const [fromLevel, fromStorageId, toLevel, toGlobalId] = decodeInfo(hitActionInfo)
-                const removableGlobalId = this.gridRecorder.getGridInfoByStorageId(fromStorageId)[1]
+                const [fromStorageId, toLevel] = decodeInfo(hitActionInfo)
+                const [removableLevel, removableGlobalId] = this.gridRecorder.getGridInfoByStorageId(fromStorageId)
 
                 // Check if valid
-                let parentGlobalId = this.gridRecorder.getParentGlobalId(toLevel, toGlobalId)
-                for (let parentLevel = toLevel - 1; parentLevel >= fromLevel; parentLevel--) {
-                    console.log("HHHHHHH")
-                    if (parentLevel === fromLevel && removableGlobalId !== parentGlobalId) return
-                    parentGlobalId = this.gridRecorder.getParentGlobalId(parentLevel, parentGlobalId)
-                }
+                if (removableLevel >= toLevel || toLevel - removableLevel > 1) return
+                // let parentGlobalId = this.gridRecorder.getParentGlobalId(toLevel, toGlobalId)
+                // for (let parentLevel = toLevel - 1; parentLevel >= fromLevel; parentLevel--) {
+                //     if (parentLevel === fromLevel && removableGlobalId !== parentGlobalId) return
+                //     parentGlobalId = this.gridRecorder.getParentGlobalId(parentLevel, parentGlobalId)
+                // }
 
                 // Remove grids
                 this.removeGrid(fromStorageId)
 
-                // Parse info about subdividable grid
-                const subdivideStack: Array<string> = []
-                parentGlobalId = this.gridRecorder.getParentGlobalId(toLevel, toGlobalId)
-                for (let parentLevel = toLevel - 1; parentLevel >= fromLevel; parentLevel--) {
-                    subdivideStack.push([parentLevel, parentGlobalId].join('-'))
-                    parentGlobalId = this.gridRecorder.getParentGlobalId(parentLevel, parentGlobalId)
-                }
+                // Subdivide grid
+                this.subdivideGrid([removableLevel, removableGlobalId].join('-'))
 
-                // Subdivide grids
-                while (subdivideStack.length) {
-                    const subdivideTask = subdivideStack.pop()!
-                    this.subdivideGrid(subdivideTask)
-                }
+                // Parse info about subdividable grid
+                // const subdivideStack: Array<string> = []
+                // let parentGlobalId = this.gridRecorder.getParentGlobalId(toLevel, toGlobalId)
+                // for (let parentLevel = toLevel - 1; parentLevel >= fromLevel; parentLevel--) {
+                //     subdivideStack.push([parentLevel, parentGlobalId].join('-'))
+                //     parentGlobalId = this.gridRecorder.getParentGlobalId(parentLevel, parentGlobalId)
+                // }
+
+                // // Subdivide grids
+                // while (subdivideStack.length) {
+                //     const subdivideTask = subdivideStack.pop()!
+                //     this.subdivideGrid(subdivideTask)
+                // }
             })
 
         } else {
@@ -782,12 +794,12 @@ export default class GridLayer {
 
         const [startX, startY, endX, endY] = [minx, miny, maxx, maxy]
 
-        const pixelX = startX;
-        const pixelY = canvasHeight - startY - 1;
-        const pixelEndX = endX;
-        const pixelEndY = canvasHeight - endY - 1;
-        const width = Math.ceil(pixelEndX - pixelX)
-        const height = Math.ceil(pixelEndY - pixelY)
+        const pixelX = Math.floor(startX)
+        const pixelY = Math.floor(canvasHeight - startY - 1)
+        const pixelEndX = Math.floor(endX)
+        const pixelEndY = Math.floor(canvasHeight - endY - 1)
+        const width = (pixelEndX - pixelX)
+        const height = (pixelEndY - pixelY)
 
         const boxPickingMatrix = mat4.create()
 
@@ -816,30 +828,33 @@ export default class GridLayer {
         gl.flush()
 
         const pixel = new Uint8Array(4 * width * height)
+        console.log(pixelX, pixelY, width, height)
         gl.readPixels(pixelX, pixelY, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
         gl.bindFramebuffer(gl.FRAMEBUFFER, null)
 
         //// for coordinate
         const startLngLat = this._boxPickingStart?.lngLat.toArray()!
         const endLngLat = this._boxPickingEnd?.lngLat.toArray()!
-        const set = new Set<number>()
         const [minLng, minLat, maxLng, maxLat] = [
             Math.min(startLngLat[0], endLngLat[0]),
             Math.min(startLngLat[1], endLngLat[1]),
             Math.max(startLngLat[0], endLngLat[0]),
             Math.max(startLngLat[1], endLngLat[1])
         ]
+
+        const set = new Set<number>()
         for (let i = 0; i < height; i += 1) {
             for (let j = 0; j < width; j += 1) {
 
-                const storageId = pixel[4 * (i * width + j)] + (pixel[4 * (i * width + j) + 1] << 8) + (pixel[4 * (i * width + j) + 2] << 16) + (pixel[4 * (i * width + j) + 3] << 24)
+                const pixleId = 4 * (i * width + j)
+                const storageId = pixel[pixleId] + (pixel[pixleId + 1] << 8) + (pixel[pixleId + 2] << 16) + (pixel[pixleId + 3] << 24)
 
                 if (storageId < 0 || set.has(storageId)) continue
-                set.add(storageId)
 
+                set.add(storageId)
                 this.hit(storageId, [
-                    minLng + (maxLng - minLng) * j / width,
-                    minLat + (maxLat - minLat) * i / height
+                    minLng + (maxLng - minLng) * (j + 0.5) / width,
+                    minLat + (maxLat - minLat) * (i + 0.5) / height
                 ])
             }
         }
@@ -935,6 +950,7 @@ export default class GridLayer {
         //// ADDON 
         if (this.isBoxPickingMode) {
             this.map.dragPan.disable()
+            this.map.scrollZoom.disable()
             this._boxPickingStart = e
             this._boxPickingEnd = e
             // drawRectangle(this.ctx,)
@@ -982,6 +998,7 @@ export default class GridLayer {
         if (this.isBoxPickingMode) {
 
             this.map.dragPan.enable()
+            this.map.scrollZoom.enable()
             this._boxPickingEnd = e
 
             const canvas = this._gl.canvas as HTMLCanvasElement
@@ -1014,6 +1031,33 @@ export default class GridLayer {
             drawRectangle(this.ctx!, box)
         }
     }
+
+    private _mouseoutHandler(e: MapMouseEvent) {
+        if (this.isBoxPickingMode && this._boxPickingStart) {
+            this.map.dragPan.enable()
+            this.map.scrollZoom.enable()
+            this._boxPickingEnd = e
+
+            const canvas = this._gl.canvas as HTMLCanvasElement
+            const box = genPickingBox(canvas, this._boxPickingStart!, this._boxPickingEnd!)
+            this.boxPicking(box)
+
+            // reset
+            clear(this.ctx!)
+            this._boxPickingStart = null
+            this._boxPickingEnd = null
+
+        }
+    }
+
+    private _resizeHandler(e: Event) {
+        // resize canvas 2d
+        const canvas = this.ctx!.canvas;
+        if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
+            canvas.width = canvas.clientWidth;
+            canvas.height = canvas.clientHeight;
+        }
+    }
 }
 
 // Helpers //////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1033,7 +1077,24 @@ function decodeInfo(infoKey: string): Array<number> {
     return infoKey.split('-').map(key => +key)
 }
 
-// canvas 2d
+// ADDON
+function genPickingBox(canvas: HTMLCanvasElement, startEvent: MapMouseEvent, endEvent: MapMouseEvent) {
+
+    const rect = canvas.getBoundingClientRect()
+    const _pickingBox = [
+        startEvent.point.x - rect.left,
+        startEvent.point.y - rect.top,
+        endEvent.point.x - rect.left,
+        endEvent.point.y - rect.top
+    ]
+    return _pickingBox as [number, number, number, number]
+
+}
+
+function clear(ctx: CanvasRenderingContext2D) {
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+}
+
 function drawRectangle(ctx: CanvasRenderingContext2D, pickingBox: [number, number, number, number]) {
 
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
@@ -1054,19 +1115,3 @@ function drawRectangle(ctx: CanvasRenderingContext2D, pickingBox: [number, numbe
     ctx.fillRect(startX, startY, width, height)
 }
 
-function clear(ctx: CanvasRenderingContext2D) {
-    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-}
-
-function genPickingBox(canvas: HTMLCanvasElement, startEvent: MapMouseEvent, endEvent: MapMouseEvent) {
-
-    const rect = canvas.getBoundingClientRect()
-    const _pickingBox = [
-        startEvent.point.x - rect.left,
-        startEvent.point.y - rect.top,
-        endEvent.point.x - rect.left,
-        endEvent.point.y - rect.top
-    ]
-    return _pickingBox as [number, number, number, number]
-
-}
