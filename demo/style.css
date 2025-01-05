@@ -24,11 +24,9 @@ html {
     height: 100%;
     pointer-events: none;
     cursor: grab;
-    /* background-color: rgba(255, 225, 225, 0.297); */
-    /* background-color: transparent; */
+    background-color: transparent;
     z-index: 2;
 }
-
 
 button {
     z-index: 1000;
