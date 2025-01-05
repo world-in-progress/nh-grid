@@ -37,7 +37,7 @@ export interface GridNodeSerializedInfo {
 
 export interface GridNodeParams {
     level?: number
-    localId: number
+    // localId: number
     globalId: number
     parent?: GridNode
     storageId: number
@@ -193,9 +193,7 @@ export class GridNodeRecord {
 
 export class GridNode {
 
-    uuId: string
     level: number
-    localId: number
     globalId: number
     storageId: number
 
@@ -205,10 +203,11 @@ export class GridNode {
     yMaxPercent: [ number, number ]
     
     edges: [ Set<string>, Set<string>, Set<string>, Set<string> ]
+    neighbours: [ Set<number>, Set<number>, Set<number>, Set<number> ]
 
     constructor(options: GridNodeParams) {
 
-        this.localId = options.localId
+        // this.localId = options.localId
         this.globalId = options.globalId
         this.storageId = options.storageId
 
@@ -217,7 +216,6 @@ export class GridNode {
         } else {
             this.level = options.level === undefined ? 0 : options.level
         }
-        this.uuId = `${this.level}-${this.globalId}`
 
         // Division Coordinates [ numerator, denominator ] 
         // Use integer numerators and denominators to avoid coordinate precision issue
@@ -233,6 +231,13 @@ export class GridNode {
             new Set<string>(),
         ]
 
+        this.neighbours = [
+            new Set<number>(),
+            new Set<number>(),
+            new Set<number>(),
+            new Set<number>(),
+        ]
+
         // Update division coordinates if globalRange provided
         if (options.globalRange) {
 
@@ -245,6 +250,10 @@ export class GridNode {
             this.yMinPercent = simplifyFraction(globalV, height)
             this.yMaxPercent = simplifyFraction(globalV + 1, height)
         }
+    }
+
+    get uuId(): string {
+        return `${this.level}-${this.globalId}`
     }
 
     get xMin(): number {
@@ -319,17 +328,17 @@ export class GridNode {
 
     release(): null {
 
+        this.level = -1
+        this.globalId = -1
+        this.storageId = -1
+
         this.xMinPercent = [ 0, 0 ]
         this.xMaxPercent = [ 0, 0 ]
         this.yMinPercent = [ 0, 0 ]
         this.yMaxPercent = [ 0, 0 ]
 
-        this.edges.forEach(edgeSet => edgeSet.clear())
-
-        this.uuId = ''
-        this.globalId = -1
-        this.localId = -1
-        this.level = -1
+        this.edges = null as any
+        this.neighbours = null as any
 
         return null
     }

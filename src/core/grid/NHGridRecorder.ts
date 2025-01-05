@@ -6,71 +6,6 @@ import { MercatorCoordinate } from '../math/mercatorCoordinate'
 import UndoRedoManager, { UndoRedoOperation } from '../util/undoRedoManager'
 import { EDGE_CODE, EDGE_CODE_EAST, EDGE_CODE_NORTH, EDGE_CODE_SOUTH, EDGE_CODE_WEST, GridEdge, GridNode, GridNodeRecord, GridNodeRenderInfo, GridNodeRenderInfoPack, GridTopologyInfo, SubdivideRules } from './NHGrid'
 
-export class GridEdgeRecorder {
-
-    private _edgeMap: Map<string, GridEdge>
-    private _properties: string[] | undefined
-
-    constructor(properties?: string[]) {
-
-        this._edgeMap = new Map<string, GridEdge>()
-        this._properties = properties
-    }
-
-    get edges(): MapIterator<GridEdge> {
-
-        return this._edgeMap.values()
-    }
-
-    getEdgeByInfo(grid1: GridNode | null, grid2: GridNode | null, edgeCode: number, range: [ number, number, number, number ]): GridEdge {
-
-        const key = GridEdge.createKey(grid1, grid2, edgeCode, range)
-        const opKey = GridEdge.getOpKey(key)
-
-        const existingEdge = this._edgeMap.get(key) || this._edgeMap.get(opKey)
-    
-        if (existingEdge) {
-
-            return existingEdge
-
-        } else {
-
-            const edge = new GridEdge(key, this._properties)
-            this._edgeMap.set(key, edge)
-            return edge
-
-        }
-    }
-
-    addEdge(edge: GridEdge | null | undefined): void {
-
-        if (!edge) return
-
-        const key = edge.key
-        const opKey = GridEdge.getOpKey(key)
-
-        const existingEdge = this._edgeMap.get(key) || this._edgeMap.get(opKey)
-        if (!existingEdge) {
-            this._edgeMap.set(key, edge)
-        }
-    }
-    
-    getEdgeByKey(key: string): GridEdge | null {
-
-        const opKey = GridEdge.getOpKey(key)
-        const existingEdge = this._edgeMap.get(key) || this._edgeMap.get(opKey)
-
-        if (existingEdge) {
-
-            return existingEdge
-
-        } else {
-            
-            return null
-        }
-    }
-}
-
 interface GridLevelInfo {
 
     width: number
@@ -99,7 +34,7 @@ export interface UndoRedoRecordOperation extends UndoRedoOperation {
     action: 'RemoveGrid' | 'SubdivideGrid'
 }
 
-export interface GridNodeRecordOptions {
+export interface GridRecordOptions {
 
     workerCount?: number
     dispatcher?: Dispatcher
@@ -107,7 +42,7 @@ export interface GridNodeRecordOptions {
     autoDeleteIndexedDB?: boolean
 }
 
-export default class GridNodeRecorder extends UndoRedoManager {
+export default class GridRecorder extends UndoRedoManager {
 
     private _projConverter: proj4.Converter
 
@@ -117,7 +52,7 @@ export default class GridNodeRecorder extends UndoRedoManager {
     levelInfos: GridLevelInfo[]
     storageId_gridInfo_cache: Array<number | undefined> // [ level_0, globalId_0, level_1, globalId_1, ... , level_n, globalId_n ]
 
-    constructor(private _subdivideRules: SubdivideRules, maxGridNum?: number, options: GridNodeRecordOptions = {}) {
+    constructor(private _subdivideRules: SubdivideRules, maxGridNum?: number, options: GridRecordOptions = {}) {
         super(options.operationCapacity || 1000)
 
         this.dispatcher =  options.dispatcher || new Dispatcher(this,options.workerCount || 4)
@@ -198,7 +133,7 @@ export default class GridNodeRecorder extends UndoRedoManager {
 
         // Dispatch a worker to parse the topology about all grids
         this._actor.send('parseTopology', this.storageId_gridInfo_cache.slice(0, this.nextStorageId * 2), (_, topologyInfo: GridTopologyInfo) => {
-            const [ edgekeys, adjGrids,  storageId_edgeKeys_set ] = topologyInfo
+            const [ edgekeys, adjGrids, storageId_edgeKeys_set ] = topologyInfo
             console.log(edgekeys, adjGrids, storageId_edgeKeys_set)
         })
     }
@@ -354,10 +289,7 @@ export default class GridNodeRecorder extends UndoRedoManager {
 
         const renderCoords = targetCoords.map(coord => MercatorCoordinate.fromLonLat(coord as [ number, number ]))
 
-        return new Float32Array([
-            ...renderCoords[0], ...renderCoords[1],
-            ...renderCoords[2], ...renderCoords[3],
-        ])
+        return new Float32Array(renderCoords.flat())
     }
 
     private _generateRemoveGridOperation(storageId: number, callback?: Function): UndoRedoRecordOperation {
@@ -448,6 +380,55 @@ export default class GridNodeRecorder extends UndoRedoManager {
 
 function lerp(a: number, b: number, t: number): number {
     return (1.0 - t) * a + t * b
+}
+
+function decodeGridTopologyInfo(buffer: SharedArrayBuffer): GridTopologyInfo {
+    const view = new DataView(buffer);
+    let offset = 0;
+
+    const decoder = new TextDecoder();
+    const edgeKeys: string[] = [];
+    const adjGrids: number[][] = [];
+    const storageId_edgeKeys_set: Array<[ Set<string>, Set<string>, Set<string>, Set<string> ]> = [];
+
+    // 解码 edgeKeys
+    while (offset < buffer.byteLength) {
+        const keyBytes = new Uint8Array(buffer, offset, 4);
+        edgeKeys.push(decoder.decode(keyBytes).replace(/\0/g, ''));  // 移除填充字符
+        offset += 4;
+    }
+
+    // 解码 adjGrids
+    while (offset < buffer.byteLength) {
+        const gridLength = view.getInt32(offset);
+        offset += 4;
+        const grid = [];
+        for (let i = 0; i < gridLength; i++) {
+            grid.push(view.getInt32(offset));
+            offset += 4;
+        }
+        adjGrids.push(grid);
+    }
+
+    // 解码 storageId_edgeKeys_set
+    while (offset < buffer.byteLength) {
+        const sets: [ Set<string>, Set<string>, Set<string>, Set<string> ] = [
+            new Set(), new Set(), new Set(), new Set()
+        ];
+        for (let setIndex = 0; setIndex < 4; setIndex++) {
+            const setSize = view.getInt32(offset);
+            offset += 4;
+            for (let i = 0; i < setSize; i++) {
+                const valBytes = new Uint8Array(buffer, offset, 4);
+                const val = decoder.decode(valBytes).replace(/\0/g, '');
+                sets[setIndex].add(val);
+                offset += 4;
+            }
+        }
+        storageId_edgeKeys_set.push(sets);
+    }
+
+    return [edgeKeys, adjGrids, storageId_edgeKeys_set];
 }
 
 // function decodeArrayBufferToStrings(buffer: ArrayBuffer): string[] {

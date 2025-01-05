@@ -7,7 +7,7 @@ import { GUI, GUIController } from 'dat.gui'
 import gll from './GlLib'
 import NHMap from './NHMap'
 import BoundingBox2D from '../../src/core/util/boundingBox2D'
-import GridNodeRecorder from '../../src/core/grid/NHGridRecorder'
+import GridRecorder from '../../src/core/grid/NHGridRecorder'
 import VibrantColorGenerator from '../../src/core/util/vibrantColorGenerator'
 
 proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
@@ -34,7 +34,7 @@ export default class GridLayer {
     bBox: BoundingBox2D
     hitSet = new Set<string>
     projConverter: proj4.Converter
-    gridRecorder: GridNodeRecorder
+    gridRecorder: GridRecorder
     subdivideRules: [ number, number ][]
     subdivideStacks = new Array<[ level: number, globalId: number ][]>()
 
@@ -119,7 +119,7 @@ export default class GridLayer {
         this.subdivideRules.push(...subdivideRules)
 
         // Create core recorders
-        this.gridRecorder = new GridNodeRecorder({
+        this.gridRecorder = new GridRecorder({
             bBox: this.bBox,
             srcCS: this.srcCS,
             targetCS: 'EPSG:4326',
