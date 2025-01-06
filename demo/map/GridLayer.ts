@@ -3,13 +3,12 @@ import { mat4 } from 'gl-matrix'
 import { MapMouseEvent } from 'mapbox-gl'
 import { GUI, GUIController } from 'dat.gui'
 
+import "../pannel.css"
 import gll from './GlLib'
 import NHMap from './NHMap'
 import BoundingBox2D from '../../src/core/util/boundingBox2D'
 import GridRecorder from '../../src/core/grid/NHGridRecorder'
 import VibrantColorGenerator from '../../src/core/util/vibrantColorGenerator'
-import "../pannel.css"
-import { EdgeRenderInfoPack } from '../../src/core/grid/NHGrid'
 
 proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
 
@@ -92,7 +91,7 @@ export default class GridLayer {
     // Interaction-related //////////////////////////////////////////////////
 
     // Interaction mode
-    _EditorState: Record<string, string> = {
+    private _EditorState: Record<string, string> = {
         editor: 'none',   // 'none' | 'topology' | 'attribute'
         tool: 'none',     // 'none' | 'brush' | 'box'
         mode: 'none'      // 'none' | 'subdivide' | 'delete'
@@ -100,18 +99,14 @@ export default class GridLayer {
     EditorState: Record<string, string> = {}
 
     typeChanged = false
-    // EDITOR_TYPE = 0b01
-    // SUBDIVIDER_TYPE = 0b11
-    // private _currentType = 0b11
-
     isShiftClick = false
     isTransparent = false
 
+    resizeHandler: Function
     mouseupHandler: Function
+    mouseoutHandler: Function
     mousedownHandler: Function
     mousemoveHandler: Function
-    mouseoutHandler: Function
-    resizeHandler: Function
 
     // Dat.GUI
     gui: GUI
@@ -151,11 +146,11 @@ export default class GridLayer {
             targetCS: 'EPSG:4326',
             rules: this.subdivideRules
         },
-            this.maxGridNum,
-            {
-                workerCount: 4,
-                operationCapacity: 1000,
-            })
+        this.maxGridNum,
+        {
+            workerCount: 4,
+            operationCapacity: 1000,
+        })
 
         // Set WebGL2 context
         this._gl = this.map.painter.context.gl
@@ -175,11 +170,12 @@ export default class GridLayer {
         this.updateGPUGrid = this._updateGPUGrid.bind(this)
         this.updateGPUGrids = this._updateGPUGrids.bind(this)
         this.updateGPUEdges = this._updateGPUEdges.bind(this)
+
+        this.resizeHandler = this._resizeHandler.bind(this)
         this.mouseupHandler = this._mouseupHandler.bind(this)
+        this.mouseoutHandler = this._mouseoutHandler.bind(this)
         this.mousedownHandler = this._mousedownHandler.bind(this)
         this.mousemoveHandler = this._mousemoveHandler.bind(this)
-        this.mouseoutHandler = this._mouseoutHandler.bind(this)
-        this.resizeHandler = this._resizeHandler.bind(this)
 
         // Init interaction option
         this.uiOption = {
@@ -250,7 +246,7 @@ export default class GridLayer {
     //     this.map.triggerRepaint()
     // }
 
-    hitEditor(lon: number, lat: number) {
+    hitAttributeEditor(lon: number, lat: number) {
 
         // this.hitGridList.forEach(grid => {
         //     if (grid.within(this.bBox, lon, lat)) {
@@ -259,91 +255,6 @@ export default class GridLayer {
         //         console.log(grid.edges)
         //     }
         // })
-    }
-
-    // Fast function to upload one grid rendering info to GPU stograge texture
-    writeGridInfoToTexture(info: [storageId: number, level: number, vertices: Float32Array]) {
-
-        const gl = this._gl
-        const [storageId, level, vertices] = info
-        const storageU = storageId % this.storageTextureSize
-        const storageV = Math.floor(storageId / this.storageTextureSize)
-
-        gll.fillSubTexture2DArrayByArray(gl, this._storageTextureArray, 0, storageU, storageV, 0, 1, 1, 4, gl.RG, gl.FLOAT, vertices)
-        gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, storageU, storageV, 1, 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, new Uint16Array([level]))
-    }
-
-    /** @deprecated */
-    writeMultiGridInfoToTexture(infos: [fromStorageId: number, toStorageId: number, levels: Uint16Array, vertices: Float32Array]) {
-
-        const gl = this._gl
-        const [fromStorageId, toStorageId, levels, vertices] = infos
-
-        const fromStorageU = fromStorageId % this.storageTextureSize
-        const fromStorageV = Math.floor(fromStorageId / this.storageTextureSize)
-
-        const toStorageU = toStorageId % this.storageTextureSize
-        const toStorageV = Math.floor(toStorageId / this.storageTextureSize)
-
-        const updateBlockHeight = toStorageV - fromStorageV + 1
-
-        // FromStorageId and ToStorageId are on the same row of the storage texture
-        if (updateBlockHeight === 1) {
-
-            const updateBlockWidth = toStorageU - fromStorageU + 1
-            gll.fillSubTexture2DArrayByArray(gl, this._storageTextureArray, 0, fromStorageU, fromStorageV, 0, updateBlockWidth, updateBlockHeight, 4, gl.RG, gl.FLOAT, vertices)
-            gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, fromStorageU, fromStorageV, updateBlockWidth, updateBlockHeight, gl.RED_INTEGER, gl.UNSIGNED_SHORT, levels)
-
-        } else {
-
-            const gridCount = vertices.length / 8
-            const fullBlockRows = Math.max(updateBlockHeight - 2, 0)
-
-            // Pre-allocate memory for a Float32Array that can satisfy all three updated situations
-            const size_within_fromStorageU_textureSize = this.storageTextureSize - fromStorageU
-            const size_within_fromStorageV_toStorageV = this.storageTextureSize * fullBlockRows
-            const size_within_0_toStorageU = toStorageU + 1
-
-            // Use the maximum size to allocate this memory
-            const subBlockSize = Math.max(size_within_0_toStorageU, Math.max(size_within_fromStorageU_textureSize, size_within_fromStorageV_toStorageV))
-            const subVertices = new Float32Array(subBlockSize * 8)
-
-            // Update grid info for situation 1 //////////////////////////////////////////////////
-            let srcOffset = 0
-            let updateBlockWidth = this.storageTextureSize - fromStorageU
-            let elementSize = updateBlockWidth * 2
-            for (let i = 0; i < 4; i++) {
-                const offset = (gridCount * i + srcOffset) * 2
-                subVertices.set(vertices.subarray(offset, offset + elementSize), i * elementSize)
-            }
-            gll.fillSubTexture2DArrayByArray(gl, this._storageTextureArray, 0, fromStorageU, fromStorageV, 0, updateBlockWidth, 1, 4, gl.RG, gl.FLOAT, subVertices)
-            gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, fromStorageU, fromStorageV, updateBlockWidth, 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, levels, srcOffset)
-
-            // Update grid info for situation 2 //////////////////////////////////////////////////
-            srcOffset += updateBlockWidth
-            if (fullBlockRows > 0) {
-
-                updateBlockWidth = this.storageTextureSize
-                elementSize = updateBlockWidth * fullBlockRows * 2
-                for (let i = 0; i < 4; i++) {
-                    const offset = (gridCount * i + srcOffset) * 2
-                    subVertices.set(vertices.subarray(offset, offset + elementSize), i * elementSize)
-                }
-                gll.fillSubTexture2DArrayByArray(gl, this._storageTextureArray, 0, 0, fromStorageV + 1, 0, updateBlockWidth, fullBlockRows, 4, gl.RG, gl.FLOAT, subVertices)
-                gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, 0, fromStorageV + 1, updateBlockWidth, fullBlockRows, gl.RED_INTEGER, gl.UNSIGNED_SHORT, levels, srcOffset)
-            }
-
-            // Update grid info for situation 3 //////////////////////////////////////////////////
-            srcOffset += updateBlockWidth * fullBlockRows
-            updateBlockWidth = toStorageU + 1
-            elementSize = updateBlockWidth * 2
-            for (let i = 0; i < 4; i++) {
-                const offset = (gridCount * i + srcOffset) * 2
-                subVertices.set(vertices.subarray(offset, offset + elementSize), i * elementSize)
-            }
-            gll.fillSubTexture2DArrayByArray(gl, this._storageTextureArray, 0, 0, toStorageV, 0, updateBlockWidth, 1, 4, gl.RG, gl.FLOAT, subVertices)
-            gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, 0, toStorageV, updateBlockWidth, 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, levels, srcOffset)
-        }
     }
 
     // Fast function to upload one grid rendering info to GPU stograge buffer
@@ -440,23 +351,6 @@ export default class GridLayer {
         const ids = ['box', 'brush', 'topology', 'attribute', 'subdivide', 'delete']
         const doms = ids.map(id => document.querySelector(`#${id}`)! as HTMLDivElement)
 
-        const deactivate = (type: string) => {
-            doms.forEach(d => d.dataset.type === type && (d.dataset.active = 'false'))
-            requestAnimationFrame(() => {
-                type === "editor" && deactivate("mode")
-            })
-        }
-
-        const activate = (dom: HTMLDivElement) => {
-            dom.dataset.active = 'true'
-            if (dom.dataset.val === "topology") {
-                requestAnimationFrame(() => {
-                    const modeDom = doms.find(d => d.dataset.val === this.EditorState.mode)
-                    modeDom && (modeDom!.dataset.active = 'true')
-                })
-            }
-        }
-
         const handleClick = (dom: HTMLDivElement) => {
             const { type, val, active } = dom.dataset as { type: string, val: string, active: string }
             if (active === 'true' && val === 'topology') {
@@ -473,22 +367,26 @@ export default class GridLayer {
                 return
             }
             deactivate(type)
-            activate(dom)
+            activate.call(this, dom)
             this.EditorState[type] = val
-        }
 
-        const initState = (state: { editor: string, mode: string, tool: string }) => {
-            requestAnimationFrame(() => {
-                doms.forEach((d: HTMLDivElement) => {
-                    const activateVal = Object.values(state)
-                    if (activateVal.includes(d.dataset.val as string)) {
-                        d.dataset.active = 'true'
-                    }
+            // Local helper
+            function deactivate(type: string) {
+                doms.forEach(d => d.dataset.type === type && (d.dataset.active = 'false'))
+                requestAnimationFrame(() => {
+                    type === "editor" && deactivate("mode")
                 })
-                this.EditorState.editor = state.editor
-                this.EditorState.mode = state.mode
-                this.EditorState.tool = state.tool
-            })
+            }
+    
+            function activate(this: GridLayer, dom: HTMLDivElement) {
+                dom.dataset.active = 'true'
+                if (dom.dataset.val === "topology") {
+                    requestAnimationFrame(() => {
+                        const modeDom = doms.find(d => d.dataset.val === this.EditorState.mode)
+                        modeDom && (modeDom!.dataset.active = 'true')
+                    })
+                }
+            }
         }
 
         doms.forEach((dom: HTMLDivElement) => {
@@ -504,94 +402,29 @@ export default class GridLayer {
         this.EditorState = new Proxy(this._EditorState, proxyHandler)
 
         // Default Editor State
-        const defaultState = {
+        const initState = (state: { editor: string, mode: string, tool: string }) => {
+            requestAnimationFrame(() => {
+                doms.forEach((d: HTMLDivElement) => {
+                    const activateVal = Object.values(state)
+                    if (activateVal.includes(d.dataset.val as string)) {
+                        d.dataset.active = 'true'
+                    }
+                })
+                this.EditorState.editor = state.editor
+                this.EditorState.mode = state.mode
+                this.EditorState.tool = state.tool
+            })
+        }
+
+        initState(/* defaultState */ {
             editor: 'topology',
             tool: 'brush',
             mode: 'subdivide'
-        }
-        initState(defaultState)
+        })
+        
 
         // [4] Remove Event handler for map boxZoom
         this.map.boxZoom.disable()
-
-        /*
-        // [2] Subdivider Type Button
-        const subdividerButton = document.createElement('button')
-        subdividerButton.title = 'Grid Subdivider'
-        subdividerButton.addEventListener('click', () => this.currentType = this.SUBDIVIDER_TYPE)
-        axios.get('/icon/Subdivider.svg')
-            .then(response => {
-
-                const svgContent = response.data
-                subdividerButton.style.top = '45%'
-                subdividerButton.innerHTML = svgContent
-
-                const svgElement = subdividerButton.querySelector('svg')
-                if (svgElement) {
-
-                    svgElement.style.width = '100%'
-                    svgElement.style.height = '100%'
-                    svgElement.setAttribute('preserveAspectRatio', 'xMidYMid meet')
-
-                    if (!svgElement.getAttribute('viewBox')) {
-                        svgElement.setAttribute('viewBox', `0 0 ${svgElement.width.baseVal.value} ${svgElement.height.baseVal.value}`)
-                    }
-                }
-                document.body.appendChild(subdividerButton)
-            })
-            .catch(error => {
-                console.error('Error loading SVG: ', error)
-            })
-        addButtonClickListener(subdividerButton)
-
-        // Make subdivider type as default
-        subdividerButton.classList.add('active') // add blooming effect
-        this.addSubdividerUIHandler()
-
-        // [3] Editor Type Button
-        const editorButton = document.createElement('button')
-        editorButton.title = 'Grid Editor'
-        editorButton.addEventListener('click', () => this.currentType = this.EDITOR_TYPE)
-        axios.get('/icon/Editor.svg')
-            .then(response => {
-
-                const svgContent = response.data
-                editorButton.style.top = '55%'
-                editorButton.innerHTML = svgContent
-
-                const svgElement = editorButton.querySelector('svg')
-                if (svgElement) {
-
-                    svgElement.style.width = '100%'
-                    svgElement.style.height = '100%'
-                    svgElement.style.padding = '0px 0px'
-                    svgElement.setAttribute('preserveAspectRatio', 'xMidYMid meet')
-
-                    if (!svgElement.getAttribute('viewBox')) {
-                        svgElement.setAttribute('viewBox', `0 0 ${svgElement.width.baseVal.value} ${svgElement.height.baseVal.value}`)
-                    }
-                }
-                document.body.appendChild(editorButton)
-            })
-            .catch(error => {
-                console.error('Error loading SVG: ', error)
-            })
-        addButtonClickListener(editorButton)
-
-        // [4] Add event listner for <Shift + D> (Open removing grid mode)
-        document.addEventListener('keydown', e => {
-
-            if (e.shiftKey && e.key === 'D') {
-                this.isDeleteMode = !this.isDeleteMode
-                console.log(`Delete Mode: ${this.isDeleteMode ? 'ON' : 'OFF'}`)
-            }
-
-            if (e.key === 'B') {
-                this.isBoxPickingMode = !this.isBoxPickingMode
-                console.log(`Box-Picking Mode: ${this.isBoxPickingMode ? 'ON' : 'OFF'}`)
-            }
-        })
-        */
 
         // [5] Add event listner for <Shift + T> (Set grid transparent or not)
         document.addEventListener('keydown', e => {
@@ -602,6 +435,18 @@ export default class GridLayer {
                 this.map.triggerRepaint()
             }
         })
+
+        // [6] Add event listner for <Shift + E> (Parse topology for grids and edges)
+        document.addEventListener('keydown', e => {
+
+            if (e.shiftKey && e.key === 'E') {
+
+                this.gridRecorder.parseGridTopology(this.updateGPUEdges)
+
+                this.map.triggerRepaint()
+            }
+        })
+
 
         // Init GPU resources ////////////////////////////////////////////////////////////
 
@@ -680,8 +525,6 @@ export default class GridLayer {
 
         // Create texture
         this._paletteTexture = gll.createTexture2D(gl, 1, this.subdivideRules.length, 1, gl.RGB8)
-        // this._levelTexture = gll.createTexture2D(gl, 1, this.storageTextureSize, this.storageTextureSize, gl.R16UI)
-        // this._storageTextureArray = gll.createTexture2DArray(gl, 1, 4, this.storageTextureSize, this.storageTextureSize, gl.RG32F)
 
         // Create picking pass
         this._pickingTexture = gll.createTexture2D(gl, 0, 1, 1, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]))
@@ -725,7 +568,7 @@ export default class GridLayer {
 
     }
 
-    addSubdividerUIHandler() {
+    addTopologyEditorUIHandler() {
 
         this.removeUIHandler()
 
@@ -737,7 +580,7 @@ export default class GridLayer {
             .on('resize', this.resizeHandler as any)
     }
 
-    addEditorUIHandler() {
+    addAttributeEditorUIHandler() {
         this.removeUIHandler()
 
         this.map
@@ -745,7 +588,8 @@ export default class GridLayer {
             .on('mousedown', this.mousedownHandler as any)
     }
 
-    $hit(storageIds: number | number[]) {
+    hit(storageIds: number | number[]) {
+
         // Delete mode
         if (this.EditorState.mode === 'delete') {
             if (Array.isArray(storageIds))
@@ -780,85 +624,7 @@ export default class GridLayer {
 
         this.map.triggerRepaint()
     }
-    /*
-    hit(storageId: number) {
-        // Delete mode
-        if (this.EditorState.mode === 'delete') {
 
-            this.gridRecorder.removeGrid(storageId, this.updateGPUGrid)
-        }
-        // Subdivider type
-        else if (this.EditorState.mode === 'subdivide') {
-
-            const maxLevel = this.subdivideRules.length - 1
-            const [hitLevel] = this.gridRecorder.getGridInfoByStorageId(storageId)
-
-            // Nothing will happen if the hit grid has the maximize level
-            if (hitLevel === maxLevel) return
-
-            const targetLevel = Math.min(this.uiOption.level, maxLevel)
-
-            // Nothing will happen if subdivide grids more than one level
-            // Or target subdivided level equals to hitLevel
-            if (targetLevel - hitLevel > 1 || targetLevel == hitLevel) return
-
-            // const [x, y] = this.projConverter.inverse(coordinates)
-            // const { width, height } = this.gridRecorder.levelInfos[targetLevel]
-            // const normalizedX = (x - this.bBox.xMin) / (this.bBox.xMax - this.bBox.xMin)
-            // const normalizedY = (y - this.bBox.yMin) / (this.bBox.yMax - this.bBox.yMin)
-
-            // // Nothing will happen if mouse is out of boundary condition
-            // if (normalizedX < 0 || normalizedX >= 1 || normalizedY < 0 || normalizedY >= 1) return
-
-            // // Calculate globalId of the target grid
-            // const col = Math.floor(normalizedX * width)
-            // const row = Math.floor(normalizedY * height)
-            // const globalId = row * width + col
-
-            this.hitSet.add([
-                // hitLevel,       // FromLevel
-                storageId,      // FromStorageId
-                targetLevel,    // ToLevel
-                // globalId,       // ToGlobalId
-            ].join('-'))
-        }
-
-        this.map.triggerRepaint()
-    }
-
-    hits(storageIds: number[]) {
-        // Delete mode
-        if (this.EditorState.mode === 'delete') {
-            this.gridRecorder.removeGrids(storageIds, this.updateGPUGrid)
-        }
-        // Subdivider type
-        else if (this.EditorState.mode === 'subdivide') {
-
-            storageIds.forEach(storageId => {
-
-                const maxLevel = this.subdivideRules.length - 1
-                const [hitLevel] = this.gridRecorder.getGridInfoByStorageId(storageId)
-
-                // Nothing will happen if the hit grid has the maximize level
-                if (hitLevel === maxLevel) return
-
-                const targetLevel = Math.min(this.uiOption.level, maxLevel)
-
-                // Nothing will happen if subdivide grids more than one level
-                // Or target subdivided level equals to hitLevel
-                if (targetLevel - hitLevel > 1 || targetLevel == hitLevel) return
-
-                this.hitSet.add([
-                    storageId,      // FromStorageId
-                    targetLevel,    // ToLevel
-                ].join('-'))
-
-            })
-        }
-
-        this.map.triggerRepaint()
-    }
-    */
     removeGrid(storageId: number) {
         this.gridRecorder.removeGrid(storageId, this.updateGPUGrid)
         this.map.triggerRepaint()
@@ -888,37 +654,15 @@ export default class GridLayer {
 
                 // Check if valid
                 if (removableLevel >= toLevel || toLevel - removableLevel > 1) return
-                // let parentGlobalId = this.gridRecorder.getParentGlobalId(toLevel, toGlobalId)
-                // for (let parentLevel = toLevel - 1; parentLevel >= fromLevel; parentLevel--) {
-                //     if (parentLevel === fromLevel && removableGlobalId !== parentGlobalId) return
-                //     parentGlobalId = this.gridRecorder.getParentGlobalId(parentLevel, parentGlobalId)
-                // }
 
-                // Remove grids
-                // this.removeGrid(fromStorageId)
+                // Add removable grids
                 removableStorageIds.push(fromStorageId)
 
-                // Subdivide grid
+                // add subdividable grids
                 subdividableUUIDs.push([removableLevel, removableGlobalId].join('-'))
-                // this.subdivideGrid([removableLevel, removableGlobalId].join('-'))
-
-                // Parse info about subdividable grid
-                // const subdivideStack: Array<string> = []
-                // let parentGlobalId = this.gridRecorder.getParentGlobalId(toLevel, toGlobalId)
-                // for (let parentLevel = toLevel - 1; parentLevel >= fromLevel; parentLevel--) {
-                //     subdivideStack.push([parentLevel, parentGlobalId].join('-'))
-                //     parentGlobalId = this.gridRecorder.getParentGlobalId(parentLevel, parentGlobalId)
-                // }
-
-                // // Subdivide grids
-                // while (subdivideStack.length) {
-                //     const subdivideTask = subdivideStack.pop()!
-                //     this.subdivideGrid(subdivideTask)
-                // }
             })
             removableStorageIds.length && this.removeGrids(removableStorageIds)
             subdividableUUIDs.forEach(uuid => this.subdivideGrid(uuid))
-            // removableStorageIds.forEach(storageId => this.removeGrid(storageId))
 
         } else {
 
@@ -966,11 +710,83 @@ export default class GridLayer {
         this.capacityController.updateDisplay()
     }
 
+    picking(e: MapMouseEvent, e2: MapMouseEvent | undefined = undefined) {
+        let storageIds
+        if (e2) { //box mode
+            const canvas = this._gl.canvas as HTMLCanvasElement
+            const box = genPickingBox(canvas, this._boxPickingStart!, this._boxPickingEnd!)
+            storageIds = this._boxPicking(box)
+        } else {
+            storageIds = this._brushPicking(this._calcPickingMatrix(e))
+        }
+        return storageIds
+    }
+
+    drawGridMeshes() {
+
+        const gl = this._gl
+
+        gl.enable(gl.BLEND)
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+        gl.enable(gl.DEPTH_TEST)
+        gl.depthFunc(gl.LESS)
+
+        gl.useProgram(this._gridMeshShader)
+
+        gl.bindVertexArray(this._gridStorageVAO)
+        
+        gl.activeTexture(gl.TEXTURE0)
+        gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture)
+
+        gl.uniform2fv(gl.getUniformLocation(this._gridMeshShader, 'centerLow'), this.map.centerLow)
+        gl.uniform2fv(gl.getUniformLocation(this._gridMeshShader, 'centerHigh'), this.map.centerHigh)
+        gl.uniformMatrix4fv(gl.getUniformLocation(this._gridMeshShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
+
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.gridRecorder.gridNum)
+    }
+
+    drawGridLines() {
+
+        const gl = this._gl
+
+        gl.disable(gl.BLEND)
+        gl.disable(gl.DEPTH_TEST)
+
+        gl.useProgram(this._gridLineShader)
+
+        gl.bindVertexArray(this._gridStorageVAO)
+
+        gl.uniform2fv(gl.getUniformLocation(this._gridLineShader, 'centerLow'), this.map.centerLow)
+        gl.uniform2fv(gl.getUniformLocation(this._gridLineShader, 'centerHigh'), this.map.centerHigh)
+        gl.uniformMatrix4fv(gl.getUniformLocation(this._gridLineShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
+
+        gl.drawArraysInstanced(gl.LINE_LOOP, 0, 4, this.gridRecorder.gridNum)
+    }
+
+    drawEdges() {
+
+        const gl = this._gl
+
+        gl.disable(gl.BLEND)
+        gl.disable(gl.DEPTH_TEST)
+
+        gl.useProgram(this._edgeShader)
+
+        gl.bindVertexArray(this._edgeStorageVAO)
+
+        gl.uniform2fv(gl.getUniformLocation(this._edgeShader, 'centerLow'), this.map.centerLow)
+        gl.uniform2fv(gl.getUniformLocation(this._edgeShader, 'centerHigh'), this.map.centerHigh)
+        gl.uniformMatrix4fv(gl.getUniformLocation(this._edgeShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
+
+        gl.drawArraysInstanced(gl.LINE_STRIP, 0, 2, this.gridRecorder.edgeNum)
+    }
+
     /**
      * @param pickingMatrix 
      * @returns { number } StorageId of the picked grid
      */
-    picking(pickingMatrix: mat4): number {
+    private _brushPicking(pickingMatrix: mat4): number {
 
         const gl = this._gl
 
@@ -1006,7 +822,7 @@ export default class GridLayer {
         return pixel[0] + (pixel[1] << 8) + (pixel[2] << 16) + (pixel[3] << 24)
     }
 
-    boxPicking(pickingBox: number[]) {
+    private _boxPicking(pickingBox: number[]) {
 
         const gl = this._gl
         const canvas = gl.canvas as HTMLCanvasElement
@@ -1075,78 +891,6 @@ export default class GridLayer {
             }
         }
         return Array.from(set)
-    }
-
-    $picking(e: MapMouseEvent, e2: MapMouseEvent | undefined = undefined) {
-        let storageIds
-        if (e2) {//box mode
-            const canvas = this._gl.canvas as HTMLCanvasElement
-            const box = genPickingBox(canvas, this._boxPickingStart!, this._boxPickingEnd!)
-            storageIds = this.boxPicking(box)
-        } else {
-            storageIds = this.picking(this._calcPickingMatrix(e))
-        }
-        return storageIds
-    }
-
-    drawGridMeshes() {
-
-        const gl = this._gl
-
-        gl.enable(gl.BLEND)
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-
-        gl.enable(gl.DEPTH_TEST)
-        gl.depthFunc(gl.LESS)
-
-        gl.useProgram(this._gridMeshShader)
-
-        gl.bindVertexArray(this._gridStorageVAO)
-        
-        gl.activeTexture(gl.TEXTURE0)
-        gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture)
-
-        gl.uniform2fv(gl.getUniformLocation(this._gridMeshShader, 'centerLow'), this.map.centerLow)
-        gl.uniform2fv(gl.getUniformLocation(this._gridMeshShader, 'centerHigh'), this.map.centerHigh)
-        gl.uniformMatrix4fv(gl.getUniformLocation(this._gridMeshShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
-
-        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.gridRecorder.gridNum)
-    }
-
-    drawGridLines() {
-
-        const gl = this._gl
-
-        gl.disable(gl.BLEND)
-        gl.disable(gl.DEPTH_TEST)
-
-        gl.useProgram(this._gridLineShader)
-
-        gl.bindVertexArray(this._gridStorageVAO)
-
-        gl.uniform2fv(gl.getUniformLocation(this._gridLineShader, 'centerLow'), this.map.centerLow)
-        gl.uniform2fv(gl.getUniformLocation(this._gridLineShader, 'centerHigh'), this.map.centerHigh)
-        gl.uniformMatrix4fv(gl.getUniformLocation(this._gridLineShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
-
-        gl.drawArraysInstanced(gl.LINE_LOOP, 0, 4, this.gridRecorder.gridNum)
-    }
-
-    drawEdges() {
-
-        const gl = this._gl
-
-        gl.disable(gl.BLEND)
-        gl.disable(gl.DEPTH_TEST)
-
-        gl.useProgram(this._edgeShader)
-
-        gl.bindVertexArray(this._edgeStorageVAO)
-
-        gl.uniform2fv(gl.getUniformLocation(this._edgeShader, 'centerLow'), this.map.centerLow)
-        gl.uniform2fv(gl.getUniformLocation(this._edgeShader, 'centerHigh'), this.map.centerHigh)
-        gl.uniformMatrix4fv(gl.getUniformLocation(this._edgeShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
-
-        gl.drawArraysInstanced(gl.LINE_STRIP, 0, 2, this.gridRecorder.edgeNum)
     }
 
     private _updateGPUGrid(info?: [storageId: number, level: number, vertices: Float32Array]) {
@@ -1234,8 +978,8 @@ export default class GridLayer {
                 e2 = this._boxPickingEnd
             }
 
-            const storageIds = this.$picking(e1, e2)
-            this.$hit(storageIds)
+            const storageIds = this.picking(e1, e2)
+            this.hit(storageIds)
 
             clear(this.ctx!)
             this._boxPickingStart = null
@@ -1313,8 +1057,8 @@ export default class GridLayer {
 
             // const storageId = this.picking(this._calcPickingMatrix(e))
             // storageId >= 0 && this.hit(storageId)
-            const storageId = this.$picking(e) as number
-            this.$hit(storageId)
+            const storageId = this.picking(e) as number
+            this.hit(storageId)
         }
 
         if (this.isShiftClick && this.EditorState.tool === 'box' && this._boxPickingStart) {
@@ -1332,8 +1076,8 @@ export default class GridLayer {
 
             this._boxPickingEnd = e
 
-            const storageIds = this.$picking(this._boxPickingStart!, this._boxPickingEnd!)
-            this.$hit(storageIds)
+            const storageIds = this.picking(this._boxPickingStart!, this._boxPickingEnd!)
+            this.hit(storageIds)
 
             // reset
             clear(this.ctx!)
@@ -1370,11 +1114,11 @@ export default class GridLayer {
                 this.typeChanged = true
                 switch (value) {
                     case 'topology':
-                        this.addSubdividerUIHandler()
+                        this.addTopologyEditorUIHandler()
                         break;
                     case 'attribute':
                         this._EditorState.mode = 'none'
-                        this.addEditorUIHandler()
+                        this.addAttributeEditorUIHandler()
                         /*
                         attribute setup
                         */
@@ -1403,19 +1147,95 @@ export default class GridLayer {
         }
         return true;
     }
+
+    // Fast function to upload one grid rendering info to GPU stograge texture
+    /** @deprecated */
+    writeGridInfoToTexture(info: [storageId: number, level: number, vertices: Float32Array]) {
+
+        const gl = this._gl
+        const [storageId, level, vertices] = info
+        const storageU = storageId % this.storageTextureSize
+        const storageV = Math.floor(storageId / this.storageTextureSize)
+
+        gll.fillSubTexture2DArrayByArray(gl, this._storageTextureArray, 0, storageU, storageV, 0, 1, 1, 4, gl.RG, gl.FLOAT, vertices)
+        gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, storageU, storageV, 1, 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, new Uint16Array([level]))
+    }
+
+    /** @deprecated */
+    writeMultiGridInfoToTexture(infos: [fromStorageId: number, toStorageId: number, levels: Uint16Array, vertices: Float32Array]) {
+
+        const gl = this._gl
+        const [fromStorageId, toStorageId, levels, vertices] = infos
+
+        const fromStorageU = fromStorageId % this.storageTextureSize
+        const fromStorageV = Math.floor(fromStorageId / this.storageTextureSize)
+
+        const toStorageU = toStorageId % this.storageTextureSize
+        const toStorageV = Math.floor(toStorageId / this.storageTextureSize)
+
+        const updateBlockHeight = toStorageV - fromStorageV + 1
+
+        // FromStorageId and ToStorageId are on the same row of the storage texture
+        if (updateBlockHeight === 1) {
+
+            const updateBlockWidth = toStorageU - fromStorageU + 1
+            gll.fillSubTexture2DArrayByArray(gl, this._storageTextureArray, 0, fromStorageU, fromStorageV, 0, updateBlockWidth, updateBlockHeight, 4, gl.RG, gl.FLOAT, vertices)
+            gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, fromStorageU, fromStorageV, updateBlockWidth, updateBlockHeight, gl.RED_INTEGER, gl.UNSIGNED_SHORT, levels)
+
+        } else {
+
+            const gridCount = vertices.length / 8
+            const fullBlockRows = Math.max(updateBlockHeight - 2, 0)
+
+            // Pre-allocate memory for a Float32Array that can satisfy all three updated situations
+            const size_within_fromStorageU_textureSize = this.storageTextureSize - fromStorageU
+            const size_within_fromStorageV_toStorageV = this.storageTextureSize * fullBlockRows
+            const size_within_0_toStorageU = toStorageU + 1
+
+            // Use the maximum size to allocate this memory
+            const subBlockSize = Math.max(size_within_0_toStorageU, Math.max(size_within_fromStorageU_textureSize, size_within_fromStorageV_toStorageV))
+            const subVertices = new Float32Array(subBlockSize * 8)
+
+            // Update grid info for situation 1 //////////////////////////////////////////////////
+            let srcOffset = 0
+            let updateBlockWidth = this.storageTextureSize - fromStorageU
+            let elementSize = updateBlockWidth * 2
+            for (let i = 0; i < 4; i++) {
+                const offset = (gridCount * i + srcOffset) * 2
+                subVertices.set(vertices.subarray(offset, offset + elementSize), i * elementSize)
+            }
+            gll.fillSubTexture2DArrayByArray(gl, this._storageTextureArray, 0, fromStorageU, fromStorageV, 0, updateBlockWidth, 1, 4, gl.RG, gl.FLOAT, subVertices)
+            gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, fromStorageU, fromStorageV, updateBlockWidth, 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, levels, srcOffset)
+
+            // Update grid info for situation 2 //////////////////////////////////////////////////
+            srcOffset += updateBlockWidth
+            if (fullBlockRows > 0) {
+
+                updateBlockWidth = this.storageTextureSize
+                elementSize = updateBlockWidth * fullBlockRows * 2
+                for (let i = 0; i < 4; i++) {
+                    const offset = (gridCount * i + srcOffset) * 2
+                    subVertices.set(vertices.subarray(offset, offset + elementSize), i * elementSize)
+                }
+                gll.fillSubTexture2DArrayByArray(gl, this._storageTextureArray, 0, 0, fromStorageV + 1, 0, updateBlockWidth, fullBlockRows, 4, gl.RG, gl.FLOAT, subVertices)
+                gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, 0, fromStorageV + 1, updateBlockWidth, fullBlockRows, gl.RED_INTEGER, gl.UNSIGNED_SHORT, levels, srcOffset)
+            }
+
+            // Update grid info for situation 3 //////////////////////////////////////////////////
+            srcOffset += updateBlockWidth * fullBlockRows
+            updateBlockWidth = toStorageU + 1
+            elementSize = updateBlockWidth * 2
+            for (let i = 0; i < 4; i++) {
+                const offset = (gridCount * i + srcOffset) * 2
+                subVertices.set(vertices.subarray(offset, offset + elementSize), i * elementSize)
+            }
+            gll.fillSubTexture2DArrayByArray(gl, this._storageTextureArray, 0, 0, toStorageV, 0, updateBlockWidth, 1, 4, gl.RG, gl.FLOAT, subVertices)
+            gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, 0, toStorageV, updateBlockWidth, 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, levels, srcOffset)
+        }
+    }
 }
 
 // Helpers //////////////////////////////////////////////////////////////////////////////////////////////////////
-
-function addButtonClickListener(button: HTMLButtonElement) {
-    button.addEventListener('click', () => {
-
-        const allButtons = document.querySelectorAll('button')
-        allButtons.forEach(btn => btn.classList.remove('active'))
-
-        button.classList.add('active')
-    })
-}
 
 function decodeInfo(infoKey: string): Array<number> {
 
@@ -1459,3 +1279,5 @@ function drawRectangle(ctx: CanvasRenderingContext2D, pickingBox: [number, numbe
     ctx.strokeRect(startX, startY, width, height)
     ctx.fillRect(startX, startY, width, height)
 }
+
+
