@@ -380,7 +380,7 @@ export default class GridRecorder extends UndoRedoManager {
     // Optimized function for removing multi grids
     private _generateRemoveGridsOperation(removableStorageIds: number[], callback?: Function): UndoRedoRecordOperation {
         
-        // Convert removableStorageIds to ascending order and record their levels and globalIds
+        // Convert removableStorageIds to ascending order and record grids' levels and globalIds which point to
         const removableGridNum = removableStorageIds.length
         const removableLevels = new Array<number>(removableGridNum)
         const removableGlobalIds = new Array<number>(removableGridNum)
@@ -394,7 +394,7 @@ export default class GridRecorder extends UndoRedoManager {
         const replacedGridNum = maintainedGridNum > removableGridNum ? removableGridNum : maintainedGridNum
 
         // Generate info cache about replaced grids having last valid storageIds 
-        // Note: storageId not pointing to any removableStorageIds is valid
+        // Note: storageId not pointing to any removable grids is valid
         let replacedStorageId = this._nextStorageId - 1
         const removableIdStack = removableStorageIds.slice()
         const replacedGridInfo = new Array<[ storageId: number, level: number, globalId: number ]>()

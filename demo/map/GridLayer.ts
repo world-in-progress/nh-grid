@@ -36,7 +36,6 @@ export default class GridLayer {
     projConverter: proj4.Converter
     gridRecorder: GridRecorder
     subdivideRules: [ number, number ][]
-    subdivideStacks = new Array<[ level: number, globalId: number ][]>()
 
     // GPU-related //////////////////////////////////////////////////
 
@@ -80,8 +79,7 @@ export default class GridLayer {
     private _boxPickingStart: MapMouseEvent | null = null
     private _boxPickingEnd: MapMouseEvent | null = null
 
-    private ctx: CanvasRenderingContext2D | null = null
-
+    private _ctx: CanvasRenderingContext2D | null = null
 
     // GPU grid update function
     updateGPUGrid: Function
@@ -312,7 +310,7 @@ export default class GridLayer {
         const rect = canvas2d.getBoundingClientRect()
         canvas2d.width = rect.width
         canvas2d.height = rect.height
-        this.ctx = canvas2d.getContext('2d')
+        this._ctx = canvas2d.getContext('2d')
 
         // [1] Create Control Pannel Dom
         const pannel = document.createElement('div')
@@ -580,6 +578,7 @@ export default class GridLayer {
     }
 
     addAttributeEditorUIHandler() {
+        
         this.removeUIHandler()
 
         this.map
@@ -700,7 +699,7 @@ export default class GridLayer {
         if (this.gridRecorder.edgeNum) {
             !this.isTransparent && this.drawEdges()
         } else {
-            (!this.isTransparent) && this.drawGridLines()
+            !this.isTransparent && this.drawGridLines()
         }
 
         // WebGL check
@@ -728,7 +727,7 @@ export default class GridLayer {
         const gl = this._gl
 
         gl.enable(gl.BLEND)
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
 
         gl.enable(gl.DEPTH_TEST)
         gl.depthFunc(gl.LESS)
@@ -982,11 +981,10 @@ export default class GridLayer {
             const storageIds = this.picking(e1, e2)
             this.hit(storageIds)
 
-            clear(this.ctx!)
+            clear(this._ctx!)
             this._boxPickingStart = null
             this._boxPickingEnd = null
             this.isShiftClick = false
-
         }
 
 
@@ -1048,16 +1046,13 @@ export default class GridLayer {
         }
 
         */
-
     }
 
     private _mousemoveHandler(e: MapMouseEvent) {
 
         if (this.isShiftClick && this.EditorState.tool === 'brush') {
             this.map.dragPan.disable()
-
-            // const storageId = this.picking(this._calcPickingMatrix(e))
-            // storageId >= 0 && this.hit(storageId)
+            
             const storageId = this.picking(e) as number
             this.hit(storageId)
         }
@@ -1067,7 +1062,7 @@ export default class GridLayer {
             this._boxPickingEnd = e
             const canvas = this._gl.canvas as HTMLCanvasElement
             const box = genPickingBox(canvas, this._boxPickingStart, this._boxPickingEnd!)
-            drawRectangle(this.ctx!, box)
+            drawRectangle(this._ctx!, box)
         }
     }
 
@@ -1080,8 +1075,8 @@ export default class GridLayer {
             const storageIds = this.picking(this._boxPickingStart!, this._boxPickingEnd!)
             this.hit(storageIds)
 
-            // reset
-            clear(this.ctx!)
+            // Reset
+            clear(this._ctx!)
             this._boxPickingStart = null
             this._boxPickingEnd = null
 
@@ -1092,8 +1087,8 @@ export default class GridLayer {
     }
 
     private _resizeHandler() {
-        // resize canvas 2d
-        const canvas = this.ctx!.canvas;
+        // Resize canvas 2d
+        const canvas = this._ctx!.canvas;
         if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
             canvas.width = canvas.clientWidth;
             canvas.height = canvas.clientHeight;
@@ -1121,7 +1116,7 @@ export default class GridLayer {
                         this._EditorState.mode = 'none'
                         this.addAttributeEditorUIHandler()
                         /*
-                        attribute setup
+                        Attribute setup
                         */
                         break;
                 }
@@ -1280,5 +1275,3 @@ function drawRectangle(ctx: CanvasRenderingContext2D, pickingBox: [number, numbe
     ctx.strokeRect(startX, startY, width, height)
     ctx.fillRect(startX, startY, width, height)
 }
-
-
