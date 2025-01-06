@@ -51,11 +51,14 @@ export default class GridRecorder extends UndoRedoManager {
     isReady = false
     dispatcher: Dispatcher
     levelInfos: GridLevelInfo[]
+
     storageId_gridInfo_cache: Array<number | undefined> // [ level_0, globalId_0, level_1, globalId_1, ... , level_n, globalId_n ]
+    storageId_edgeId_set: Array<[Set<number>, Set<number>, Set<number>, Set<number>]> = []
+    grid_attribute_cache: Array<Record<string, any>> = [] // { height: number [-9999], type: number [ 0, 0-10 ] }
 
     edgeKeys_cache: string[] = []
     adjGrids_cache: number[][] = []
-    storageId_edgeId_set: Array<[Set<number>, Set<number>, Set<number>, Set<number>]> = []
+    edge_attribute_cache: Array<Record<string, any>> = [] // { height: number [-9999], type: number [ 0, 0-10 ] }
 
     constructor(private _subdivideRules: SubdivideRules, maxGridNum?: number, options: GridRecordOptions = {}) {
         super(options.operationCapacity || 1000)
@@ -413,9 +416,6 @@ export default class GridRecorder extends UndoRedoManager {
                     const lastLevel = lastLevels[index]
                     const lastGlobalId = lastGlobalIds[index]
 
-                    // Do nothing if the removable grid is the grid having the last storageId
-                    // if (lastStorageId === storageId) return
-
                     // Replace removable render info with the last render info in the cache
                     this.storageId_gridInfo_cache[storageId * 2 + 0] = lastLevel
                     this.storageId_gridInfo_cache[storageId * 2 + 1] = lastGlobalId
@@ -496,21 +496,3 @@ export default class GridRecorder extends UndoRedoManager {
 function lerp(a: number, b: number, t: number): number {
     return (1.0 - t) * a + t * b
 }
-
-// function decodeArrayBufferToStrings(buffer: ArrayBuffer): string[] {
-
-//     const strings: string[] = []
-//     const view = new DataView(buffer)
-//     const decoder = new TextDecoder()
-
-//     let offset = 0
-//     while (offset < buffer.byteLength) {
-//         const length = view.getUint32(offset, true)
-//         offset += 4
-//         const encoded = new Uint8Array(buffer, offset, length)
-//         strings.push(decoder.decode(encoded))
-//         offset += length
-//     }
-
-//     return strings
-// }
