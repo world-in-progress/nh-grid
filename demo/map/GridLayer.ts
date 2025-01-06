@@ -14,7 +14,7 @@ proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555
 
 export interface GridLayerOptions {
 
-    maxGridNum?: number
+    maxGridNum?: number 
     edgeProperties?: string[]
 }
 
