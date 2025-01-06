@@ -425,10 +425,6 @@ export default class GridRecorder extends UndoRedoManager {
                 // let lastStorageId = this._nextStorageId
                 removableStorageIds.forEach((storageId, index) => {
                     if (index > replacedGridInfo.length - 1) return
-                    if (index >= this.gridNum || storageId >= this.gridNum) {
-                        console.log('wow')
-                        return
-                    }
 
                     // Replace removable render info with the last render info in the cache
                     const [ _, replacedLevel, replacedGlobalId ] = replacedGridInfo[index]
@@ -441,9 +437,9 @@ export default class GridRecorder extends UndoRedoManager {
 
             inverse: () => {
 
-                removableStorageIds.forEach((storageId, index) => {
+                this._nextStorageId += removableGridNum
 
-                    this._nextStorageId += 1
+                removableStorageIds.forEach((storageId, index) => {
     
                     // Revert info about the removable grid
                     const removableLevel = removableLevels[index]
