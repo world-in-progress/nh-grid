@@ -603,6 +603,18 @@ export default class GridLayer {
             }
         })
 
+        // [6] Add event listner for <Shift + E> (Parse topology for grids and edges)
+        document.addEventListener('keydown', e => {
+
+            if (e.shiftKey && e.key === 'E') {
+
+                this.gridRecorder.parseGridTopology(this.updateGPUEdges)
+
+                this.map.triggerRepaint()
+            }
+        })
+
+
         // Init GPU resources ////////////////////////////////////////////////////////////
 
         const gl = this._gl
