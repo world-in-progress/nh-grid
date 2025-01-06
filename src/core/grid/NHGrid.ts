@@ -16,6 +16,11 @@ export interface GridNodeRenderInfo {
     vertices: Float32Array
 }
 
+export interface EdgeRenderInfoPack {
+    actorIndex: number,
+    vertexBuffer: Float32Array
+}
+
 export interface GridNodeRenderInfoPack {
     uuIds: string[]
     vertexBuffer: Float32Array
@@ -37,7 +42,7 @@ export interface GridNodeSerializedInfo {
 
 export interface GridNodeParams {
     level?: number
-    localId: number
+    // localId: number
     globalId: number
     parent?: GridNode
     storageId: number
@@ -52,7 +57,7 @@ export type SubdivideRules = {
     rules: [ number, number ][]
 }
 
-export type GridTopologyInfo = [ edgeKeys: string[], adjGrids: number[][], storageId_edgeKeys_set: Array<[ Set<string>, Set<string>, Set<string>, Set<string> ]> ]
+export type GridTopologyInfo = [ edgeKeys: string[], adjGrids: number[][], storageId_edgeId_set: Array<[ Set<number>, Set<number>, Set<number>, Set<number> ]> ]
 
 /*
    ----- 0b00 -----
@@ -193,9 +198,7 @@ export class GridNodeRecord {
 
 export class GridNode {
 
-    uuId: string
     level: number
-    localId: number
     globalId: number
     storageId: number
 
@@ -204,11 +207,12 @@ export class GridNode {
     yMinPercent: [ number, number ]
     yMaxPercent: [ number, number ]
     
-    edges: [ Set<string>, Set<string>, Set<string>, Set<string> ]
+    edges: [ Set<number>, Set<number>, Set<number>, Set<number> ]
+    neighbours: [ Set<number>, Set<number>, Set<number>, Set<number> ]
 
     constructor(options: GridNodeParams) {
 
-        this.localId = options.localId
+        // this.localId = options.localId
         this.globalId = options.globalId
         this.storageId = options.storageId
 
@@ -217,7 +221,6 @@ export class GridNode {
         } else {
             this.level = options.level === undefined ? 0 : options.level
         }
-        this.uuId = `${this.level}-${this.globalId}`
 
         // Division Coordinates [ numerator, denominator ] 
         // Use integer numerators and denominators to avoid coordinate precision issue
@@ -227,10 +230,17 @@ export class GridNode {
         this.yMaxPercent = [ 1, 1 ]
 
         this.edges = [
-            new Set<string>(),
-            new Set<string>(),
-            new Set<string>(),
-            new Set<string>(),
+            new Set<number>(),
+            new Set<number>(),
+            new Set<number>(),
+            new Set<number>(),
+        ]
+
+        this.neighbours = [
+            new Set<number>(),
+            new Set<number>(),
+            new Set<number>(),
+            new Set<number>(),
         ]
 
         // Update division coordinates if globalRange provided
@@ -245,6 +255,10 @@ export class GridNode {
             this.yMinPercent = simplifyFraction(globalV, height)
             this.yMaxPercent = simplifyFraction(globalV + 1, height)
         }
+    }
+
+    get uuId(): string {
+        return `${this.level}-${this.globalId}`
     }
 
     get xMin(): number {
@@ -267,14 +281,11 @@ export class GridNode {
         this.edges.forEach(edge => edge.clear())
     }
 
-    addEdge(edgeKey: string, edgeCode: number): void {
-
-        if (!this.edges[edgeCode].has(edgeKey)){
-            this.edges[edgeCode].add(edgeKey)
-        }
+    addEdge(edgeIndex: number, edgeCode: number): void {
+        this.edges[edgeCode].add(edgeIndex)
     }
 
-    get edgeKeys(): string[] {
+    get edgeKeys(): number[] {
 
         return [
             ...this.edges[EDGE_CODE_NORTH],
@@ -319,17 +330,17 @@ export class GridNode {
 
     release(): null {
 
+        this.level = -1
+        this.globalId = -1
+        this.storageId = -1
+
         this.xMinPercent = [ 0, 0 ]
         this.xMaxPercent = [ 0, 0 ]
         this.yMinPercent = [ 0, 0 ]
         this.yMaxPercent = [ 0, 0 ]
 
-        this.edges.forEach(edgeSet => edgeSet.clear())
-
-        this.uuId = ''
-        this.globalId = -1
-        this.localId = -1
-        this.level = -1
+        this.edges = null as any
+        this.neighbours = null as any
 
         return null
     }
