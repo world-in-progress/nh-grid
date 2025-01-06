@@ -16,6 +16,11 @@ export interface GridNodeRenderInfo {
     vertices: Float32Array
 }
 
+export interface EdgeRenderInfoPack {
+    actorIndex: number,
+    vertexBuffer: Float32Array
+}
+
 export interface GridNodeRenderInfoPack {
     uuIds: string[]
     vertexBuffer: Float32Array
@@ -52,7 +57,7 @@ export type SubdivideRules = {
     rules: [ number, number ][]
 }
 
-export type GridTopologyInfo = [ edgeKeys: string[], adjGrids: number[][], storageId_edgeKeys_set: Array<[ Set<string>, Set<string>, Set<string>, Set<string> ]> ]
+export type GridTopologyInfo = [ edgeKeys: string[], adjGrids: number[][], storageId_edgeId_set: Array<[ Set<number>, Set<number>, Set<number>, Set<number> ]> ]
 
 /*
    ----- 0b00 -----
@@ -202,7 +207,7 @@ export class GridNode {
     yMinPercent: [ number, number ]
     yMaxPercent: [ number, number ]
     
-    edges: [ Set<string>, Set<string>, Set<string>, Set<string> ]
+    edges: [ Set<number>, Set<number>, Set<number>, Set<number> ]
     neighbours: [ Set<number>, Set<number>, Set<number>, Set<number> ]
 
     constructor(options: GridNodeParams) {
@@ -225,10 +230,10 @@ export class GridNode {
         this.yMaxPercent = [ 1, 1 ]
 
         this.edges = [
-            new Set<string>(),
-            new Set<string>(),
-            new Set<string>(),
-            new Set<string>(),
+            new Set<number>(),
+            new Set<number>(),
+            new Set<number>(),
+            new Set<number>(),
         ]
 
         this.neighbours = [
@@ -276,14 +281,11 @@ export class GridNode {
         this.edges.forEach(edge => edge.clear())
     }
 
-    addEdge(edgeKey: string, edgeCode: number): void {
-
-        if (!this.edges[edgeCode].has(edgeKey)){
-            this.edges[edgeCode].add(edgeKey)
-        }
+    addEdge(edgeIndex: number, edgeCode: number): void {
+        this.edges[edgeCode].add(edgeIndex)
     }
 
-    get edgeKeys(): string[] {
+    get edgeKeys(): number[] {
 
         return [
             ...this.edges[EDGE_CODE_NORTH],

@@ -4,7 +4,8 @@ import Dispatcher from '../message/dispatcher'
 import { createDB, deleteDB } from '../database/db'
 import { MercatorCoordinate } from '../math/mercatorCoordinate'
 import UndoRedoManager, { UndoRedoOperation } from '../util/undoRedoManager'
-import { EDGE_CODE, EDGE_CODE_EAST, EDGE_CODE_NORTH, EDGE_CODE_SOUTH, EDGE_CODE_WEST, GridEdge, GridNode, GridNodeRecord, GridNodeRenderInfo, GridNodeRenderInfoPack, GridTopologyInfo, SubdivideRules } from './NHGrid'
+import { EDGE_CODE, EDGE_CODE_EAST, EDGE_CODE_NORTH, EDGE_CODE_SOUTH, EDGE_CODE_WEST, EdgeRenderInfoPack, GridEdge, GridNode, GridNodeRecord, GridNodeRenderInfo, GridNodeRenderInfoPack, GridTopologyInfo, SubdivideRules } from './NHGrid'
+import WorkerPool from '../worker/workerPool'
 
 interface GridLevelInfo {
 
@@ -44,13 +45,17 @@ export interface GridRecordOptions {
 
 export default class GridRecorder extends UndoRedoManager {
 
+    private _nextStorageId = 0
     private _projConverter: proj4.Converter
 
     isReady = false
-    nextStorageId = 0
     dispatcher: Dispatcher
     levelInfos: GridLevelInfo[]
     storageId_gridInfo_cache: Array<number | undefined> // [ level_0, globalId_0, level_1, globalId_1, ... , level_n, globalId_n ]
+    
+    edgeKeys_cache: string[] = []
+    adjGrids_cache: number[][] = []
+    storageId_edgeId_set: Array<[ Set<number>, Set<number>, Set<number>, Set<number> ]> = []
 
     constructor(private _subdivideRules: SubdivideRules, maxGridNum?: number, options: GridRecordOptions = {}) {
         super(options.operationCapacity || 1000)
@@ -85,18 +90,28 @@ export default class GridRecorder extends UndoRedoManager {
         }
 
         // Add event listener for <Shift + S> (Download serialization json)
-        document.addEventListener('keydown', e => {
+        // document.addEventListener('keydown', e => {
 
-            if (e.shiftKey && e.key === 'S') {
-                let data = this.parseGridTopology()
-                // let jsonData = JSON.stringify(data)
-                // let blob = new Blob([ jsonData ], { type: 'application/json' })
-                // let link = document.createElement('a')
-                // link.href = URL.createObjectURL(blob)
-                // link.download = 'gridInfo.json'
-                // link.click()
-            }
-        })
+        //     if (e.shiftKey && e.key === 'S') {
+        //         let data = this.parseGridTopology((_: number, vertices: Float32Array) => {
+        //             console.log(vertices)
+        //         })
+        //         // let jsonData = JSON.stringify(data)
+        //         // let blob = new Blob([ jsonData ], { type: 'application/json' })
+        //         // let link = document.createElement('a')
+        //         // link.href = URL.createObjectURL(blob)
+        //         // link.download = 'gridInfo.json'
+        //         // link.click()
+        //     }
+        // })
+    }
+
+    get edgeNum(): number {
+        return this.edgeKeys_cache.length
+    }
+
+    get gridNum(): number {
+        return this._nextStorageId
     }
 
     init(callback?: Function) {
@@ -129,12 +144,27 @@ export default class GridRecorder extends UndoRedoManager {
         })
     }
 
-    parseGridTopology(): void {
+    parseGridTopology(callback?: (fromStorageId: number, vertexBuffer: Float32Array) => any): void {
 
         // Dispatch a worker to parse the topology about all grids
-        this._actor.send('parseTopology', this.storageId_gridInfo_cache.slice(0, this.nextStorageId * 2), (_, topologyInfo: GridTopologyInfo) => {
-            const [ edgekeys, adjGrids, storageId_edgeKeys_set ] = topologyInfo
-            console.log(edgekeys, adjGrids, storageId_edgeKeys_set)
+        this._actor.send('parseTopology', this.storageId_gridInfo_cache.slice(0, this._nextStorageId * 2), (_, topologyInfo: GridTopologyInfo) => {
+            this.edgeKeys_cache = topologyInfo[0]
+            this.adjGrids_cache = topologyInfo[1]
+            this.storageId_edgeId_set = topologyInfo[2]
+
+            const actorNum = WorkerPool.workerCount - 1
+            const edgeChunk = Math.ceil(this.edgeKeys_cache.length / actorNum)
+            for (let actorIndex = 0; actorIndex < actorNum; actorIndex++) {
+                this._actor.send(
+                    'calcEdgeRenderInfos',
+                    { index: actorIndex, keys: this.edgeKeys_cache.slice(actorIndex * edgeChunk, Math.min(this.edgeKeys_cache.length, (actorIndex + 1) * edgeChunk)) },
+                    (_, edgeRenderInfos: EdgeRenderInfoPack) => {
+
+                        const fromStorageId = edgeRenderInfos.actorIndex * edgeChunk
+                        callback && callback(fromStorageId, edgeRenderInfos.vertexBuffer)
+                    }
+                )
+            }
         })
     }
 
@@ -294,7 +324,7 @@ export default class GridRecorder extends UndoRedoManager {
 
     private _generateRemoveGridOperation(storageId: number, callback?: Function): UndoRedoRecordOperation {
 
-        const lastStorageId = this.nextStorageId - 1
+        const lastStorageId = this._nextStorageId - 1
 
         // Get render info of this removable grid and the grid having the last storageId
         const [ lastLevel, lastGlobalId ] = this.getGridInfoByStorageId(lastStorageId)
@@ -303,10 +333,10 @@ export default class GridRecorder extends UndoRedoManager {
         const removeOperation: UndoRedoRecordOperation = {
             action: 'RemoveGrid',
             apply: () => {
-                this.nextStorageId -= 1
+                this._nextStorageId -= 1
 
                 // Do nothing if the removable grid is the grid having the last storageId
-                if (this.nextStorageId === storageId) return
+                if (this._nextStorageId === storageId) return
         
                 // Replace removable render info with the last render info in the cache
                 this.storageId_gridInfo_cache[storageId * 2 + 0] = lastLevel
@@ -316,7 +346,7 @@ export default class GridRecorder extends UndoRedoManager {
             },
 
             inverse: () => {
-                this.nextStorageId += 1
+                this._nextStorageId += 1
                 
                 // Revert info about the removable grid
                 this.storageId_gridInfo_cache[storageId * 2 + 0] = removableLevel
@@ -339,7 +369,7 @@ export default class GridRecorder extends UndoRedoManager {
 
     private _generateSubdivideGridOperation(level: number, renderInfos: GridNodeRenderInfoPack, callback?: Function): UndoRedoRecordOperation {
 
-        const fromStorageId = this.nextStorageId
+        const fromStorageId = this._nextStorageId
         const infoLength = renderInfos.uuIds.length
         const toStorageId = fromStorageId + infoLength - 1
 
@@ -349,7 +379,7 @@ export default class GridRecorder extends UndoRedoManager {
 
                 renderInfos.uuIds.forEach(uuId => {
         
-                    const storageId = this.nextStorageId++
+                    const storageId = this._nextStorageId++
                     const [ level, globalId ] = uuId.split('-').map(key => +key)
         
                     this.storageId_gridInfo_cache[storageId * 2 + 0]  = level
@@ -364,7 +394,7 @@ export default class GridRecorder extends UndoRedoManager {
                 // Remove info in cache
                 for (let i = fromStorageId; i <= toStorageId; i++) {
         
-                    this.nextStorageId --
+                    this._nextStorageId --
                     this.storageId_gridInfo_cache[i * 2 + 0]  = undefined
                     this.storageId_gridInfo_cache[i * 2 + 1]  = undefined
                 }
@@ -380,55 +410,6 @@ export default class GridRecorder extends UndoRedoManager {
 
 function lerp(a: number, b: number, t: number): number {
     return (1.0 - t) * a + t * b
-}
-
-function decodeGridTopologyInfo(buffer: SharedArrayBuffer): GridTopologyInfo {
-    const view = new DataView(buffer);
-    let offset = 0;
-
-    const decoder = new TextDecoder();
-    const edgeKeys: string[] = [];
-    const adjGrids: number[][] = [];
-    const storageId_edgeKeys_set: Array<[ Set<string>, Set<string>, Set<string>, Set<string> ]> = [];
-
-    // 解码 edgeKeys
-    while (offset < buffer.byteLength) {
-        const keyBytes = new Uint8Array(buffer, offset, 4);
-        edgeKeys.push(decoder.decode(keyBytes).replace(/\0/g, ''));  // 移除填充字符
-        offset += 4;
-    }
-
-    // 解码 adjGrids
-    while (offset < buffer.byteLength) {
-        const gridLength = view.getInt32(offset);
-        offset += 4;
-        const grid = [];
-        for (let i = 0; i < gridLength; i++) {
-            grid.push(view.getInt32(offset));
-            offset += 4;
-        }
-        adjGrids.push(grid);
-    }
-
-    // 解码 storageId_edgeKeys_set
-    while (offset < buffer.byteLength) {
-        const sets: [ Set<string>, Set<string>, Set<string>, Set<string> ] = [
-            new Set(), new Set(), new Set(), new Set()
-        ];
-        for (let setIndex = 0; setIndex < 4; setIndex++) {
-            const setSize = view.getInt32(offset);
-            offset += 4;
-            for (let i = 0; i < setSize; i++) {
-                const valBytes = new Uint8Array(buffer, offset, 4);
-                const val = decoder.decode(valBytes).replace(/\0/g, '');
-                sets[setIndex].add(val);
-                offset += 4;
-            }
-        }
-        storageId_edgeKeys_set.push(sets);
-    }
-
-    return [edgeKeys, adjGrids, storageId_edgeKeys_set];
 }
 
 // function decodeArrayBufferToStrings(buffer: ArrayBuffer): string[] {

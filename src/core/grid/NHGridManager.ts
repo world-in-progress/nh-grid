@@ -20,33 +20,51 @@ proj4.defs('ESRI:102140', '+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555
 
 export class GridEdgeManager {
 
-    edge_gridStorageIds_map: Map<string, Array<number>> = new Map()
+    edgeKey_keyIndex_map: Map<string, number> = new Map()
+
+    edgeKey_cache = new Array<string>()
+    edge_adjGridStorageIds_cache = new Array<number[]>()
 
     constructor() {}
 
     release(): null {
 
-        this.edge_gridStorageIds_map.clear()
+        this.edgeKey_cache = []
+        this.edgeKey_keyIndex_map.clear()
+        this.edge_adjGridStorageIds_cache = []
 
         return null
     }
 
-    getEdgeKeyByInfo(grid_a: GridNode | null, grid_b: GridNode | null, axis: 'v' | 'h', range: [ min: [ number, number ], max: [ number, number ], shared: [ number, number ]]): string {
+    getEdgeKeyByInfo(grid_a: GridNode | null, grid_b: GridNode | null, direction: 'v' | 'h', range: [ min: [ number, number ], max: [ number, number ], shared: [ number, number ]]): number {
+
+        if (!grid_a && !grid_b) throw new Error('None grid provided for edge key aqusition.')
 
         // Encode key by range
-        const key = axis + range.flat().join('-')
+        const key = direction + range.flat().join('-')
+
+        // Try get key index
+        let keyIndex = this.edgeKey_keyIndex_map.get(key)
 
         // Add key to key map
-        if (!this.edge_gridStorageIds_map.has(key)) {
+        if (keyIndex === undefined) {
+
+            keyIndex = this.edgeKey_cache.length
+            this.edgeKey_keyIndex_map.set(key, keyIndex)
 
             const girds = new Array<number>()
             grid_a && girds.push(grid_a.storageId)
             grid_b && girds.push(grid_b.storageId)
 
-            girds.length && this.edge_gridStorageIds_map.set(key, girds)
+            this.edgeKey_cache.push(key)
+            this.edge_adjGridStorageIds_cache.push(girds)
         }
 
-        return key
+        return keyIndex
+    }
+
+    get edgeNum(): number {
+        return this.edgeKey_cache.length
     }
 
     calcGridEdges(grid: GridNode, neighbours: [ GridNode[], GridNode[], GridNode[], GridNode[] ]): void {
@@ -59,10 +77,6 @@ export class GridEdgeManager {
         this._calcVerticalEdges(grid, neighbours[EDGE_CODE_WEST], EDGE_CODE_WEST, EDGE_CODE_EAST, grid.xMinPercent)
         // Calculate east edges
         this._calcVerticalEdges(grid, neighbours[EDGE_CODE_EAST], EDGE_CODE_EAST, EDGE_CODE_WEST, grid.xMaxPercent)
-    }
-
-    get edgeNum(): number {
-        return this.edge_gridStorageIds_map.size
     }
     
     private _calcHorizontalEdges(grid: GridNode, neighbours: GridNode[], edgeCode: number, opEdgeCode: number, sharedCoord: [ number, number ]): void {
@@ -402,36 +416,6 @@ export default class GridManager {
     }
 
     parseTopology(gridInfoCache: Array<number>): GridTopologyInfo {
-
-        let start = 0, end = 0
-        start = Date.now()
-
-        const gridNum = gridInfoCache.length / 2
-        const edgeManager = new GridEdgeManager()
-        const storageId_grid_cache = new Array<GridNode>(gridNum)
-    
-        // Set storageId_grid_cache
-        for (let storageId = 0; storageId < gridNum; storageId++) {
-
-            const level = gridInfoCache[storageId * 2]
-            const globalId = gridInfoCache[storageId * 2 + 1]
-            const { width, height } = this._levelInfos[level]
-
-            storageId_grid_cache[storageId] = new GridNode({ 
-                level, globalId, storageId,
-                globalRange: [ width, height ],
-            })
-        }
-
-        // Step 1: Find Neighbours /////////////////////////////////////////////////
-
-        // Local map from uuId to storageId
-        const uuId_storageId_map = new Map<string, number>()
-
-        // Fill uuId_storageId_map
-        for (const grid of storageId_grid_cache) {
-            uuId_storageId_map.set(grid.uuId, grid.storageId)
-        }
             
         /* ------------------------------------------------------------------
                                             |
@@ -444,6 +428,29 @@ export default class GridManager {
                       bGrid                 |         ----- 0b10 ----- 
                                             |
         ------------------------------------------------------------------ */
+
+        let start = 0, end = 0
+        start = Date.now()
+
+        const gridNum = gridInfoCache.length / 2
+        const edgeManager = new GridEdgeManager()
+        const storageId_grid_cache = Array.from({ length: gridNum }, ((_: unknown, storageId: number) => {
+
+            const level = gridInfoCache[storageId * 2]
+            const globalId = gridInfoCache[storageId * 2 + 1]
+            const { width, height } = this._levelInfos[level]
+
+            return new GridNode({ 
+                level, globalId, storageId,
+                globalRange: [ width, height ],
+            })
+        }).bind(this))
+
+        // Step 1: Find Neighbours /////////////////////////////////////////////////
+
+        // Local map from uuId to storageId
+        const uuId_storageId_map = new Map<string, number>()
+        storageId_grid_cache.forEach(grid => uuId_storageId_map.set(grid.uuId, grid.storageId))
 
         // Iterate all grids and find their neighbours
         storageId_grid_cache.forEach(grid => {
@@ -475,38 +482,28 @@ export default class GridManager {
         uuId_storageId_map.clear()
 
         // Step 2: Parse Edges /////////////////////////////////////////////////
+
         storageId_grid_cache.forEach(grid => edgeManager.calcGridEdges(grid, getGridNeighbours(grid)))
 
         // Step 3: Collect Results /////////////////////////////////////////////////
-        let index = 0
-        const edgeNum = edgeManager.edgeNum
-        const edgeKeys = new Array<string>(edgeNum)
-        const adjGrids = new Array<number[]>(edgeNum)
-        const storageId_edgeKeys_set = new Array<[ Set<string>, Set<string>, Set<string>, Set<string> ]>(gridNum)
 
-        // Generate result about edgeKey array and grid array (grids adjacent to edge)
-        for (const [key, value] of edgeManager.edge_gridStorageIds_map) {
-            edgeKeys[index] = key
-            adjGrids[index++] = value
-        }
+        // Generate result about storageId_edgeId_set
+        const storageId_edgeId_set: Array<[ Set<number>, Set<number>, Set<number>, Set<number> ]>
+        = Array.from({ length: gridNum }, (_, storageId) => {
 
-        // Release edgeManager
-        edgeManager.release()
-
-        // Generate result about storageId_edgeKeys_set
-        for (index = 0; index < storageId_grid_cache.length; index++) {
-            
-            const grid = storageId_grid_cache[index]
-            storageId_edgeKeys_set[index] = grid.edges
-            storageId_grid_cache[index] = grid.release() as any // release grid memory
-        }
+            const grid = storageId_grid_cache[storageId]
+            const edges = grid.edges
+            storageId_grid_cache[storageId] = grid.release() as any // release grid memory
+            return edges
+        })
 
         end = Date.now()
         console.log('Topology Parsing Time Cost:', end - start)
 
         return [ 
-            edgeKeys, adjGrids,
-            storageId_edgeKeys_set
+            edgeManager.edgeKey_cache, 
+            edgeManager.edge_adjGridStorageIds_cache,
+            storageId_edgeId_set,
         ]
 
         // ---------------------------------------------------------------
@@ -514,7 +511,7 @@ export default class GridManager {
 
         function findNeighboursAlongEdge(this: GridManager, grid: GridNode, edgeCode: EDGE_CODE, gridInfo: GridInfo, adjacentCheckFunc: Function) {
 
-            // Check if gridInfo has storageId (This grid is a leaf node)
+            // Check if gridInfo has storageId (whether if this grid is a leaf node)
             const rootNeighbourGrid = uuId_storageId_map.get(gridInfo.uuId)
             if (rootNeighbourGrid) {
 
@@ -523,7 +520,7 @@ export default class GridManager {
 
             } else {
 
-                // Get all children by gridInfo, adjacent to grid
+                // Get all children by gridInfo, adjacent to <grid>
                 const adjChildren: GridNode[] = []
                 const infoStack: GridInfo[] = [ gridInfo ]
 
@@ -541,9 +538,9 @@ export default class GridManager {
 
                         const childLevel = _level + 1
                         const childId = `${childLevel}-${childGlobalId}`
-                        const childStorageId = uuId_storageId_map.get(childId)
 
-                        // Check if child has storageId (This child is a leaf node)
+                        // Check if child has storageId (whether if this child is a leaf node)
+                        const childStorageId = uuId_storageId_map.get(childId)
                         if (childStorageId) {
                             adjChildren.push(storageId_grid_cache[childStorageId])
                         }
@@ -610,6 +607,53 @@ export default class GridManager {
         }
     }
 
+    getEdgeRenderInfos(keys: string[]): Float32Array {
+
+        const vertexBuffer  =new Float32Array(keys.length * 4)
+        keys.forEach((key, index) => this._getEdgeRenderInfo(index, key, vertexBuffer))
+        return vertexBuffer
+    }
+
+    private _getEdgeRenderInfo(index: number, key: string, vertexBuffer: Float32Array): void {
+        
+        const direction = key.substring(0, 1)
+        const position = key.substring(1).split('-')
+
+        const min = (+position[0]) / (+position[1])
+        const max = (+position[2]) / (+position[3])
+        const shared = (+position[4]) / (+position[5])
+
+        const bBox = this._subdivideRules.bBox
+        if (direction === 'h') {
+
+            const minX = lerp(bBox.xMin, bBox.xMax, min)
+            const maxX = lerp(bBox.xMin, bBox.xMax, max)
+            const sharedY = lerp(bBox.yMin, bBox.yMax, shared)
+            
+            const start = MercatorCoordinate.fromLonLat(this._projConverter.forward([minX, sharedY]))
+            const end = MercatorCoordinate.fromLonLat(this._projConverter.forward([maxX, sharedY]))
+
+            vertexBuffer[index * 4 + 0] = start[0]
+            vertexBuffer[index * 4 + 1] = start[1]
+            vertexBuffer[index * 4 + 2] = end[0]
+            vertexBuffer[index * 4 + 3] = end[1]
+
+        } else {
+
+            const minY = lerp(bBox.yMin, bBox.yMax, min)
+            const maxY = lerp(bBox.yMin, bBox.yMax, max)
+            const sharedX = lerp(bBox.xMin, bBox.xMax, shared)
+            
+            const start = MercatorCoordinate.fromLonLat(this._projConverter.forward([sharedX, minY]))
+            const end = MercatorCoordinate.fromLonLat(this._projConverter.forward([sharedX, maxY]))
+
+            vertexBuffer[index * 4 + 0] = start[0]
+            vertexBuffer[index * 4 + 1] = start[1]
+            vertexBuffer[index * 4 + 2] = end[0]
+            vertexBuffer[index * 4 + 3] = end[1]
+        }
+    }
+
     private _getGridInfoFromUV(level: number, u: number, v: number): GridInfo | null {
         
         const { width, height } = this._levelInfos[level]
@@ -618,11 +662,9 @@ export default class GridManager {
         if (u < 0 || u >= width || v < 0 || v >= height) return null
 
         const globalId = v * width + u
-        // const localId = this.getGridLocalId(level, globalId)
 
         return {
             level,
-            // localId,
             globalId,
             uuId: `${level}-${globalId}`
         }
@@ -674,52 +716,3 @@ export default class GridManager {
 function lerp(a: number, b: number, t: number): number {
     return a + t * (b - a)
 }
-
-const customDict = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=~!@#$%^&*()_`-[]{}|;:,.<>?'
-
-function encodeArrayBufferWithDict(buffer: ArrayBuffer): string {
-    const u8 = new Uint8Array(buffer)
-    let result = ''
-
-    for (let i = 0; i < u8.byteLength; i++) {
-        result += customDict[u8[i] % customDict.length]
-    }
-
-    return result
-}
-
-function decodeArrayBufferWithDict(encoded: string): ArrayBuffer {
-    const buffer = new ArrayBuffer(encoded.length)
-    const u8 = new Uint8Array(buffer)
-
-    for (let i = 0; i < encoded.length; i++) {
-        u8[i] = customDict.indexOf(encoded[i])
-    }
-
-    return buffer
-}
-
-// function encodeStringsToArrayBuffer(strings: string[]): ArrayBuffer {
-    
-//     let totalLength = 0
-//     const encoder = new TextEncoder()
-
-//     const encodedStrings = strings.map(str => {
-//         const encoded = encoder.encode(str)
-//         totalLength += 4 + encoded.length
-//         return encoded
-//     })
-
-//     const buffer = new ArrayBuffer(totalLength)
-//     const view = new DataView(buffer)
-
-//     let offset = 0
-//     for (const encoded of encodedStrings) {
-//         view.setUint32(offset, encoded.length, true)
-//         offset += 4
-//         new Uint8Array(buffer, offset, encoded.length).set(encoded)
-//         offset += encoded.length
-//     }
-
-//     return buffer
-// }
