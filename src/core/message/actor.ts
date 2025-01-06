@@ -110,6 +110,7 @@ class Actor {
     remove() {
         this.scheduler.remove()
         this.target.removeEventListener('message', this.receive, false)
+        
     }
 }
 

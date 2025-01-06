@@ -4,72 +4,8 @@ import Dispatcher from '../message/dispatcher'
 import { createDB, deleteDB } from '../database/db'
 import { MercatorCoordinate } from '../math/mercatorCoordinate'
 import UndoRedoManager, { UndoRedoOperation } from '../util/undoRedoManager'
-import { EDGE_CODE, EDGE_CODE_EAST, EDGE_CODE_NORTH, EDGE_CODE_SOUTH, EDGE_CODE_WEST, GridEdge, GridNode, GridNodeRecord, GridNodeRenderInfo, GridNodeRenderInfoPack, GridTopologyInfo, SubdivideRules } from './NHGrid'
-
-export class GridEdgeRecorder {
-
-    private _edgeMap: Map<string, GridEdge>
-    private _properties: string[] | undefined
-
-    constructor(properties?: string[]) {
-
-        this._edgeMap = new Map<string, GridEdge>()
-        this._properties = properties
-    }
-
-    get edges(): MapIterator<GridEdge> {
-
-        return this._edgeMap.values()
-    }
-
-    getEdgeByInfo(grid1: GridNode | null, grid2: GridNode | null, edgeCode: number, range: [number, number, number, number]): GridEdge {
-
-        const key = GridEdge.createKey(grid1, grid2, edgeCode, range)
-        const opKey = GridEdge.getOpKey(key)
-
-        const existingEdge = this._edgeMap.get(key) || this._edgeMap.get(opKey)
-
-        if (existingEdge) {
-
-            return existingEdge
-
-        } else {
-
-            const edge = new GridEdge(key, this._properties)
-            this._edgeMap.set(key, edge)
-            return edge
-
-        }
-    }
-
-    addEdge(edge: GridEdge | null | undefined): void {
-
-        if (!edge) return
-
-        const key = edge.key
-        const opKey = GridEdge.getOpKey(key)
-
-        const existingEdge = this._edgeMap.get(key) || this._edgeMap.get(opKey)
-        if (!existingEdge) {
-            this._edgeMap.set(key, edge)
-        }
-    }
-
-    getEdgeByKey(key: string): GridEdge | null {
-
-        const opKey = GridEdge.getOpKey(key)
-        const existingEdge = this._edgeMap.get(key) || this._edgeMap.get(opKey)
-
-        if (existingEdge) {
-
-            return existingEdge
-
-        } else {
-
-            return null
-        }
-    }
-}
+import { EDGE_CODE, EDGE_CODE_EAST, EDGE_CODE_NORTH, EDGE_CODE_SOUTH, EDGE_CODE_WEST, EdgeRenderInfoPack, GridEdge, GridNode, GridNodeRecord, GridNodeRenderInfo, GridNodeRenderInfoPack, GridTopologyInfo, SubdivideRules } from './NHGrid'
+import WorkerPool from '../worker/workerPool'
 
 interface GridLevelInfo {
 
@@ -99,7 +35,7 @@ export interface UndoRedoRecordOperation extends UndoRedoOperation {
     action: 'RemoveGrid' | 'RemoveGrids' | 'SubdivideGrid'
 }
 
-export interface GridNodeRecordOptions {
+export interface GridRecordOptions {
 
     workerCount?: number
     dispatcher?: Dispatcher
@@ -107,17 +43,21 @@ export interface GridNodeRecordOptions {
     autoDeleteIndexedDB?: boolean
 }
 
-export default class GridNodeRecorder extends UndoRedoManager {
+export default class GridRecorder extends UndoRedoManager {
 
+    private _nextStorageId = 0
     private _projConverter: proj4.Converter
 
     isReady = false
-    nextStorageId = 0
     dispatcher: Dispatcher
     levelInfos: GridLevelInfo[]
     storageId_gridInfo_cache: Array<number | undefined> // [ level_0, globalId_0, level_1, globalId_1, ... , level_n, globalId_n ]
 
-    constructor(private _subdivideRules: SubdivideRules, maxGridNum?: number, options: GridNodeRecordOptions = {}) {
+    edgeKeys_cache: string[] = []
+    adjGrids_cache: number[][] = []
+    storageId_edgeId_set: Array<[Set<number>, Set<number>, Set<number>, Set<number>]> = []
+
+    constructor(private _subdivideRules: SubdivideRules, maxGridNum?: number, options: GridRecordOptions = {}) {
         super(options.operationCapacity || 1000)
 
         this.dispatcher = options.dispatcher || new Dispatcher(this, options.workerCount || 4)
@@ -150,18 +90,28 @@ export default class GridNodeRecorder extends UndoRedoManager {
         }
 
         // Add event listener for <Shift + S> (Download serialization json)
-        document.addEventListener('keydown', e => {
+        // document.addEventListener('keydown', e => {
 
-            if (e.shiftKey && e.key === 'S') {
-                let data = this.parseGridTopology()
-                // let jsonData = JSON.stringify(data)
-                // let blob = new Blob([ jsonData ], { type: 'application/json' })
-                // let link = document.createElement('a')
-                // link.href = URL.createObjectURL(blob)
-                // link.download = 'gridInfo.json'
-                // link.click()
-            }
-        })
+        //     if (e.shiftKey && e.key === 'S') {
+        //         let data = this.parseGridTopology((_: number, vertices: Float32Array) => {
+        //             console.log(vertices)
+        //         })
+        //         // let jsonData = JSON.stringify(data)
+        //         // let blob = new Blob([ jsonData ], { type: 'application/json' })
+        //         // let link = document.createElement('a')
+        //         // link.href = URL.createObjectURL(blob)
+        //         // link.download = 'gridInfo.json'
+        //         // link.click()
+        //     }
+        // })
+    }
+
+    get edgeNum(): number {
+        return this.edgeKeys_cache.length
+    }
+
+    get gridNum(): number {
+        return this._nextStorageId
     }
 
     init(callback?: Function) {
@@ -200,12 +150,27 @@ export default class GridNodeRecorder extends UndoRedoManager {
         })
     }
 
-    parseGridTopology(): void {
+    parseGridTopology(callback?: (fromStorageId: number, vertexBuffer: Float32Array) => any): void {
 
         // Dispatch a worker to parse the topology about all grids
-        this._actor.send('parseTopology', this.storageId_gridInfo_cache.slice(0, this.nextStorageId * 2), (_, topologyInfo: GridTopologyInfo) => {
-            const [edgekeys, adjGrids, storageId_edgeKeys_set] = topologyInfo
-            console.log(edgekeys, adjGrids, storageId_edgeKeys_set)
+        this._actor.send('parseTopology', this.storageId_gridInfo_cache.slice(0, this._nextStorageId * 2), (_, topologyInfo: GridTopologyInfo) => {
+            this.edgeKeys_cache = topologyInfo[0]
+            this.adjGrids_cache = topologyInfo[1]
+            this.storageId_edgeId_set = topologyInfo[2]
+
+            const actorNum = WorkerPool.workerCount - 1
+            const edgeChunk = Math.ceil(this.edgeKeys_cache.length / actorNum)
+            for (let actorIndex = 0; actorIndex < actorNum; actorIndex++) {
+                this._actor.send(
+                    'calcEdgeRenderInfos',
+                    { index: actorIndex, keys: this.edgeKeys_cache.slice(actorIndex * edgeChunk, Math.min(this.edgeKeys_cache.length, (actorIndex + 1) * edgeChunk)) },
+                    (_, edgeRenderInfos: EdgeRenderInfoPack) => {
+
+                        const fromStorageId = edgeRenderInfos.actorIndex * edgeChunk
+                        callback && callback(fromStorageId, edgeRenderInfos.vertexBuffer)
+                    }
+                )
+            }
         })
     }
 
@@ -360,15 +325,12 @@ export default class GridNodeRecorder extends UndoRedoManager {
 
         const renderCoords = targetCoords.map(coord => MercatorCoordinate.fromLonLat(coord as [number, number]))
 
-        return new Float32Array([
-            ...renderCoords[0], ...renderCoords[1],
-            ...renderCoords[2], ...renderCoords[3],
-        ])
+        return new Float32Array(renderCoords.flat())
     }
 
     private _generateRemoveGridOperation(storageId: number, callback?: Function): UndoRedoRecordOperation {
 
-        const lastStorageId = this.nextStorageId - 1
+        const lastStorageId = this._nextStorageId - 1
 
         // Get render info of this removable grid and the grid having the last storageId
         const [lastLevel, lastGlobalId] = this.getGridInfoByStorageId(lastStorageId)
@@ -377,10 +339,10 @@ export default class GridNodeRecorder extends UndoRedoManager {
         const removeOperation: UndoRedoRecordOperation = {
             action: 'RemoveGrid',
             apply: () => {
-                this.nextStorageId -= 1
+                this._nextStorageId -= 1
 
                 // Do nothing if the removable grid is the grid having the last storageId
-                if (this.nextStorageId === storageId) return
+                if (this._nextStorageId === storageId) return
 
                 // Replace removable render info with the last render info in the cache
                 this.storageId_gridInfo_cache[storageId * 2 + 0] = lastLevel
@@ -390,7 +352,7 @@ export default class GridNodeRecorder extends UndoRedoManager {
             },
 
             inverse: () => {
-                this.nextStorageId += 1
+                this._nextStorageId += 1
 
                 // Revert info about the removable grid
                 this.storageId_gridInfo_cache[storageId * 2 + 0] = removableLevel
@@ -413,7 +375,7 @@ export default class GridNodeRecorder extends UndoRedoManager {
     private _generateRemoveGridsOperation(storageIds: number[], callback?: Function): UndoRedoRecordOperation {
 
         const lastStorageIds = new Array<number>()
-        let startIndex = this.nextStorageId - 1
+        let startIndex = this._nextStorageId - 1
         for (let i = 0; i < storageIds.length; i++, startIndex--) {
 
             while (storageIds.some(storageId => storageId === startIndex)) startIndex--
@@ -442,7 +404,7 @@ export default class GridNodeRecorder extends UndoRedoManager {
         const removeOperation: UndoRedoRecordOperation = {
             action: 'RemoveGrids',
             apply: () => {
-                this.nextStorageId -= storageIds.length
+                this._nextStorageId -= storageIds.length
 
                 storageIds.forEach((storageId, index) => {
 
@@ -463,7 +425,7 @@ export default class GridNodeRecorder extends UndoRedoManager {
             },
 
             inverse: () => {
-                this.nextStorageId += storageIds.length
+                this._nextStorageId += storageIds.length
 
                 storageIds.forEach((storageId, index) => {
 
@@ -492,7 +454,7 @@ export default class GridNodeRecorder extends UndoRedoManager {
 
     private _generateSubdivideGridOperation(level: number, renderInfos: GridNodeRenderInfoPack, callback?: Function): UndoRedoRecordOperation {
 
-        const fromStorageId = this.nextStorageId
+        const fromStorageId = this._nextStorageId
         const infoLength = renderInfos.uuIds.length
         const toStorageId = fromStorageId + infoLength - 1
 
@@ -502,7 +464,7 @@ export default class GridNodeRecorder extends UndoRedoManager {
 
                 renderInfos.uuIds.forEach(uuId => {
 
-                    const storageId = this.nextStorageId++
+                    const storageId = this._nextStorageId++
                     const [level, globalId] = uuId.split('-').map(key => +key)
 
                     this.storageId_gridInfo_cache[storageId * 2 + 0] = level
@@ -517,7 +479,7 @@ export default class GridNodeRecorder extends UndoRedoManager {
                 // Remove info in cache
                 for (let i = fromStorageId; i <= toStorageId; i++) {
 
-                    this.nextStorageId--
+                    this._nextStorageId--
                     this.storageId_gridInfo_cache[i * 2 + 0] = undefined
                     this.storageId_gridInfo_cache[i * 2 + 1] = undefined
                 }
