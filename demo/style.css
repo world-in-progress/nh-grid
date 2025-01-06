@@ -1,4 +1,5 @@
-body, html {
+body,
+html {
     position: absolute;
     height: 100%;
     width: 100%;
@@ -14,6 +15,17 @@ body, html {
 
 .dg.main.a {
     margin: 0px;
+}
+
+#canvas2d {
+    position: absolute;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    cursor: grab;
+    background-color: transparent;
+    z-index: 2;
 }
 
 button {
