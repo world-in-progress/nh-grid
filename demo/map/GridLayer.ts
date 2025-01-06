@@ -147,7 +147,7 @@ export default class GridLayer {
         this.maxGridNum,
         {
             workerCount: 4,
-            operationCapacity: 1000,
+            operationCapacity: 200,
         })
 
         // Set WebGL2 context
@@ -278,11 +278,11 @@ export default class GridLayer {
     }
 
     // Optimized function to upload multiple grid rendering info to GPU storage buffer
-    // Note: grids must have continuous storageIds from 'storageid' to 'toStorageId'
-    writeMultiGridInfoToStorageBuffer(infos: [ fromStorageId: number, toStorageId: number, levels: Uint16Array, vertices: Float32Array ]) {
+    // Note: grids must have continuous storageIds from 'storageId' to 'storageId + gridCount'
+    writeMultiGridInfoToStorageBuffer(infos: [ fromStorageId: number, levels: Uint16Array, vertices: Float32Array ]) {
         
         const gl = this._gl
-        const [ fromStorageId, _, levels, vertices ] = infos
+        const [ fromStorageId, levels, vertices ] = infos
         const levelByteStride = 1 * 2
         const vertexByteStride = 2 * 4
         const gridCount = vertices.length / 8
@@ -629,13 +629,18 @@ export default class GridLayer {
     }
 
     removeGrids(storageIds: number[]) {
-        this.gridRecorder.removeGrids(storageIds, this.updateGPUGrid)
+        this.gridRecorder.removeGrids(storageIds, this.updateGPUGrids)
         this.map.triggerRepaint()
     }
 
-    subdivideGrid(info: string) {
-        const [level, globalId] = decodeInfo(info)
+    subdivideGrid(uuId: string) {
+        const [level, globalId] = decodeInfo(uuId)
         this.gridRecorder.subdivideGrid(level, globalId, this.updateGPUGrids)
+    }
+
+    subdivideGrids(uuIds: string[]) {
+        const infos = uuIds.map(uuId => decodeInfo(uuId)) as [ level: number, globalId: number ][]
+        this.gridRecorder.subdivideGrids(infos, this.updateGPUGrids)
     }
 
     tickGrids() {
@@ -661,8 +666,14 @@ export default class GridLayer {
                 subdividableUUIDs.push([removableLevel, removableGlobalId].join('-'))
             })
 
-            removableStorageIds.length > 1 ? this.removeGrids(removableStorageIds) : this.removeGrid(removableStorageIds[0])
-            subdividableUUIDs.forEach(uuid => this.subdivideGrid(uuid))
+            if (subdividableUUIDs.length === 1) {
+                this.removeGrid(removableStorageIds[0])
+                this.subdivideGrid(subdividableUUIDs[0])
+            }
+            else {
+                this.removeGrids(removableStorageIds)
+                this.subdivideGrids(subdividableUUIDs)
+            }
 
         } else {
 
@@ -902,7 +913,7 @@ export default class GridLayer {
         this.map.triggerRepaint()
     }
 
-    private _updateGPUGrids(infos?: [fromStorageId: number, toStorageId: number, levels: Uint16Array, vertices: Float32Array]) {
+    private _updateGPUGrids(infos?: [fromStorageId: number, levels: Uint16Array, vertices: Float32Array]) {
 
         if (infos) {
             this.writeMultiGridInfoToStorageBuffer(infos)
