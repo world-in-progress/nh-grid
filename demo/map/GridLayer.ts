@@ -421,7 +421,6 @@ export default class GridLayer {
             tool: 'brush',
             mode: 'subdivide'
         })
-        
 
         // [4] Remove Event handler for map boxZoom
         this.map.boxZoom.disable()
@@ -593,9 +592,9 @@ export default class GridLayer {
         // Delete mode
         if (this.EditorState.mode === 'delete') {
             if (Array.isArray(storageIds))
-                this.gridRecorder.removeGrids(storageIds, this.updateGPUGrid);
+                this.removeGrids(storageIds)
             else
-                storageIds >= 0 && this.gridRecorder.removeGrid(storageIds, this.updateGPUGrid);
+                storageIds >= 0 && this.removeGrid(storageIds)
         }
         // Subdivider type
         else if (this.EditorState.mode === 'subdivide') {
@@ -642,7 +641,8 @@ export default class GridLayer {
 
     tickGrids() {
 
-        // if (this._currentType === this.SUBDIVIDER_TYPE) {
+        if(this.hitSet.size === 0) return
+
         if (this.EditorState.editor === "topology") {
 
             // Parse hitSet
@@ -661,7 +661,8 @@ export default class GridLayer {
                 // add subdividable grids
                 subdividableUUIDs.push([removableLevel, removableGlobalId].join('-'))
             })
-            removableStorageIds.length && this.removeGrids(removableStorageIds)
+
+            removableStorageIds.length > 1 ? this.removeGrids(removableStorageIds) : this.removeGrid(removableStorageIds[0])
             subdividableUUIDs.forEach(uuid => this.subdivideGrid(uuid))
 
         } else {
@@ -1090,7 +1091,7 @@ export default class GridLayer {
         this.isShiftClick = false
     }
 
-    private _resizeHandler(e: Event) {
+    private _resizeHandler() {
         // resize canvas 2d
         const canvas = this.ctx!.canvas;
         if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {

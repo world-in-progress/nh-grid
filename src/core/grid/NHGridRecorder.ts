@@ -142,7 +142,7 @@ export default class GridRecorder extends UndoRedoManager {
     }
 
     subdivideGrid(level: number, globalId: number, callback?: Function): void {
-
+        
         // Dispatch a worker to subdivide the grid
         this._actor.send('subdivideGrid', [level, globalId], (_, renderInfos: GridNodeRenderInfoPack) => {
 
@@ -331,6 +331,7 @@ export default class GridRecorder extends UndoRedoManager {
         return new Float32Array(renderCoords.flat())
     }
 
+    // Fast function for removing single grid
     private _generateRemoveGridOperation(storageId: number, callback?: Function): UndoRedoRecordOperation {
 
         const lastStorageId = this._nextStorageId - 1
@@ -375,81 +376,85 @@ export default class GridRecorder extends UndoRedoManager {
 
         return removeOperation
     }
-    private _generateRemoveGridsOperation(storageIds: number[], callback?: Function): UndoRedoRecordOperation {
 
-        const lastStorageIds = new Array<number>()
-        let startIndex = this._nextStorageId - 1
-        for (let i = 0; i < storageIds.length; i++, startIndex--) {
-
-            while (storageIds.some(storageId => storageId === startIndex)) startIndex--
-            if (startIndex < 0) break
-            lastStorageIds.push(startIndex)
-        }
-
-        // Get render info of this removable grid and the grid having the last storageId
-        const lastLevels = new Array<number>(lastStorageIds.length)
-        const removableLevels = new Array<number>(storageIds.length)
-        const lastGlobalIds = new Array<number>(lastStorageIds.length)
-        const removableGlobalIds = new Array<number>(storageIds.length)
-
-        storageIds.forEach((storageId, index) => {
+    // Optimized function for removing multi grids
+    private _generateRemoveGridsOperation(removableStorageIds: number[], callback?: Function): UndoRedoRecordOperation {
+        
+        // Convert removableStorageIds to ascending order and record their levels and globalIds
+        const removableGridNum = removableStorageIds.length
+        const removableLevels = new Array<number>(removableGridNum)
+        const removableGlobalIds = new Array<number>(removableGridNum)
+        removableStorageIds.sort((a, b) => a - b).forEach((storageId, index) => {
             const [level, globalId] = this.getGridInfoByStorageId(storageId)
             removableLevels[index] = level
             removableGlobalIds[index] = globalId
         })
 
-        lastStorageIds.forEach((lastStorageId, index) => {
-            const [level, globalId] = this.getGridInfoByStorageId(lastStorageId)
-            lastLevels[index] = level
-            lastGlobalIds[index] = globalId
-        })
+        const maintainedGridNum = this.gridNum - removableGridNum
+        const replacedGridNum = maintainedGridNum > removableGridNum ? removableGridNum : maintainedGridNum
 
-        const removeOperation: UndoRedoRecordOperation = {
+        // Generate info cache about replaced grids having last valid storageIds 
+        // Note: storageId not pointing to any removableStorageIds is valid
+        let replacedStorageId = this._nextStorageId - 1
+        const removableIdStack = removableStorageIds.slice()
+        const replacedGridInfo = new Array<[ storageId: number, level: number, globalId: number ]>()
+        while(replacedGridInfo.length !== replacedGridNum) {
+
+            // Check if lastStorageId is one of removable storageIds
+            if (removableIdStack.length && removableIdStack[removableIdStack.length - 1] === replacedStorageId) {
+                removableIdStack.pop()
+            } else {
+                const [lastLevel, lastGlobalId] = this.getGridInfoByStorageId(replacedStorageId)
+                replacedGridInfo.push([ replacedStorageId, lastLevel, lastGlobalId ])
+            }
+            replacedStorageId--
+        }
+
+        const multiRemoveOperation: UndoRedoRecordOperation = {
             action: 'RemoveGrids',
             apply: () => {
-                this._nextStorageId -= storageIds.length
 
-                storageIds.forEach((storageId, index) => {
+                this._nextStorageId -= removableGridNum
 
-                    if (index > lastStorageIds.length - 1) return
-
-                    const lastLevel = lastLevels[index]
-                    const lastGlobalId = lastGlobalIds[index]
+                // let lastStorageId = this._nextStorageId
+                removableStorageIds.forEach((storageId, index) => {
+                    if (index > replacedGridInfo.length - 1) return
 
                     // Replace removable render info with the last render info in the cache
-                    this.storageId_gridInfo_cache[storageId * 2 + 0] = lastLevel
-                    this.storageId_gridInfo_cache[storageId * 2 + 1] = lastGlobalId
+                    const [ _, replacedLevel, replacedGlobalId ] = replacedGridInfo[index]
+                    this.storageId_gridInfo_cache[storageId * 2 + 0] = replacedLevel
+                    this.storageId_gridInfo_cache[storageId * 2 + 1] = replacedGlobalId
 
-                    callback && callback([storageId, lastLevel, this._createNodeRenderVertices(lastLevel, lastGlobalId)])
+                    callback && callback([storageId, replacedLevel, this._createNodeRenderVertices(replacedLevel, replacedGlobalId)])
                 })
             },
 
             inverse: () => {
-                this._nextStorageId += storageIds.length
 
-                storageIds.forEach((storageId, index) => {
+                removableStorageIds.forEach((storageId, index) => {
 
+                    this._nextStorageId += 1
+    
                     // Revert info about the removable grid
                     const removableLevel = removableLevels[index]
                     const removableGlobalId = removableGlobalIds[index]
                     this.storageId_gridInfo_cache[storageId * 2 + 0] = removableLevel
                     this.storageId_gridInfo_cache[storageId * 2 + 1] = removableGlobalId
                     callback && callback([storageId, removableLevel, this._createNodeRenderVertices(removableLevel, removableGlobalId)])
-
-                    // Revert info about the grid having the last storageId
-                    if (index > lastStorageIds.length - 1) return
-
-                    const lastLevel = lastLevels[index]
-                    const lastGlobalId = lastGlobalIds[index]
-                    const lastStorageId = lastStorageIds[index]
-                    this.storageId_gridInfo_cache[lastStorageId * 2 + 0] = lastLevel
-                    this.storageId_gridInfo_cache[lastStorageId * 2 + 1] = lastGlobalId
-                    callback && callback([lastStorageId, lastLevel, this._createNodeRenderVertices(lastLevel, lastGlobalId)])
+    
+                    // Revert info about the grid having the replaced storageId
+                    if (index <= replacedGridInfo.length - 1) {
+                        
+                        const [ replacedStorageId, replacedLevel, replacedGlobalId ] = replacedGridInfo[index]
+                        this.storageId_gridInfo_cache[replacedStorageId * 2 + 0] = replacedLevel
+                        this.storageId_gridInfo_cache[replacedStorageId * 2 + 1] = replacedGlobalId
+                        callback && callback([replacedStorageId, replacedLevel, this._createNodeRenderVertices(replacedLevel, replacedGlobalId)])
+                    }
                 })
             }
         }
 
-        return removeOperation
+        return multiRemoveOperation
     }
 
     private _generateSubdivideGridOperation(level: number, renderInfos: GridNodeRenderInfoPack, callback?: Function): UndoRedoRecordOperation {
