@@ -195,57 +195,6 @@ export default class GridLayer {
         this.capacityController.domElement.style.pointerEvents = 'none'
     }
 
-    // set currentType(type: number) {
-
-    //     const gl = this._gl
-
-    //     if (type === this._currentType) return
-
-    //     this.typeChanged = true
-    //     this._currentType = type
-
-    //     if (type === this.EDITOR_TYPE) {
-
-    //         // // Change event handlers
-    //         // this.addEditorUIHandler()
-
-    //         // // Find neighbours for all grids
-    //         // // this.gridRecorder.findNeighbours()
-
-    //         // // Generate hit list
-    //         // this.gridRecorder.uuId_gridNode_map.forEach(grid => {
-    //         //     if (grid.hit === true && grid.level !== 0) {
-    //         //         this.hitGridList.push(grid)
-    //         //         grid.hit = false
-    //         //     }
-    //         // })
-
-    //         // // Set show list (it is static when in Editor type)
-    //         // this.lineList = this.hitGridList.map(grid => this.gridRecorder.uuId_storageId_map.get(grid.uuId)!)
-
-    //         // // Refill palette texture
-    //         // gll.fillSubTexture2DByArray(gl, this._paletteTexture, 0, 0, 0, this.subdivideRules.length, 1, gl.RGB, gl.UNSIGNED_BYTE, this.paletteColorList)
-
-    //     } else {
-
-    //         // Change event handlers
-    //         this.addSubdividerUIHandler()
-
-    //         // Release cache
-    //         // this.hitGridList.forEach(grid => grid.hit = true)
-    //         // this.hitGridList = []
-
-    //         // Refill palette texture
-    //         const colorList = new Uint8Array(this.subdivideRules.length * 3)
-    //         for (let i = 0; i < this.subdivideRules.length; i++) {
-    //             colorList.set([0, 127, 127], i * 3)
-    //         }
-    //         gll.fillSubTexture2DByArray(gl, this._paletteTexture, 0, 0, 0, this.subdivideRules.length, 1, gl.RGB, gl.UNSIGNED_BYTE, colorList)
-    //     }
-
-    //     this.map.triggerRepaint()
-    // }
-
     hitAttributeEditor(lon: number, lat: number) {
 
         // this.hitGridList.forEach(grid => {
@@ -470,7 +419,7 @@ export default class GridLayer {
         gl.useProgram(null)
 
         // Create edge storage buffer
-        this._edgeStorageVAO = gl.createVertexArray()
+        this._edgeStorageVAO = gl.createVertexArray()!
         // Max edge Size = maxGridNum * 4
         this._edgeStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 4 * 4 * 4, gl.DYNAMIC_DRAW)!
 
@@ -485,7 +434,7 @@ export default class GridLayer {
         gl.bindBuffer(gl.ARRAY_BUFFER, null)
 
         // Create grid storage buffer
-        this._gridStorageVAO = gl.createVertexArray()
+        this._gridStorageVAO = gl.createVertexArray()!
         this._gridTlStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 2 * 4, gl.DYNAMIC_DRAW)!
         this._gridTrStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 2 * 4, gl.DYNAMIC_DRAW)!
         this._gridBlStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 2 * 4, gl.DYNAMIC_DRAW)!
@@ -529,11 +478,11 @@ export default class GridLayer {
         // Create picking pass
         this._pickingTexture = gll.createTexture2D(gl, 0, 1, 1, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]))
         this._pickingRBO = gll.createRenderBuffer(gl, 1, 1)
-        this._pickingFBO = gll.createFrameBuffer(gl, [this._pickingTexture], 0, this._pickingRBO)
+        this._pickingFBO = gll.createFrameBuffer(gl, [this._pickingTexture], 0, this._pickingRBO)!
 
         this._boxPickingTexture = gll.createTexture2D(gl, 0, gl.canvas.width, gl.canvas.height, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(gl.canvas.width * gl.canvas.height * 4).fill(0))
         this._boxPickingRBO = gll.createRenderBuffer(gl, gl.canvas.width, gl.canvas.height)
-        this._boxPickingFBO = gll.createFrameBuffer(gl, [this._boxPickingTexture], 0, this._boxPickingRBO)
+        this._boxPickingFBO = gll.createFrameBuffer(gl, [this._boxPickingTexture], 0, this._boxPickingRBO)!
 
 
         // Init palette texture (default in subdivider type)
