@@ -36,7 +36,6 @@ export default class GridLayer {
     projConverter: proj4.Converter
     gridRecorder: GridRecorder
     subdivideRules: [ number, number ][]
-    subdivideStacks = new Array<[ level: number, globalId: number ][]>()
 
     // GPU-related //////////////////////////////////////////////////
 
@@ -80,8 +79,7 @@ export default class GridLayer {
     private _boxPickingStart: MapMouseEvent | null = null
     private _boxPickingEnd: MapMouseEvent | null = null
 
-    private ctx: CanvasRenderingContext2D | null = null
-
+    private _ctx: CanvasRenderingContext2D | null = null
 
     // GPU grid update function
     updateGPUGrid: Function
@@ -149,7 +147,7 @@ export default class GridLayer {
         this.maxGridNum,
         {
             workerCount: 4,
-            operationCapacity: 1000,
+            operationCapacity: 200,
         })
 
         // Set WebGL2 context
@@ -280,11 +278,11 @@ export default class GridLayer {
     }
 
     // Optimized function to upload multiple grid rendering info to GPU storage buffer
-    // Note: grids must have continuous storageIds from 'storageid' to 'toStorageId'
-    writeMultiGridInfoToStorageBuffer(infos: [ fromStorageId: number, toStorageId: number, levels: Uint16Array, vertices: Float32Array ]) {
+    // Note: grids must have continuous storageIds from 'storageId' to 'storageId + gridCount'
+    writeMultiGridInfoToStorageBuffer(infos: [ fromStorageId: number, levels: Uint16Array, vertices: Float32Array ]) {
         
         const gl = this._gl
-        const [ fromStorageId, _, levels, vertices ] = infos
+        const [ fromStorageId, levels, vertices ] = infos
         const levelByteStride = 1 * 2
         const vertexByteStride = 2 * 4
         const gridCount = vertices.length / 8
@@ -312,7 +310,7 @@ export default class GridLayer {
         const rect = canvas2d.getBoundingClientRect()
         canvas2d.width = rect.width
         canvas2d.height = rect.height
-        this.ctx = canvas2d.getContext('2d')
+        this._ctx = canvas2d.getContext('2d')
 
         // [1] Create Control Pannel Dom
         const pannel = document.createElement('div')
@@ -580,6 +578,7 @@ export default class GridLayer {
     }
 
     addAttributeEditorUIHandler() {
+        
         this.removeUIHandler()
 
         this.map
@@ -630,13 +629,18 @@ export default class GridLayer {
     }
 
     removeGrids(storageIds: number[]) {
-        this.gridRecorder.removeGrids(storageIds, this.updateGPUGrid)
+        this.gridRecorder.removeGrids(storageIds, this.updateGPUGrids)
         this.map.triggerRepaint()
     }
 
-    subdivideGrid(info: string) {
-        const [level, globalId] = decodeInfo(info)
+    subdivideGrid(uuId: string) {
+        const [level, globalId] = decodeInfo(uuId)
         this.gridRecorder.subdivideGrid(level, globalId, this.updateGPUGrids)
+    }
+
+    subdivideGrids(uuIds: string[]) {
+        const infos = uuIds.map(uuId => decodeInfo(uuId)) as [ level: number, globalId: number ][]
+        this.gridRecorder.subdivideGrids(infos, this.updateGPUGrids)
     }
 
     tickGrids() {
@@ -662,8 +666,14 @@ export default class GridLayer {
                 subdividableUUIDs.push([removableLevel, removableGlobalId].join('-'))
             })
 
-            removableStorageIds.length > 1 ? this.removeGrids(removableStorageIds) : this.removeGrid(removableStorageIds[0])
-            subdividableUUIDs.forEach(uuid => this.subdivideGrid(uuid))
+            if (subdividableUUIDs.length === 1) {
+                this.removeGrid(removableStorageIds[0])
+                this.subdivideGrid(subdividableUUIDs[0])
+            }
+            else {
+                this.removeGrids(removableStorageIds)
+                this.subdivideGrids(subdividableUUIDs)
+            }
 
         } else {
 
@@ -700,7 +710,7 @@ export default class GridLayer {
         if (this.gridRecorder.edgeNum) {
             !this.isTransparent && this.drawEdges()
         } else {
-            (!this.isTransparent) && this.drawGridLines()
+            !this.isTransparent && this.drawGridLines()
         }
 
         // WebGL check
@@ -728,7 +738,7 @@ export default class GridLayer {
         const gl = this._gl
 
         gl.enable(gl.BLEND)
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
 
         gl.enable(gl.DEPTH_TEST)
         gl.depthFunc(gl.LESS)
@@ -903,7 +913,7 @@ export default class GridLayer {
         this.map.triggerRepaint()
     }
 
-    private _updateGPUGrids(infos?: [fromStorageId: number, toStorageId: number, levels: Uint16Array, vertices: Float32Array]) {
+    private _updateGPUGrids(infos?: [fromStorageId: number, levels: Uint16Array, vertices: Float32Array]) {
 
         if (infos) {
             this.writeMultiGridInfoToStorageBuffer(infos)
@@ -982,11 +992,10 @@ export default class GridLayer {
             const storageIds = this.picking(e1, e2)
             this.hit(storageIds)
 
-            clear(this.ctx!)
+            clear(this._ctx!)
             this._boxPickingStart = null
             this._boxPickingEnd = null
             this.isShiftClick = false
-
         }
 
 
@@ -1048,16 +1057,13 @@ export default class GridLayer {
         }
 
         */
-
     }
 
     private _mousemoveHandler(e: MapMouseEvent) {
 
         if (this.isShiftClick && this.EditorState.tool === 'brush') {
             this.map.dragPan.disable()
-
-            // const storageId = this.picking(this._calcPickingMatrix(e))
-            // storageId >= 0 && this.hit(storageId)
+            
             const storageId = this.picking(e) as number
             this.hit(storageId)
         }
@@ -1067,7 +1073,7 @@ export default class GridLayer {
             this._boxPickingEnd = e
             const canvas = this._gl.canvas as HTMLCanvasElement
             const box = genPickingBox(canvas, this._boxPickingStart, this._boxPickingEnd!)
-            drawRectangle(this.ctx!, box)
+            drawRectangle(this._ctx!, box)
         }
     }
 
@@ -1080,8 +1086,8 @@ export default class GridLayer {
             const storageIds = this.picking(this._boxPickingStart!, this._boxPickingEnd!)
             this.hit(storageIds)
 
-            // reset
-            clear(this.ctx!)
+            // Reset
+            clear(this._ctx!)
             this._boxPickingStart = null
             this._boxPickingEnd = null
 
@@ -1092,8 +1098,8 @@ export default class GridLayer {
     }
 
     private _resizeHandler() {
-        // resize canvas 2d
-        const canvas = this.ctx!.canvas;
+        // Resize canvas 2d
+        const canvas = this._ctx!.canvas;
         if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
             canvas.width = canvas.clientWidth;
             canvas.height = canvas.clientHeight;
@@ -1121,7 +1127,7 @@ export default class GridLayer {
                         this._EditorState.mode = 'none'
                         this.addAttributeEditorUIHandler()
                         /*
-                        attribute setup
+                        Attribute setup
                         */
                         break;
                 }
@@ -1280,5 +1286,3 @@ function drawRectangle(ctx: CanvasRenderingContext2D, pickingBox: [number, numbe
     ctx.strokeRect(startX, startY, width, height)
     ctx.fillRect(startX, startY, width, height)
 }
-
-
