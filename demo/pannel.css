@@ -9,7 +9,7 @@
     border-radius: 5px;
     font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
     user-select: none;
-    z-index: 999;
+    z-index: 2;
     color: aliceblue
 }
 

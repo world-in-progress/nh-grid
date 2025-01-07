@@ -197,7 +197,8 @@ export default class GridLayer {
         brushFolder.add(this.uiOption, 'level', 1, this.subdivideRules.length - 1, 1)
         brushFolder.open()
         this.gui.add(this.uiOption, 'capacity', 0, this.maxGridNum).name('Capacity').listen()
-        this.gui.close()
+        // this.gui.close()
+        this.gui.hide()
 
         this.capacityController = this.gui.__controllers[0]
         this.capacityController.setValue(0.0)
@@ -452,8 +453,8 @@ export default class GridLayer {
             id: -1
         })
 
-        // [8] loading
-        this.showLoading = initLoadingDOM()
+        // [9] init loading DOM
+        this.showLoading = initLoadingDOM()!
 
         // test 
         document.addEventListener('keydown', e => {
@@ -1114,18 +1115,23 @@ export default class GridLayer {
                 switch (value) {
                     case 'topology':
                         this.attrSetter!.style.display = 'none'
+                        const pannel = document.querySelector('#pannel') as HTMLDivElement
+                        pannel.style.height = '200px'
+
                         this.isTopologyParsed = false
                         this.gridRecorder.resetEdges()
                         this.addTopologyEditorUIHandler()
                         break;
                     case 'attribute':
                         this.addAttributeEditorUIHandler()
-                        this.showLoading && this.showLoading(true)
+                        this.showLoading!(true)
                         this.gridRecorder.parseGridTopology((fromStorageId: number, vertexBuffer: Float32Array) => {
                             this.updateGPUEdges(fromStorageId, vertexBuffer)
                             this.isTopologyParsed = true
-                            this.showLoading && this.showLoading(false)
+                            this.showLoading!(false)
                             this.attrSetter!.style.display = 'block'
+                            const pannel = document.querySelector('#pannel') as HTMLDivElement
+                            pannel.style.height = '400px'
                             console.log(" ====Topology Parsed==== ")
                         })
                         this.map.triggerRepaint()
@@ -1169,6 +1175,7 @@ export default class GridLayer {
 
             (e.target as HTMLDivElement).classList.add("actived")
             const eID = (e.target as HTMLDivElement).dataset.eid
+            console.log('eID', eID)
             this.activeAttrFeature.dom = e.target as HTMLDivElement
             this.activeAttrFeature.id = Number(eID)
             this.activeAttrFeature.t = 1
@@ -1227,6 +1234,8 @@ export default class GridLayer {
         // grid click 
         const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement
         attrTypeDom.addEventListener('click', e => {
+
+            if (this.EditorState.tool === 'box') return
             if (this.activeAttrFeature.dom) {
                 this.activeAttrFeature.dom.classList.remove("actived");
             }
@@ -1254,8 +1263,9 @@ export default class GridLayer {
 
     updateAttrSetter(info: any) {
 
-        if (Array.isArray(info.gridStorageId)) {
-            this.edgeDom!.style.display = 'none'
+        // if (Array.isArray(info.gridStorageId)) {
+        if (this.EditorState.tool === 'box') {
+
             const gridStorageIds = info.gridStorageId
 
             this.activeAttrFeature.id = gridStorageIds
@@ -1267,14 +1277,12 @@ export default class GridLayer {
             // reset grid dom data-id and input value
             const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement;
             attrTypeDom.dataset.id = '-1';
-            attrTypeDom.style.pointerEvents = 'none';
+            attrTypeDom.textContent = 'Grid';
 
             (document.querySelector('#height') as HTMLInputElement).value = -9999 + '';
             (document.querySelector('#type') as HTMLInputElement).value = 0 + '';
+        } else if (this.EditorState.tool === 'brush') {
 
-
-        } else {
-            this.edgeDom!.style.display = 'block'
             //////// parse grid and edge info
             const gridStorageId = info.gridStorageId
             const top = Array.from(info.top)
@@ -1293,6 +1301,7 @@ export default class GridLayer {
             // reset grid dom data-id and input value
             const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement;
             attrTypeDom.dataset.id = gridStorageId;
+            attrTypeDom.textContent = 'Grid';
 
             (document.querySelector('#height') as HTMLInputElement).value = height + '';
             (document.querySelector('#type') as HTMLInputElement).value = type + '';
@@ -1326,6 +1335,7 @@ export default class GridLayer {
         } else {
             height = this.gridRecorder.edge_attribute_cache[ID].height
             type = this.gridRecorder.edge_attribute_cache[ID].type
+            console.log("get edge ", ID, height, type)
         }
         return [height, type]
     }
@@ -1334,6 +1344,18 @@ export default class GridLayer {
         if (!this.isTopologyParsed) {
             throw "Topology Not Parsed!!" //never
         }
+        // valid test !
+        if (height < -9999 || height > 9999) {
+            alert("Height out of range [-9999, 9999] !!");
+            console.error("Height out of range [-9999, 9999] !!");
+            (document.querySelector('#height') as HTMLInputElement).value = '0'
+        }
+        if (type < 0 || type > 10) {
+            alert("type out of range [-0, 10] !!");
+            console.error("type out of range [-0, 10] !");
+            (document.querySelector('#type') as HTMLInputElement).value = '0'
+        }
+
         if (T === 0) {
             this.gridRecorder.grid_attribute_cache[ID].height = height
             this.gridRecorder.grid_attribute_cache[ID].type = type
