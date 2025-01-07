@@ -14,7 +14,7 @@ proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555
 
 export interface GridLayerOptions {
 
-    maxGridNum?: number 
+    maxGridNum?: number
     edgeProperties?: string[]
 }
 
@@ -35,7 +35,7 @@ export default class GridLayer {
     hitSet = new Set<number>
     projConverter: proj4.Converter
     gridRecorder: GridRecorder
-    subdivideRules: [ number, number ][]
+    subdivideRules: [number, number][]
 
     // GPU-related //////////////////////////////////////////////////
 
@@ -194,8 +194,14 @@ export default class GridLayer {
         this.capacityController.domElement.style.pointerEvents = 'none'
     }
 
-    hitAttributeEditor(lon: number, lat: number) {
-
+    hitAttributeEditor() {
+        if (this.EditorState.tool === "brush") {
+            this._hitAttribute()
+        }
+        // box tool
+        else if (this.EditorState.tool === "box") {
+            this._hitsAttribute()
+        }
         // this.hitGridList.forEach(grid => {
         //     if (grid.within(this.bBox, lon, lat)) {
         //         grid.hit = true
@@ -205,13 +211,28 @@ export default class GridLayer {
         // })
     }
 
+    private _hitAttribute() {
+        const [gridStorageId] = this.hitSet
+        const edgeSet = this.gridRecorder.getEdgeInfoByStorageId(+gridStorageId)
+        const [top1, left1, bottom1, right1] = edgeSet
+        console.log("hittedGrid info:: ", gridStorageId, top1, left1, bottom1, right1)
+
+    }
+
+    private _hitsAttribute() {
+        console.log("hittedGrids ")
+        this.hitSet.forEach(g => {
+            console.log(g)
+        })
+    }
+
     // Fast function to upload one grid rendering info to GPU stograge buffer
-    writeGridInfoToStorageBuffer(info: [ storageId: number, level: number, vertices: Float32Array ]) {
+    writeGridInfoToStorageBuffer(info: [storageId: number, level: number, vertices: Float32Array]) {
 
         const gl = this._gl
         const levelByteStride = 1 * 2
         const vertexByteStride = 2 * 4
-        const [ storageId, level, vertices ] = info
+        const [storageId, level, vertices] = info
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this._gridTlStorageBuffer)
         gl.bufferSubData(gl.ARRAY_BUFFER, storageId * vertexByteStride, vertices, 0, 2)
@@ -229,10 +250,10 @@ export default class GridLayer {
 
     // Optimized function to upload multiple grid rendering info to GPU storage buffer
     // Note: grids must have continuous storageIds from 'storageId' to 'storageId + gridCount'
-    writeMultiGridInfoToStorageBuffer(infos: [ fromStorageId: number, levels: Uint16Array, vertices: Float32Array ]) {
-        
+    writeMultiGridInfoToStorageBuffer(infos: [fromStorageId: number, levels: Uint16Array, vertices: Float32Array]) {
+
         const gl = this._gl
-        const [ fromStorageId, levels, vertices ] = infos
+        const [fromStorageId, levels, vertices] = infos
         const levelByteStride = 1 * 2
         const vertexByteStride = 2 * 4
         const gridCount = vertices.length / 8
@@ -251,7 +272,7 @@ export default class GridLayer {
 
         gl.bindBuffer(gl.ARRAY_BUFFER, null)
     }
-    
+
     async init() {
 
         // Init DOM Elements and handlers ////////////////////////////////////////////////////////////
@@ -325,7 +346,7 @@ export default class GridLayer {
                     type === "editor" && deactivate("mode")
                 })
             }
-    
+
             function activate(this: GridLayer, dom: HTMLDivElement) {
                 dom.dataset.active = 'true'
                 if (dom.dataset.val === "topology") {
@@ -377,8 +398,8 @@ export default class GridLayer {
         document.addEventListener('keydown', e => {
 
             if (e.shiftKey && e.key === 'T') {
-                this.isTransparent = !this.isTransparent 
-                console.log(`Grid Transparent: ${ this.isTransparent ? 'ON' : 'OFF' }`)
+                this.isTransparent = !this.isTransparent
+                console.log(`Grid Transparent: ${this.isTransparent ? 'ON' : 'OFF'}`)
                 this.map.triggerRepaint()
             }
         })
@@ -539,7 +560,7 @@ export default class GridLayer {
     }
 
     addAttributeEditorUIHandler() {
-        
+
         this.removeUIHandler()
 
         this.map
@@ -548,35 +569,45 @@ export default class GridLayer {
     }
 
     hit(storageIds: number | number[]) {
+        // topology editor
+        if (this.EditorState.editor === "topology") {
+            // Delete mode
+            if (this.EditorState.mode === 'delete') {
+                if (Array.isArray(storageIds))
+                    this.removeGrids(storageIds)
+                else
+                    storageIds >= 0 && this.removeGrid(storageIds)
+            }
+            // Subdivider type
+            else if (this.EditorState.mode === 'subdivide') {
 
-        // Delete mode
-        if (this.EditorState.mode === 'delete') {
-            if (Array.isArray(storageIds))
-                this.removeGrids(storageIds)
-            else
-                storageIds >= 0 && this.removeGrid(storageIds)
+                const ids = Array.isArray(storageIds) ? storageIds : [storageIds];
+                ids.forEach((storageId: number) => {
+                    if (storageId < 0) return
+
+                    const maxLevel = this.subdivideRules.length - 1
+                    const [hitLevel] = this.gridRecorder.getGridInfoByStorageId(storageId)
+
+                    // Nothing will happen if the hit grid has the maximize level
+                    if (hitLevel >= maxLevel) return
+
+                    // const targetLevel = Math.min(this.uiOption.level, maxLevel)
+
+                    // Nothing will happen if subdivide grids more than one level
+                    // Or target subdivided level equals to hitLevel
+                    // if (targetLevel - hitLevel > 1 || targetLevel == hitLevel) return
+                    // if (targetLevel == hitLevel) return
+
+                    this.hitSet.add(storageId)
+                })
+            }
         }
-        // Subdivide mode
-        else if (this.EditorState.mode === 'subdivide') {
-
+        // attribute editor
+        else if (this.EditorState.editor === "attribute") {
             const ids = Array.isArray(storageIds) ? storageIds : [storageIds];
             ids.forEach((storageId: number) => {
                 if (storageId < 0) return
-                
-                const maxLevel = this.subdivideRules.length - 1
-                const [hitLevel] = this.gridRecorder.getGridInfoByStorageId(storageId)
-
-                // Nothing will happen if the hit grid has the maximize level
-                if (hitLevel >= maxLevel) return
-
-                // const targetLevel = Math.min(this.uiOption.level, maxLevel)
-
-                // Nothing will happen if subdivide grids more than one level
-                // Or target subdivided level equals to hitLevel
-                // if (targetLevel - hitLevel > 1 || targetLevel == hitLevel) return
-                // if (targetLevel == hitLevel) return
-
-                this.hitSet.add(storageId)
+                this.hitSet.add(storageId) //only storage when attribute-editor
             })
         }
 
@@ -599,13 +630,13 @@ export default class GridLayer {
     }
 
     subdivideGrids(uuIds: string[]) {
-        const infos = uuIds.map(uuId => decodeInfo(uuId)) as [ level: number, globalId: number ][]
+        const infos = uuIds.map(uuId => decodeInfo(uuId)) as [level: number, globalId: number][]
         this.gridRecorder.subdivideGrids(infos, this.updateGPUGrids)
     }
 
     tickGrids() {
 
-        if(this.hitSet.size === 0) return
+        if (this.hitSet.size === 0) return
 
         if (this.EditorState.editor === "topology") {
 
@@ -633,13 +664,12 @@ export default class GridLayer {
                 this.subdivideGrids(subdividableUUIDs)
             }
 
-        } else {
+        }
+        else if (this.EditorState.editor === "attribute") {
 
-            // (this.hitSet as Set<{ lon: number, lat: number }>).forEach(({ lon, lat }) => {
-            //     this.hitEditor(lon, lat)
-            // })
-
+            this.hitAttributeEditor()
             // this.tickEditor()
+
         }
 
         this.hitSet.clear()
@@ -661,9 +691,9 @@ export default class GridLayer {
         this.map.update()
         this.tickGrids()
 
-        // Tick render: Mesh Pass
-        ;(!this.isTransparent) && this.drawGridMeshes()
-        
+            // Tick render: Mesh Pass
+            ; (!this.isTransparent) && this.drawGridMeshes()
+
         // Tick render: Line Pass
         if (this.gridRecorder.edgeNum) {
             !this.isTransparent && this.drawEdges()
@@ -704,7 +734,7 @@ export default class GridLayer {
         gl.useProgram(this._gridMeshShader)
 
         gl.bindVertexArray(this._gridStorageVAO)
-        
+
         gl.activeTexture(gl.TEXTURE0)
         gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture)
 
@@ -771,7 +801,7 @@ export default class GridLayer {
         gl.enable(gl.DEPTH_TEST)
 
         gl.useProgram(this._pickingShader)
-        
+
         gl.bindVertexArray(this._gridStorageVAO)
 
         gl.uniform2fv(gl.getUniformLocation(this._pickingShader, 'centerLow'), this.map.centerLow)
@@ -961,73 +991,13 @@ export default class GridLayer {
             this._boxPickingEnd = null
             this.isShiftClick = false
         }
-
-
-        /*        
-        if (this.isShiftClick && this.EditorState.tool === 'brush') {
-            this.map.dragPan.enable()
-            this.isShiftClick = false
-
-            const storageId = this.picking(this._calcPickingMatrix(e))
-            storageId >= 0 && this.hit(storageId)
-
-            // GPU Picking Vs CPU Picking
-            if (0) {
-                // let start = 0, end = 0
-
-                // // GPU Picking
-                // start = Date.now()
-                // let uuid: string | null = this.picking(this._calcPickingMatrix(e))
-                // if (uuid) {
-                //     const [ level, globalId ] = uuid.split('-').map(key => Number(key))
-                //     console.log(level, globalId)
-                //     end = Date.now()
-                //     console.log(`GPU Picking: ${end - start} ms`)
-                // }
-
-                // // CPU Picking
-                // uuid = ''
-                // start = Date.now()
-                // const [ lon, lat ] = this.projConverter.inverse(e.lngLat.toArray())
-                // this.gridRecorder.storageId_uuId_map.values()
-                // .filter(uuId => node.hit && node.within(this.bBox, lon, lat)).forEach(node => uuid = node.uuId)
-                // if (uuid !== '') {
-                //     const [ level, globalId ] = uuid.split('-').map(key => Number(key))
-                //     console.log(level, globalId)
-                //     end = Date.now()
-                //     console.log(`CPU Picking: ${end - start} ms`)
-                // }
-            }
-        }
-        //// ADDON 2025/1/3
-        if (this.isShiftClick && this.EditorState.tool === 'box') {
-
-            this.map.dragPan.enable()
-            this.map.scrollZoom.enable()
-            this.isShiftClick = false
-            this._boxPickingEnd = e
-
-            const canvas = this._gl.canvas as HTMLCanvasElement
-            const box = genPickingBox(canvas, this._boxPickingStart!, this._boxPickingEnd!)
-            const storageIds = this.boxPicking(box)
-
-            // storageIds.forEach(sid => this.hit(sid))
-            this.hits(storageIds)
-
-            // reset
-            clear(this.ctx!)
-            this._boxPickingStart = null
-            this._boxPickingEnd = null
-        }
-
-        */
     }
 
     private _mousemoveHandler(e: MapMouseEvent) {
 
         if (this.isShiftClick && this.EditorState.tool === 'brush') {
             this.map.dragPan.disable()
-            
+
             const storageId = this.picking(e) as number
             this.hit(storageId)
         }
@@ -1074,7 +1044,7 @@ export default class GridLayer {
     private _handleStateGet(target: Record<string, string>, prop: string): string {
         return Reflect.get(target, prop);
     }
-    
+
     private _handleStateSet(target: Record<string, string>, prop: string, value: string): boolean {
         if (!(prop in target))
             throw new Error(`Property ${prop} does not exist on editorControl`);
@@ -1086,11 +1056,14 @@ export default class GridLayer {
                 this.typeChanged = true
                 switch (value) {
                     case 'topology':
+                        this.gridRecorder.resetEdges()
                         this.addTopologyEditorUIHandler()
                         break;
                     case 'attribute':
                         this._EditorState.mode = 'none'
                         this.addAttributeEditorUIHandler()
+                        this.gridRecorder.parseGridTopology(this.updateGPUEdges)
+                        this.map.triggerRepaint()
                         /*
                         Attribute setup
                         */

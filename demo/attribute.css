@@ -1,0 +1,144 @@
+div.property-editor {
+    top: 300px;
+    left: 300px;
+    position: absolute;
+    width: 150px;
+    height: 150px;
+    background-color: transparent;
+    z-index: 10;
+    user-select: none;
+    --wwidth: 15px;
+    --hheight: 120px;
+    --edgeSize: 25px;
+    --edgeHeight: 15px;
+}
+
+div.property {
+    position: absolute;
+    left: var(--wwidth);
+    top: var(--wwidth);
+    width: var(--hheight);
+    height: var(--hheight);
+    background-color: rgb(64, 101, 120);
+    justify-content: center;
+    align-items: center;
+}
+
+div.property>.property-block {
+    width: calc((var(--hheight)) - 20px);
+    height: 25px;
+    background-color: rgb(232, 10, 10);
+    justify-content: space-between;
+}
+span.text {
+    position: relative;
+    font-family: sans-serif;
+    font-size: 14px;
+    line-height: 25px;
+    color: whitesmoke;
+    flex:1;
+}
+input.property-input {
+    /* width: 70px !important; */
+    flex:1;
+    width: 70px;
+    height: 25px;
+    font-size: 14px;
+    background-color: #e6fcff;
+    border-radius: 3px;
+    border: #e6fcff solid 2px;
+    font-family: sans-serif;
+    outline: none;
+    box-sizing: border-box;
+    display: none;
+}
+
+div.property>.property-input.disabled {
+    cursor: not-allowed;
+}
+
+div.property>.property-input:focus {
+    outline: none;
+    border: rgb(255, 175, 175) solid 2px;
+}
+
+
+
+
+div.top {
+    position: absolute;
+    top: 0px;
+    left: var(--wwidth);
+    height: var(--wwidth);
+    width: var(--hheight);
+    background-color: #d8ffef;
+}
+
+div.left {
+    position: absolute;
+    top: var(--wwidth);
+    left: 0;
+    height: var(--hheight);
+    width: var(--wwidth);
+    background-color: #d8ffef;
+}
+
+div.right {
+    position: absolute;
+    top: var(--wwidth);
+    /* right: 0; */
+    right: 0;
+    height: var(--hheight);
+    width: var(--wwidth);
+    background-color: #d8ffef;
+
+}
+
+div.bottom {
+    position: absolute;
+    bottom: 0px;
+    left: var(--wwidth);
+    height: var(--wwidth);
+    width: var(--hheight);
+    background-color: #d8ffef;
+}
+
+div.col {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
+}
+
+div.row {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-evenly;
+}
+
+div.grid {
+    background-color: rgb(250, 226, 215);
+    box-shadow: inset 0px 0px 0px 2px rgb(183, 116, 116);
+    cursor: pointer;
+}
+
+div.row>div.grid {
+    height: var(--edgeHeight);
+    width: var(--edgeSize);
+}
+
+div.col>div.grid {
+    height: var(--edgeSize);
+    width: var(--edgeHeight);
+}
+
+div.grid.clicked {
+    background-color: rgb(252, 151, 151);
+
+}
+
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
