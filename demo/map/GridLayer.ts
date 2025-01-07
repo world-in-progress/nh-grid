@@ -464,6 +464,14 @@ export default class GridLayer {
             }
         })
 
+        // test 
+        document.addEventListener('keydown', e => {
+            if (e.key === 'p') {
+                console.log("grid ", this.gridRecorder.grid_attribute_cache.slice(0, 77))
+                console.log("edge ", this.gridRecorder.edge_attribute_cache)
+            }
+        })
+
 
 
         // Init GPU resources ////////////////////////////////////////////////////////////
@@ -994,7 +1002,6 @@ export default class GridLayer {
             }
             //// ADDON 
             if (e.originalEvent.shiftKey && e.originalEvent.button === 0 && this.EditorState.tool === 'box') {
-
                 this.isShiftClick = true
                 this.map.dragPan.disable()
                 this.map.scrollZoom.disable()
