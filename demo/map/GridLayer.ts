@@ -994,7 +994,7 @@ export default class GridLayer {
             }
             //// ADDON 
             if (e.originalEvent.shiftKey && e.originalEvent.button === 0 && this.EditorState.tool === 'box') {
-                console.log(this.EditorState.editor, '1111')
+
                 this.isShiftClick = true
                 this.map.dragPan.disable()
                 this.map.scrollZoom.disable()
@@ -1129,9 +1129,17 @@ export default class GridLayer {
                             this.updateGPUEdges(fromStorageId, vertexBuffer)
                             this.isTopologyParsed = true
                             this.showLoading!(false)
+                            this.updateAttrSetter({
+                                top: new Set(),
+                                left: new Set(),
+                                bottom: new Set(),
+                                right: new Set(),
+                                gridStorageId: -1
+                            })
                             this.attrSetter!.style.display = 'block'
                             const pannel = document.querySelector('#pannel') as HTMLDivElement
                             pannel.style.height = '400px'
+
                             console.log(" ====Topology Parsed==== ")
                         })
                         this.map.triggerRepaint()
@@ -1265,7 +1273,7 @@ export default class GridLayer {
 
         // if (Array.isArray(info.gridStorageId)) {
         if (this.EditorState.tool === 'box') {
-
+            console.log('box updateAttrSetter')
             const gridStorageIds = info.gridStorageId
 
             this.activeAttrFeature.id = gridStorageIds
@@ -1278,6 +1286,20 @@ export default class GridLayer {
             const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement;
             attrTypeDom.dataset.id = '-1';
             attrTypeDom.textContent = 'Grid';
+
+            const topHtml = genEdgeHTML("top", []);
+            const leftHtml = genEdgeHTML("left", []);
+            const bottomHtml = genEdgeHTML("bottom", []);
+            const rightHtml = genEdgeHTML("right", []);
+
+            const edgesInnerHtml = `
+                ${topHtml}
+                ${leftHtml}
+                ${bottomHtml}
+                ${rightHtml}
+                `;
+            const edgesDom = document.querySelector('#edges') as HTMLDivElement
+            edgesDom.innerHTML = edgesInnerHtml;
 
             (document.querySelector('#height') as HTMLInputElement).value = -9999 + '';
             (document.querySelector('#type') as HTMLInputElement).value = 0 + '';
@@ -1327,8 +1349,9 @@ export default class GridLayer {
 
 
     getInfoFromCache(ID: number, T: number) {
+        console.log(ID)
         let height = -9999, type = 0
-        if (!this.isTopologyParsed) return [height, type]
+        if (!this.isTopologyParsed || ID < 0) return [height, type]
         if (T === 0) {
             height = this.gridRecorder.grid_attribute_cache[ID].height
             type = this.gridRecorder.grid_attribute_cache[ID].type
