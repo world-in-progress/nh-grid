@@ -205,6 +205,7 @@ export default class GridLayer {
     }
 
     hitAttributeEditor() {
+        if (!this.isTopologyParsed) return
         if (this.EditorState.tool === "brush") {
             this._hitAttribute()
         }
@@ -222,6 +223,7 @@ export default class GridLayer {
     }
 
     private _hitAttribute() {
+        this.edgeDom!.style.display = 'block'
         const [gridStorageId] = this.hitSet
         const edgeSet = this.gridRecorder.getEdgeInfoByStorageId(+gridStorageId)
         const [top, left, bottom, right] = edgeSet
@@ -231,7 +233,7 @@ export default class GridLayer {
     }
 
     private _hitsAttribute() {
-        console.log("hittedGrids ")
+        this.edgeDom!.style.display = 'none'
         this.hitSet.forEach(g => {
             console.log(g)
         })
@@ -594,6 +596,9 @@ export default class GridLayer {
         this.map
             .on('mouseup', this.mouseupHandler as any)
             .on('mousedown', this.mousedownHandler as any)
+            // .on('mousemove', this.mousemoveHandler as any)
+            // .on('mouseout', this.mouseoutHandler as any)
+            // .on('resize', this.resizeHandler as any)
     }
 
     hit(storageIds: number | number[]) {
@@ -973,36 +978,40 @@ export default class GridLayer {
 
     private _mousedownHandler(e: MapMouseEvent) {
 
-        if (e.originalEvent.shiftKey && e.originalEvent.button === 0 && this.EditorState.tool === 'brush') {
-            this.isShiftClick = true
-            this.map.dragPan.disable()
+        if (this.EditorState.editor === "topology" || this.EditorState.editor === "attribute") {
+            if (e.originalEvent.shiftKey && e.originalEvent.button === 0 && this.EditorState.tool === 'brush') {
+                this.isShiftClick = true
+                this.map.dragPan.disable()
+            }
+            //// ADDON 
+            if (e.originalEvent.shiftKey && e.originalEvent.button === 0 && this.EditorState.tool === 'box') {
+                this.isShiftClick = true
+                this.map.dragPan.disable()
+                this.map.scrollZoom.disable()
+                this._boxPickingStart = e
+                this._boxPickingEnd = e
+            }
         }
-        //// ADDON 
-        if (e.originalEvent.shiftKey && e.originalEvent.button === 0 && this.EditorState.tool === 'box') {
-            this.isShiftClick = true
-            this.map.dragPan.disable()
-            this.map.scrollZoom.disable()
-            this._boxPickingStart = e
-            this._boxPickingEnd = e
-        }
+
     }
 
     private _mouseupHandler(e: MapMouseEvent) {
 
-        if (this.isShiftClick) {
+        if (this.EditorState.editor === "topology" || this.EditorState.editor === "attribute") {
+            if (this.isShiftClick) {
 
-            this.map.dragPan.enable()
-            this.map.scrollZoom.enable()
+                this.map.dragPan.enable()
+                this.map.scrollZoom.enable()
 
-            let e1, e2
-            if (this.EditorState.tool === 'brush') {
-                e1 = e
-                e2 = undefined
-            } else {
-                this._boxPickingEnd = e
-                e1 = this._boxPickingStart!
-                e2 = this._boxPickingEnd
-            }
+                let e1, e2
+                if (this.EditorState.tool === 'brush') {
+                    e1 = e
+                    e2 = undefined
+                } else {
+                    this._boxPickingEnd = e
+                    e1 = this._boxPickingStart!
+                    e2 = this._boxPickingEnd
+                }
 
             const storageIds = this.picking(e1, e2)
             if (this.EditorState.mode === 'check') {
@@ -1014,30 +1023,39 @@ export default class GridLayer {
                 this.hit(storageIds)
             }
 
-            clear(this._ctx!)
-            this._boxPickingStart = null
-            this._boxPickingEnd = null
-            this.isShiftClick = false
+                clear(this._ctx!)
+                this._boxPickingStart = null
+                this._boxPickingEnd = null
+                this.isShiftClick = false
+            }
         }
+
     }
 
     private _mousemoveHandler(e: MapMouseEvent) {
 
-        if (this.isShiftClick && this.EditorState.tool === 'brush') {
-            this.map.dragPan.disable()
+        // if (this.EditorState.editor === "topology") {
+            if (this.isShiftClick && this.EditorState.tool === 'brush') {
+                this.map.dragPan.disable()
+                const storageId = this.picking(e) as number
+                this.hit(storageId)
+            }
 
-            const storageId = this.picking(e) as number
-            this.hit(storageId)
-        }
-
-        if (this.isShiftClick && this.EditorState.tool === 'box' && this._boxPickingStart) {
-
-            // Render the picking box
-            this._boxPickingEnd = e
-            const canvas = this._gl.canvas as HTMLCanvasElement
-            const box = genPickingBox(canvas, this._boxPickingStart, this._boxPickingEnd!)
-            drawRectangle(this._ctx!, box)
-        }
+            if (this.isShiftClick && this.EditorState.tool === 'box' && this._boxPickingStart) {
+                // Render the picking box
+                this._boxPickingEnd = e
+                const canvas = this._gl.canvas as HTMLCanvasElement
+                const box = genPickingBox(canvas, this._boxPickingStart, this._boxPickingEnd!)
+                drawRectangle(this._ctx!, box)
+            }
+        // } 
+        // else if (this.EditorState.editor === "attribute") {
+        //     // Render the picking box
+        //     this._boxPickingEnd = e
+        //     const canvas = this._gl.canvas as HTMLCanvasElement
+        //     const box = genPickingBox(canvas, this._boxPickingStart!, this._boxPickingEnd!)
+        //     drawRectangle(this._ctx!, box)
+        // }
     }
 
     private _mouseoutHandler(e: MapMouseEvent) {
