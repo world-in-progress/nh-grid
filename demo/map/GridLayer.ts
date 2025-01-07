@@ -223,20 +223,17 @@ export default class GridLayer {
     }
 
     private _hitAttribute() {
-        this.edgeDom!.style.display = 'block'
+
         const [gridStorageId] = this.hitSet
         const edgeSet = this.gridRecorder.getEdgeInfoByStorageId(+gridStorageId)
         const [top, left, bottom, right] = edgeSet
-        console.log("hittedGrid info:: ", { gridStorageId, top, left, bottom, right })
         this.updateAttrSetter({ gridStorageId, top, left, bottom, right })
-
     }
 
     private _hitsAttribute() {
-        this.edgeDom!.style.display = 'none'
-        this.hitSet.forEach(g => {
-            console.log(g)
-        })
+
+        const gridStorageIds = Array.from(this.hitSet)
+        this.updateAttrSetter({ gridStorageId: gridStorageIds })
     }
 
     // Fast function to upload one grid rendering info to GPU stograge buffer
@@ -458,6 +455,14 @@ export default class GridLayer {
         // [8] loading
         this.showLoading = initLoadingDOM()
 
+        // test 
+        document.addEventListener('keydown', e => {
+            if (e.key === 'p') {
+                console.log("grid ", this.gridRecorder.grid_attribute_cache.slice(0, 77))
+                console.log("edge ", this.gridRecorder.edge_attribute_cache)
+            }
+        })
+
 
 
         // Init GPU resources ////////////////////////////////////////////////////////////
@@ -599,9 +604,9 @@ export default class GridLayer {
         this.map
             .on('mouseup', this.mouseupHandler as any)
             .on('mousedown', this.mousedownHandler as any)
-        // .on('mousemove', this.mousemoveHandler as any)
-        // .on('mouseout', this.mouseoutHandler as any)
-        // .on('resize', this.resizeHandler as any)
+            .on('mousemove', this.mousemoveHandler as any)
+            .on('mouseout', this.mouseoutHandler as any)
+            .on('resize', this.resizeHandler as any)
     }
 
     hit(storageIds: number | number[]) {
@@ -988,6 +993,7 @@ export default class GridLayer {
             }
             //// ADDON 
             if (e.originalEvent.shiftKey && e.originalEvent.button === 0 && this.EditorState.tool === 'box') {
+                console.log(this.EditorState.editor, '1111')
                 this.isShiftClick = true
                 this.map.dragPan.disable()
                 this.map.scrollZoom.disable()
@@ -1037,28 +1043,30 @@ export default class GridLayer {
 
     private _mousemoveHandler(e: MapMouseEvent) {
 
-        // if (this.EditorState.editor === "topology") {
-        if (this.isShiftClick && this.EditorState.tool === 'brush') {
-            this.map.dragPan.disable()
-            const storageId = this.picking(e) as number
-            this.hit(storageId)
-        }
+        if (this.EditorState.editor === "topology") {
+            if (this.isShiftClick && this.EditorState.tool === 'brush') {
+                this.map.dragPan.disable()
+                const storageId = this.picking(e) as number
+                this.hit(storageId)
+            }
 
-        if (this.isShiftClick && this.EditorState.tool === 'box' && this._boxPickingStart) {
-            // Render the picking box
-            this._boxPickingEnd = e
-            const canvas = this._gl.canvas as HTMLCanvasElement
-            const box = genPickingBox(canvas, this._boxPickingStart, this._boxPickingEnd!)
-            drawRectangle(this._ctx!, box)
+            if (this.isShiftClick && this.EditorState.tool === 'box' && this._boxPickingStart) {
+                // Render the picking box
+                this._boxPickingEnd = e
+                const canvas = this._gl.canvas as HTMLCanvasElement
+                const box = genPickingBox(canvas, this._boxPickingStart, this._boxPickingEnd!)
+                drawRectangle(this._ctx!, box)
+            }
         }
-        // } 
-        // else if (this.EditorState.editor === "attribute") {
-        //     // Render the picking box
-        //     this._boxPickingEnd = e
-        //     const canvas = this._gl.canvas as HTMLCanvasElement
-        //     const box = genPickingBox(canvas, this._boxPickingStart!, this._boxPickingEnd!)
-        //     drawRectangle(this._ctx!, box)
-        // }
+        else if (this.EditorState.editor === "attribute") {
+            if (this.isShiftClick && this.EditorState.tool === 'box' && this._boxPickingStart) {
+                // Render the picking box
+                this._boxPickingEnd = e
+                const canvas = this._gl.canvas as HTMLCanvasElement
+                const box = genPickingBox(canvas, this._boxPickingStart, this._boxPickingEnd!)
+                drawRectangle(this._ctx!, box)
+            }
+        }
     }
 
     private _mouseoutHandler(e: MapMouseEvent) {
@@ -1180,7 +1188,11 @@ export default class GridLayer {
             (e.target as HTMLInputElement).value
         ]
         this.activeAttrFeature[attr as "height" | "type"] = +value
-        this.setCacheInfo(this.activeAttrFeature.id, this.activeAttrFeature.t, this.activeAttrFeature.height, this.activeAttrFeature.type)
+        if (!Array.isArray(this.activeAttrFeature.id)) {
+            this.setCacheInfo(this.activeAttrFeature.id, this.activeAttrFeature.t, this.activeAttrFeature.height, this.activeAttrFeature.type)
+        } else {
+            this.setCacheBatchInfo(this.activeAttrFeature.id, this.activeAttrFeature.t, this.activeAttrFeature.height, this.activeAttrFeature.type)
+        }
     }
 
     initAttrSetter(info: any) {
@@ -1241,42 +1253,67 @@ export default class GridLayer {
     }
 
     updateAttrSetter(info: any) {
-        //////// parse grid and edge info
-        const gridStorageId = info.gridStorageId
-        const top = Array.from(info.top)
-        const left = Array.from(info.left)
-        const bottom = Array.from(info.bottom)
-        const right = Array.from(info.right)
 
-        // reset default :: grid clicked
-        const [height, type] = this.getInfoFromCache(gridStorageId, 0) // 0 grid, 1 edge
-        this.activeAttrFeature.id = gridStorageId
-        this.activeAttrFeature.dom = null
-        this.activeAttrFeature.t = 0
-        this.activeAttrFeature.height = height
-        this.activeAttrFeature.type = type
+        if (Array.isArray(info.gridStorageId)) {
+            this.edgeDom!.style.display = 'none'
+            const gridStorageIds = info.gridStorageId
 
-        // reset grid dom data-id and input value
-        const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement;
-        attrTypeDom.dataset.id = gridStorageId;
+            this.activeAttrFeature.id = gridStorageIds
+            this.activeAttrFeature.dom = null
+            this.activeAttrFeature.t = 0
+            this.activeAttrFeature.height = -9999
+            this.activeAttrFeature.type = 0
 
-        (document.querySelector('#height') as HTMLInputElement).value = height + '';
-        (document.querySelector('#type') as HTMLInputElement).value = type + '';
+            // reset grid dom data-id and input value
+            const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement;
+            attrTypeDom.dataset.id = '-1';
+            attrTypeDom.style.pointerEvents = 'none';
 
-        // reset edges dom
-        const topHtml = genEdgeHTML("top", top as number[])
-        const leftHtml = genEdgeHTML("left", left as number[])
-        const bottomHtml = genEdgeHTML("bottom", bottom as number[])
-        const rightHtml = genEdgeHTML("right", right as number[])
+            (document.querySelector('#height') as HTMLInputElement).value = -9999 + '';
+            (document.querySelector('#type') as HTMLInputElement).value = 0 + '';
 
-        const edgesInnerHtml = `
-        ${topHtml}
-        ${leftHtml}
-        ${bottomHtml}
-        ${rightHtml}
-        `
-        const edgesDom = document.querySelector('#edges') as HTMLDivElement
-        edgesDom.innerHTML = edgesInnerHtml
+
+        } else {
+            this.edgeDom!.style.display = 'block'
+            //////// parse grid and edge info
+            const gridStorageId = info.gridStorageId
+            const top = Array.from(info.top)
+            const left = Array.from(info.left)
+            const bottom = Array.from(info.bottom)
+            const right = Array.from(info.right)
+
+            // reset default :: grid clicked
+            const [height, type] = this.getInfoFromCache(gridStorageId, 0) // 0 grid, 1 edge
+            this.activeAttrFeature.id = gridStorageId
+            this.activeAttrFeature.dom = null
+            this.activeAttrFeature.t = 0
+            this.activeAttrFeature.height = height
+            this.activeAttrFeature.type = type
+
+            // reset grid dom data-id and input value
+            const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement;
+            attrTypeDom.dataset.id = gridStorageId;
+
+            (document.querySelector('#height') as HTMLInputElement).value = height + '';
+            (document.querySelector('#type') as HTMLInputElement).value = type + '';
+
+            // reset edges dom
+            const topHtml = genEdgeHTML("top", top as number[])
+            const leftHtml = genEdgeHTML("left", left as number[])
+            const bottomHtml = genEdgeHTML("bottom", bottom as number[])
+            const rightHtml = genEdgeHTML("right", right as number[])
+
+            const edgesInnerHtml = `
+                ${topHtml}
+                ${leftHtml}
+                ${bottomHtml}
+                ${rightHtml}
+                `
+            const edgesDom = document.querySelector('#edges') as HTMLDivElement
+            edgesDom.innerHTML = edgesInnerHtml
+        }
+
+
     }
 
 
@@ -1303,6 +1340,23 @@ export default class GridLayer {
         } else {
             this.gridRecorder.edge_attribute_cache[ID].height = height
             this.gridRecorder.edge_attribute_cache[ID].type = type
+        }
+    }
+
+    setCacheBatchInfo(IDs: number[], T: number = 0, height: number, type: number) {
+        if (!this.isTopologyParsed) {
+            throw "Topology Not Parsed!!" //never
+        }
+        if (T === 0) {
+            IDs.forEach(ID => {
+                this.gridRecorder.grid_attribute_cache[ID].height = height
+                this.gridRecorder.grid_attribute_cache[ID].type = type
+            })
+        } else {
+            IDs.forEach(ID => {
+                this.gridRecorder.edge_attribute_cache[ID].height = height
+                this.gridRecorder.edge_attribute_cache[ID].type = type
+            })
         }
     }
 
