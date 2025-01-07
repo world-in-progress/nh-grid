@@ -7,6 +7,7 @@ div.property-editor {
     background-color: transparent;
     z-index: 10;
     user-select: none;
+    font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
     --wwidth: 15px;
     --hheight: 120px;
     --edgeSize: 25px;
@@ -24,33 +25,42 @@ div.property {
     align-items: center;
 }
 
-div.property>.property-block {
-    width: calc((var(--hheight)) - 20px);
+div.property>.property-type{
+    width: calc((var(--hheight)) - 10px);
     height: 25px;
-    background-color: rgb(232, 10, 10);
+    font-size: 1.2rem;
+    font-weight: bolder;
+    color: #ffffff;
+    cursor: pointer;
+}
+
+div.property>.property-block {
+    width: calc((var(--hheight)) - 10px);
+    height: 25px;
+    /* background-color: rgb(232, 10, 10); */
     justify-content: space-between;
 }
-span.text {
+div.text {
     position: relative;
-    font-family: sans-serif;
-    font-size: 14px;
+    font-size: 1.05rem;
     line-height: 25px;
+    width: 50px;
     color: whitesmoke;
-    flex:1;
+    text-align: right;
+    text-align: center;
 }
 input.property-input {
     /* width: 70px !important; */
-    flex:1;
-    width: 70px;
+    width: 55px;
     height: 25px;
-    font-size: 14px;
-    background-color: #e6fcff;
+    text-align: center;
+    font-size: 0.9rem;
+    background-color: rgb(217,255,239);
     border-radius: 3px;
     border: #e6fcff solid 2px;
-    font-family: sans-serif;
     outline: none;
     box-sizing: border-box;
-    display: none;
+    /* display: none; */
 }
 
 div.property>.property-input.disabled {
@@ -115,25 +125,31 @@ div.row {
     justify-content: space-evenly;
 }
 
-div.grid {
+div.edge {
     background-color: rgb(250, 226, 215);
     box-shadow: inset 0px 0px 0px 2px rgb(183, 116, 116);
     cursor: pointer;
 }
 
-div.row>div.grid {
+div.row>div.edge {
     height: var(--edgeHeight);
     width: var(--edgeSize);
 }
 
-div.col>div.grid {
+div.col>div.edge {
     height: var(--edgeSize);
     width: var(--edgeHeight);
 }
 
-div.grid.clicked {
+div.edge.actived {
     background-color: rgb(252, 151, 151);
 
+}
+
+div.f-center{
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 

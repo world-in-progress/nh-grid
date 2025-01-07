@@ -16,8 +16,8 @@ interface GridLevelInfo {
 export interface GridLayerSerializedInfo {
     CRS: string
     levelInfos: GridLevelInfo[]
-    extent: [ number, number, number, number ]
-    subdivideRules: [ number, number ][]
+    extent: [number, number, number, number]
+    subdivideRules: [number, number][]
     grids: {
         index: number,
         level: number,
@@ -62,7 +62,7 @@ export default class GridRecorder extends UndoRedoManager {
     adjGrids_cache: number[][] = []
     edge_attribute_cache: Array<Record<string, any>> = [] // { height: number [-9999], type: number [ 0, 0-10 ] }
 
-    constructor(private _subdivideRules: SubdivideRules, maxGridNum?: number, options: GridRecordOptions = {}) {
+    constructor(private _subdivideRules: SubdivideRules, maxGridNum: number, options: GridRecordOptions = {}) {
         super(options.operationCapacity || 50)
 
         this.dispatcher = options.dispatcher || new Dispatcher(this, options.workerCount || 4)
@@ -88,8 +88,9 @@ export default class GridRecorder extends UndoRedoManager {
         })
 
         // Init grid cache
-        this.storageId_gridInfo_cache = maxGridNum ? new Array<number>(maxGridNum * 2) : []
-
+        this.storageId_gridInfo_cache = new Array<number>(maxGridNum * 2)
+        this.grid_attribute_cache = Array.from({ length: maxGridNum }, () => { return { height: -9999, type: 0 } })
+        
         // Create IndexedDB
         createDB('GridDB', 'GridNode', 'uuId')
         if (options.autoDeleteIndexedDB === undefined ? true : options.autoDeleteIndexedDB) {
@@ -102,7 +103,7 @@ export default class GridRecorder extends UndoRedoManager {
             if (e.shiftKey && e.key === 'S') {
                 let data = this.serialize()
                 let jsonData = JSON.stringify(data)
-                let blob = new Blob([ jsonData ], { type: 'application/json' })
+                let blob = new Blob([jsonData], { type: 'application/json' })
                 let link = document.createElement('a')
                 link.href = URL.createObjectURL(blob)
                 link.download = 'gridInfo.json'
@@ -213,7 +214,6 @@ export default class GridRecorder extends UndoRedoManager {
             this.storageId_edgeId_set = topologyInfo[2]
 
             // init attribute cache 
-            this.grid_attribute_cache = new Array<Record<string, any>>(this.gridNum).fill({ height: -9999, type: 0 })
             this.edge_attribute_cache = new Array<Record<string, any>>(this.edgeNum).fill({ height: -9999, type: 0 })
 
             const actorNum = WorkerPool.workerCount - 1
@@ -244,7 +244,7 @@ export default class GridRecorder extends UndoRedoManager {
                     index,
                     level: this.storageId_gridInfo_cache[index * 2 + 0],
                     globalId: this.storageId_gridInfo_cache[index * 2 + 1],
-                    edges: edgeIdSets.map(edgeIdSet => [ ...edgeIdSet ])
+                    edges: edgeIdSets.map(edgeIdSet => [...edgeIdSet])
                 }
             }),
             edges: this.edgeKeys_cache.slice(0, this.edgeNum).map((key, index) => {

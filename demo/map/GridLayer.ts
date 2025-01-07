@@ -215,7 +215,7 @@ export default class GridLayer {
         const [gridStorageId] = this.hitSet
         const edgeSet = this.gridRecorder.getEdgeInfoByStorageId(+gridStorageId)
         const [top1, left1, bottom1, right1] = edgeSet
-        console.log("hittedGrid info:: ", gridStorageId, top1, left1, bottom1, right1)
+        console.log("hittedGrid info:: ", { gridStorageId, top1, left1, bottom1, right1 })
 
     }
 
@@ -409,7 +409,10 @@ export default class GridLayer {
 
             if (e.shiftKey && e.key === 'E') {
 
-                this.gridRecorder.parseGridTopology(this.updateGPUEdges)
+                this.gridRecorder.parseGridTopology(() => {
+                    this.updateGPUEdges
+                    // stop loading
+                })
 
                 this.map.triggerRepaint()
             }
