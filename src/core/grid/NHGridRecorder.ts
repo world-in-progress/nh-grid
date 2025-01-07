@@ -41,7 +41,7 @@ export interface GridRecordOptions {
     dispatcher?: Dispatcher
     operationCapacity?: number
     autoDeleteIndexedDB?: boolean
-    projectLoadCallback?: (infos: [ fromStorageId: number, levels: Uint16Array, vertexBuffer: Float32Array ]) => void
+    projectLoadCallback?: (infos: [fromStorageId: number, levels: Uint16Array, vertexBuffer: Float32Array]) => void
 }
 
 export default class GridRecorder extends UndoRedoManager {
@@ -52,7 +52,7 @@ export default class GridRecorder extends UndoRedoManager {
     isReady = false
     dispatcher: Dispatcher
     levelInfos: GridLevelInfo[]
-    projectLoadCallback: undefined | ((infos: [ fromStorageId: number, levels: Uint16Array, vertexBuffer: Float32Array ]) => void)
+    projectLoadCallback: undefined | ((infos: [fromStorageId: number, levels: Uint16Array, vertexBuffer: Float32Array]) => void)
 
     storageId_gridInfo_cache: Array<number> // [ level_0, globalId_0, level_1, globalId_1, ... , level_n, globalId_n ]
     storageId_edgeId_set: Array<[Set<number>, Set<number>, Set<number>, Set<number>]> = []
@@ -90,7 +90,7 @@ export default class GridRecorder extends UndoRedoManager {
         // Init grid cache
         this.storageId_gridInfo_cache = new Array<number>(maxGridNum * 2)
         this.grid_attribute_cache = Array.from({ length: maxGridNum }, () => { return { height: -9999, type: 0 } })
-        
+
         // Create IndexedDB
         createDB('GridDB', 'GridNode', 'uuId')
         if (options.autoDeleteIndexedDB === undefined ? true : options.autoDeleteIndexedDB) {
@@ -115,12 +115,12 @@ export default class GridRecorder extends UndoRedoManager {
         document.addEventListener('keydown', e => {
 
             if (e.shiftKey && e.key === 'L') {
-                
+
                 let input = document.createElement('input')
                 input.type = 'file'
                 input.accept = '.json'
                 input.click()
-        
+
                 input.addEventListener('change', (event) => {
                     if (!event.target) return
                     let inputElement = event.target as HTMLInputElement
@@ -214,7 +214,7 @@ export default class GridRecorder extends UndoRedoManager {
             this.storageId_edgeId_set = topologyInfo[2]
 
             // init attribute cache 
-            this.edge_attribute_cache = new Array<Record<string, any>>(this.edgeNum).fill({ height: -9999, type: 0 })
+            this.edge_attribute_cache = Array.from({ length: this.edgeNum }, () => { return { height: -9999, type: 0 } })
 
             const actorNum = WorkerPool.workerCount - 1
             const edgeChunk = Math.ceil(this.edgeKeys_cache.length / actorNum)
@@ -298,7 +298,7 @@ export default class GridRecorder extends UndoRedoManager {
 
             // Ready to render
             this._nextStorageId = gridNum
-            this.projectLoadCallback([ 0, levels, vertexBuffer])
+            this.projectLoadCallback([0, levels, vertexBuffer])
         }
 
 
@@ -365,8 +365,8 @@ export default class GridRecorder extends UndoRedoManager {
 
     checkGrid(storageId: number) {
 
-        const level = this.storageId_gridInfo_cache[ storageId * 2 + 0 ]
-        const globalId = this.storageId_gridInfo_cache[ storageId * 2 + 1 ]
+        const level = this.storageId_gridInfo_cache[storageId * 2 + 0]
+        const globalId = this.storageId_gridInfo_cache[storageId * 2 + 1]
         const localId = this.getGridLocalId(level, globalId)
         const edges = this.storageId_edgeId_set[storageId]
 
