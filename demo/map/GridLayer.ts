@@ -92,7 +92,7 @@ export default class GridLayer {
     private _EditorState: Record<string, string> = {
         editor: 'none',   // 'none' | 'topology' | 'attribute'
         tool: 'none',     // 'none' | 'brush' | 'box'
-        mode: 'none'      // 'none' | 'subdivide' | 'delete'
+        mode: 'none'      // 'none' | 'subdivide' | 'delete' | 'check'
     }
     EditorState: Record<string, string> = {}
 
@@ -148,6 +148,7 @@ export default class GridLayer {
         {
             workerCount: 4,
             operationCapacity: 200,
+            projectLoadCallback: this._updateGPUGrids.bind(this),
         })
 
         // Set WebGL2 context
@@ -439,6 +440,17 @@ export default class GridLayer {
             if (e.shiftKey && e.key === 'E') {
 
                 this.gridRecorder.parseGridTopology(this.updateGPUEdges)
+
+                this.map.triggerRepaint()
+            }
+        })
+
+        // [7] Add event listner for <Shift + A> (Console Attribute Type)
+        document.addEventListener('keydown', e => {
+
+            if (e.shiftKey && e.key === 'A') {
+
+                this.EditorState.mode = 'check'
 
                 this.map.triggerRepaint()
             }
@@ -986,7 +998,14 @@ export default class GridLayer {
             }
 
             const storageIds = this.picking(e1, e2)
-            this.hit(storageIds)
+            if (this.EditorState.mode === 'check') {
+                const storageId = Array.isArray(storageIds) ? storageIds[0] : storageIds
+                console.log(this.gridRecorder.checkGrid(storageId))
+
+            } else {
+
+                this.hit(storageIds)
+            }
 
             clear(this._ctx!)
             this._boxPickingStart = null

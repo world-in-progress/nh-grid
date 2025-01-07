@@ -78,12 +78,13 @@ void main() {
         xy = pos.zw;
     }
 
-    if (gl_InstanceID % 2 == 0) {
-        v_color = vec3(1.0, 1.0, 1.0);
-    } else {
-        v_color = vec3(0.0, 0.0, 0.0);
-    }
+    // if (gl_InstanceID % 2 == 0) {
+    //     v_color = vec3(1.0, 1.0, 1.0);
+    // } else {
+    //     v_color = vec3(0.0, 0.0, 0.0);
+    // }
 
+    v_color = texelFetch(paletteTexture, ivec2(gl_InstanceID % 5, 0), 0).rgb;
     gl_Position = uMatrix * vec4(translateRelativeToEye(xy, vec2(0.0)), 0.0, 1.0);
 }
 

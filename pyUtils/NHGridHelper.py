@@ -38,8 +38,8 @@ class NHGridNode:
         self.level = level
         self.edge_ids = edges
         self.x_min = vertices[0]
-        self.x_max = vertices[1]
-        self.y_min = vertices[2]
+        self.y_min = vertices[1]
+        self.x_max = vertices[2]
         self.y_max = vertices[3]
         self.global_id = global_id
         
@@ -81,19 +81,19 @@ class NHGridNode:
     
     def get_north_edge_ids(self) -> list[int]:
         
-        return list(self.edge_ids[EDGE_CODE_NORTH])
+        return self.edge_ids[EDGE_CODE_NORTH]
     
     def get_west_edge_ids(self) -> list[int]:
         
-        return list(self.edge_ids[EDGE_CODE_WEST])
+        return self.edge_ids[EDGE_CODE_WEST]
     
     def get_south_edge_ids(self) -> list[int]:
         
-        return list(self.edge_ids[EDGE_CODE_SOUTH])
+        return self.edge_ids[EDGE_CODE_SOUTH]
     
     def get_east_edge_ids(self) -> list[int]:
         
-        return list(self.edge_ids[EDGE_CODE_EAST])
+        return self.edge_ids[EDGE_CODE_EAST]
     
     def get_width(self) -> float:
         
@@ -264,7 +264,7 @@ class NHGridHelper:
         
         extent = self.extent
         global_u = global_id % global_width
-        global_v = global_id % global_height
+        global_v = math.floor(global_id / global_width)
         
         x_min = lerp(extent[0], extent[2], global_u / global_width)
         y_min = lerp(extent[1], extent[3], global_v / global_height)
@@ -293,7 +293,7 @@ class NHGridHelper:
             shared = lerp(extent[0], extent[2], shared)
             return [ shared, min, shared, max ]
         
-    def check_edge_direction_along_grid(self, edge_id: int, grid: NHGridNode) -> int:
+    def check_edge_code_along_grid(self, edge_id: int, grid: NHGridNode) -> int:
         
         for edge_code, edges in enumerate(grid.edge_ids):
             for _edge_id in edges:
@@ -302,20 +302,15 @@ class NHGridHelper:
 
     def update_adjacent_grids_along_edge(self, edge: NHGridEdge) -> None:
         
-        direction = edge.key[0]
         grids = [ None, None, None, None ]
-        
-        if direction == 'h':
-            for grid_id in edge.grid_ids:
-                edge_code = self.check_edge_direction_along_grid(edge.id, self.grids[grid_id])
-                grids[NHGridEdge.get_op_edge_code(edge_code)] = grid_id
+        for grid_id in edge.grid_ids:
+            edge_code = self.check_edge_code_along_grid(edge.id, self.grids[grid_id])
+            grids[NHGridEdge.get_op_edge_code(edge_code)] = grid_id
         edge.grid_ids = grids
             
-        
     def process_invalid_edge(self, edges: list[NHGridEdge]):
         
         for edge in edges:
-            print('NOPE')
             del self.edges[edge.id]
             
             for grid in self.get_grids_adjacent_to_edge(edge):

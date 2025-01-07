@@ -41,6 +41,7 @@ export interface GridRecordOptions {
     dispatcher?: Dispatcher
     operationCapacity?: number
     autoDeleteIndexedDB?: boolean
+    projectLoadCallback?: (infos: [ fromStorageId: number, levels: Uint16Array, vertexBuffer: Float32Array ]) => void
 }
 
 export default class GridRecorder extends UndoRedoManager {
@@ -51,6 +52,7 @@ export default class GridRecorder extends UndoRedoManager {
     isReady = false
     dispatcher: Dispatcher
     levelInfos: GridLevelInfo[]
+    projectLoadCallback: undefined | ((infos: [ fromStorageId: number, levels: Uint16Array, vertexBuffer: Float32Array ]) => void)
 
     storageId_gridInfo_cache: Array<number> // [ level_0, globalId_0, level_1, globalId_1, ... , level_n, globalId_n ]
     storageId_edgeId_set: Array<[Set<number>, Set<number>, Set<number>, Set<number>]> = []
@@ -64,6 +66,8 @@ export default class GridRecorder extends UndoRedoManager {
         super(options.operationCapacity || 50)
 
         this.dispatcher = options.dispatcher || new Dispatcher(this, options.workerCount || 4)
+
+        this.projectLoadCallback = options.projectLoadCallback
 
         // Init projConverter
         this._projConverter = proj4(this._subdivideRules.srcCS, this._subdivideRules.targetCS)
@@ -103,6 +107,37 @@ export default class GridRecorder extends UndoRedoManager {
                 link.href = URL.createObjectURL(blob)
                 link.download = 'gridInfo.json'
                 link.click()
+            }
+        })
+
+        // Add event listener for <Shift + L> (Load serialization json)
+        document.addEventListener('keydown', e => {
+
+            if (e.shiftKey && e.key === 'L') {
+                
+                let input = document.createElement('input')
+                input.type = 'file'
+                input.accept = '.json'
+                input.click()
+        
+                input.addEventListener('change', (event) => {
+                    if (!event.target) return
+                    let inputElement = event.target as HTMLInputElement
+                    if (!inputElement || !inputElement.files) return
+                    let file = inputElement.files[0]
+                    if (file) {
+                        const reader = new FileReader()
+                        reader.onload = () => {
+                            try {
+                                const data = JSON.parse(reader.result as string)
+                                this.deserialize(data)
+                            } catch (err) {
+                                console.error('Error parsing JSON file:', err)
+                            }
+                        }
+                        reader.readAsText(file)
+                    }
+                })
             }
         })
     }
@@ -196,8 +231,8 @@ export default class GridRecorder extends UndoRedoManager {
     serialize(): GridLayerSerializedInfo {
 
         return {
-            CRS: this._subdivideRules.srcCS,
             levelInfos: this.levelInfos,
+            CRS: this._subdivideRules.srcCS,
             extent: this._subdivideRules.bBox.boundary,
             subdivideRules: this._subdivideRules.rules,
             grids: this.storageId_edgeId_set.slice(0, this.gridNum).map((edgeIdSets, index) => {
@@ -217,94 +252,61 @@ export default class GridRecorder extends UndoRedoManager {
             })
         }
     }
-    // serialize() {
 
-    //     const serializedData: GridLayerSerializedInfo = {
-    //         grids: [], edges: [],
-    //         extent: this.bBox.boundary
-    //     }
+    deserialize(data: any) {
 
-    //     const grids = serializedData.grids
-    //     const edges = serializedData.edges
-    //     const levelGlobalId_serializedId_Map: Map<string, number> = new Map<string, number>()
+        if (!isDataValid(data)) return
 
-    //     // Serialized edge recoder used to record valid edges
-    //     const sEdgeRecoder = new GridEdgeRecorder()
+        this.edgeKeys_cache = []
+        this.adjGrids_cache = []
+        this.edge_attribute_cache = []
+        this.storageId_edgeId_set = []
 
-    //     // Serialize grids //////////////////////////////////////////////////
+        const projectInfo = data as GridLayerSerializedInfo
 
-    //     // Iterate hit grids in Editor Type
-    //     if (this._currentType === this.EDITOR_TYPE) {
-    //         this.hitGridList.forEach((grid, index) => {
+        this._nextStorageId = 0
+        this.levelInfos = projectInfo.levelInfos
+        this._subdivideRules.srcCS = projectInfo.CRS
+        this._subdivideRules.bBox.reset(...projectInfo.extent)
+        projectInfo.grids.forEach((grid, storageId) => {
+            this.storageId_gridInfo_cache[storageId * 2 + 0] = grid.level
+            this.storageId_gridInfo_cache[storageId * 2 + 1] = grid.globalId
+        })
 
-    //             const { xMinPercent, yMinPercent, xMaxPercent, yMaxPercent } = grid.serialization
-    //             grids.push({
-    //                 id: index,
-    //                 xMinPercent, yMinPercent,
-    //                 xMaxPercent, yMaxPercent
-    //             })
-    //             const key = [ grid.level, grid.globalId ].join('-')
-    //             levelGlobalId_serializedId_Map.set(key, index)
+        // Generate grid render infos
+        if (this.projectLoadCallback) {
+            const grids = projectInfo.grids
+            const gridNum = grids.length
+            const vertices = new Float32Array(8)
+            const vertexBuffer = new Float32Array(gridNum * 8)
+            const levels = new Uint16Array(grids.map(grid => grid.level))
+            grids.forEach((grid, storageId) => {
+                this._createNodeRenderVertices(grid.level, grid.globalId, vertices)
+                vertexBuffer[gridNum * 2 * 0 + storageId * 2 + 0] = vertices[0]
+                vertexBuffer[gridNum * 2 * 0 + storageId * 2 + 1] = vertices[1]
+                vertexBuffer[gridNum * 2 * 1 + storageId * 2 + 0] = vertices[2]
+                vertexBuffer[gridNum * 2 * 1 + storageId * 2 + 1] = vertices[3]
+                vertexBuffer[gridNum * 2 * 2 + storageId * 2 + 0] = vertices[4]
+                vertexBuffer[gridNum * 2 * 2 + storageId * 2 + 1] = vertices[5]
+                vertexBuffer[gridNum * 2 * 3 + storageId * 2 + 0] = vertices[6]
+                vertexBuffer[gridNum * 2 * 3 + storageId * 2 + 1] = vertices[7]
+            })
 
-    //             // Avoid edge miss and record valid key
-    //             this.edgeRecorder.calcGridEdges(grid, this.gridRecorder)
-    //             grid.edgeKeys.forEach(key => {
-    //                 const edge = this.edgeRecorder.getEdgeByKey(key)
-    //                 sEdgeRecoder.addEdge(edge)
-    //             })
-    //         })
-    //     }
-    //     // Iterate hit grids in Subdivider Type
-    //     else {
+            // Ready to render
+            this._nextStorageId = gridNum
+            this.projectLoadCallback([ 0, levels, vertexBuffer])
+        }
 
-    //         // Find neighbours for all grids
-    //         this.gridRecorder.findNeighbours()
 
-    //         let index = 0
-    //         this.gridRecorder.uuId_gridNode_map.forEach(grid => {
-    //             if (grid.hit) {
+        // Local helper //////////////////////////////////////////////////
 
-    //                 const { xMinPercent, yMinPercent, xMaxPercent, yMaxPercent } = grid.serialization
-    //                 grids.push({
-    //                     id: index,
-    //                     xMinPercent, yMinPercent,
-    //                     xMaxPercent, yMaxPercent
-    //                 })
+        function isDataValid(data: any): boolean {
 
-    //                 const key = [ grid.level, grid.globalId ].join('-')
-    //                 levelGlobalId_serializedId_Map.set(key, index)
-    //                 index++
-
-    //                 // Avoid edge miss and record valid key
-    //                 this.edgeRecorder.calcGridEdges(grid, this.gridRecorder)
-    //                 grid.edgeKeys.forEach(key => {
-    //                     const edge = this.edgeRecorder.getEdgeByKey(key)
-    //                     sEdgeRecoder.addEdge(edge)
-    //                 })
-    //             }
-    //         })
-    //     }
-
-    //     // Serialize edges //////////////////////////////////////////////////
-
-    //     let index = 0
-    //     sEdgeRecoder.edges.forEach(edge => {
-
-    //         const { adjGrids, minPercent, maxPercent, edgeCode } = edge.serialization
-    //         const grid1 = adjGrids[0] !== 'null-null' ? levelGlobalId_serializedId_Map.get(adjGrids[0])! : null
-    //         const grid2 = adjGrids[1] !== 'null-null' ? levelGlobalId_serializedId_Map.get(adjGrids[1])! : null
-
-    //         edges.push({
-    //             id: index++,
-    //             adjGrids: [ grid1, grid2 ],
-    //             minPercent,
-    //             maxPercent,
-    //             edgeCode
-    //         })
-    //     })
-
-    //     return serializedData
-    // }
+            if (!data || typeof data !== 'object') return false
+            const requiredFields = ['CRS', 'extent', 'levelInfos', 'subdivideRules', 'grids', 'edges']
+            return requiredFields.every(field => !!data[field])
+        }
+    }
 
     getGridInfoByStorageId(storageId: number): [level: number, globalId: number] {
 
@@ -335,6 +337,22 @@ export default class GridRecorder extends UndoRedoManager {
         return Math.floor(v / subHeight) * this.levelInfos[level - 1].width + Math.floor(u / subWidth)
     }
 
+    checkGrid(storageId: number) {
+
+        const level = this.storageId_gridInfo_cache[ storageId * 2 + 0 ]
+        const globalId = this.storageId_gridInfo_cache[ storageId * 2 + 1 ]
+        const localId = this.getGridLocalId(level, globalId)
+        const edges = this.storageId_edgeId_set[storageId]
+
+        return {
+            storageId,
+            level,
+            globalId,
+            localId,
+            edges
+        }
+    }
+
     private get _actor() {
         return this.dispatcher.actor
     }
@@ -343,7 +361,7 @@ export default class GridRecorder extends UndoRedoManager {
         return this.dispatcher.dbActor
     }
 
-    private _createNodeRenderVertices(level: number, globalId: number) {
+    private _createNodeRenderVertices(level: number, globalId: number, vertices?: Float32Array): Float32Array {
 
         const bBox = this._subdivideRules.bBox
         const { width, height } = this.levelInfos[level]
@@ -365,7 +383,9 @@ export default class GridRecorder extends UndoRedoManager {
 
         const renderCoords = targetCoords.map(coord => MercatorCoordinate.fromLonLat(coord as [number, number]))
 
-        return new Float32Array(renderCoords.flat())
+        if (!vertices) vertices = new Float32Array(renderCoords.flat())
+        else vertices.set(renderCoords.flat(), 0)
+        return vertices
     }
 
     // Fast function for removing single grid

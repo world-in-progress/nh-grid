@@ -52,12 +52,12 @@ export class GridEdgeManager {
             keyIndex = this.edgeKey_cache.length
             this.edgeKey_keyIndex_map.set(key, keyIndex)
 
-            const girds = new Array<number>()
-            grid_a && girds.push(grid_a.storageId)
-            grid_b && girds.push(grid_b.storageId)
+            const grids = new Array<number>()
+            grid_a && grids.push(grid_a.storageId)
+            grid_b && grids.push(grid_b.storageId)
 
             this.edgeKey_cache.push(key)
-            this.edge_adjGridStorageIds_cache.push(girds)
+            this.edge_adjGridStorageIds_cache.push(grids)
         }
 
         return keyIndex
@@ -94,6 +94,7 @@ export class GridEdgeManager {
         // Case when neighbours have equal or higher levels ////////////////////////////////////////
         
         neighbours = neighbours.filter(neighbour => neighbour.level >= grid.level)
+        neighbours.sort((neighbourA, neighbourB) => neighbourA.xMin - neighbourB.xMin)
         const xSet = new Set([ grid.xMin, grid.xMax ])
         neighbours.forEach(neighbour => {
             xSet.add(neighbour.xMin)
@@ -201,6 +202,7 @@ export class GridEdgeManager {
         // Case when neighbours have equal or higher levels ////////////////////////////////////////
         
         neighbours = neighbours.filter(neighbour => neighbour.level >= grid.level)
+        neighbours.sort((neighbourA, neighbourB) => neighbourA.yMin - neighbourB.yMin)
         const ySet = new Set([ grid.yMin, grid.yMax ])
         neighbours.forEach(neighbour => {
             ySet.add(neighbour.yMin)
@@ -451,9 +453,10 @@ export default class GridManager {
         // Local map from uuId to storageId
         const uuId_storageId_map = new Map<string, number>()
         storageId_grid_cache.forEach(grid => uuId_storageId_map.set(grid.uuId, grid.storageId))
+        const grid_sorted_cache = storageId_grid_cache.slice().sort((gridA, gridB) => gridA.level - gridB.level)
 
         // Iterate all grids and find their neighbours
-        storageId_grid_cache.forEach(grid => {
+        grid_sorted_cache.forEach(grid => {
 
             const width = this._levelInfos[grid.level].width
 
