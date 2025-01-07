@@ -153,12 +153,12 @@ export default class GridLayer {
             targetCS: 'EPSG:4326',
             rules: this.subdivideRules
         },
-        this.maxGridNum,
-        {
-            workerCount: 4,
-            operationCapacity: 200,
-            projectLoadCallback: this._updateGPUGrids.bind(this),
-        })
+            this.maxGridNum,
+            {
+                workerCount: 4,
+                operationCapacity: 200,
+                projectLoadCallback: this._updateGPUGrids.bind(this),
+            })
 
         // Set WebGL2 context
         this._gl = this.map.painter.context.gl
@@ -437,7 +437,10 @@ export default class GridLayer {
 
             if (e.shiftKey && e.key === 'A') {
 
-                this.EditorState.mode = 'check'
+                if (this.EditorState.mode === 'check') {
+                    this.EditorState.mode = 'none'
+                } else
+                    this.EditorState.mode = 'check'
 
                 this.map.triggerRepaint()
             }
@@ -596,9 +599,9 @@ export default class GridLayer {
         this.map
             .on('mouseup', this.mouseupHandler as any)
             .on('mousedown', this.mousedownHandler as any)
-            // .on('mousemove', this.mousemoveHandler as any)
-            // .on('mouseout', this.mouseoutHandler as any)
-            // .on('resize', this.resizeHandler as any)
+        // .on('mousemove', this.mousemoveHandler as any)
+        // .on('mouseout', this.mouseoutHandler as any)
+        // .on('resize', this.resizeHandler as any)
     }
 
     hit(storageIds: number | number[]) {
@@ -1013,15 +1016,15 @@ export default class GridLayer {
                     e2 = this._boxPickingEnd
                 }
 
-            const storageIds = this.picking(e1, e2)
-            if (this.EditorState.mode === 'check') {
-                const storageId = Array.isArray(storageIds) ? storageIds[0] : storageIds
-                console.log(this.gridRecorder.checkGrid(storageId))
+                const storageIds = this.picking(e1, e2)
+                if (this.EditorState.mode === 'check') {
+                    const storageId = Array.isArray(storageIds) ? storageIds[0] : storageIds
+                    console.log(this.gridRecorder.checkGrid(storageId))
 
-            } else {
+                } else {
 
-                this.hit(storageIds)
-            }
+                    this.hit(storageIds)
+                }
 
                 clear(this._ctx!)
                 this._boxPickingStart = null
@@ -1035,19 +1038,19 @@ export default class GridLayer {
     private _mousemoveHandler(e: MapMouseEvent) {
 
         // if (this.EditorState.editor === "topology") {
-            if (this.isShiftClick && this.EditorState.tool === 'brush') {
-                this.map.dragPan.disable()
-                const storageId = this.picking(e) as number
-                this.hit(storageId)
-            }
+        if (this.isShiftClick && this.EditorState.tool === 'brush') {
+            this.map.dragPan.disable()
+            const storageId = this.picking(e) as number
+            this.hit(storageId)
+        }
 
-            if (this.isShiftClick && this.EditorState.tool === 'box' && this._boxPickingStart) {
-                // Render the picking box
-                this._boxPickingEnd = e
-                const canvas = this._gl.canvas as HTMLCanvasElement
-                const box = genPickingBox(canvas, this._boxPickingStart, this._boxPickingEnd!)
-                drawRectangle(this._ctx!, box)
-            }
+        if (this.isShiftClick && this.EditorState.tool === 'box' && this._boxPickingStart) {
+            // Render the picking box
+            this._boxPickingEnd = e
+            const canvas = this._gl.canvas as HTMLCanvasElement
+            const box = genPickingBox(canvas, this._boxPickingStart, this._boxPickingEnd!)
+            drawRectangle(this._ctx!, box)
+        }
         // } 
         // else if (this.EditorState.editor === "attribute") {
         //     // Render the picking box
