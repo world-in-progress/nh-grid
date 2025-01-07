@@ -395,6 +395,18 @@ export default class GridLayer {
             }
         })
 
+        // [7] init the attrSettor DOM
+        this.initAttrSetter({
+            top: new Set(),
+            left: new Set(),
+            bottom: new Set(),
+            right: new Set(),
+            id: -1
+        })
+
+        // [8] init loading DOM
+        this.showLoading = initLoadingDOM()!
+        
         // [-1] Add event lister for gridRecorder
         document.addEventListener('keydown', e => {
 
@@ -444,8 +456,6 @@ export default class GridLayer {
 
             // Register SAVE operation
             if (ctrlOrCmd && e.key.toLocaleLowerCase() === 's') {
-                e.preventDefault()
-
                 const data = this.gridRecorder.serialize()
                 const jsonData = JSON.stringify(data)
                 const blob = new Blob([ jsonData ], { type: 'application/json' })
