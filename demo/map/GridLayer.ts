@@ -4,6 +4,8 @@ import { MapMouseEvent } from 'mapbox-gl'
 import { GUI, GUIController } from 'dat.gui'
 
 import "../pannel.css"
+import "../attribute.css"
+import "../loading.css"
 import gll from './GlLib'
 import NHMap from './NHMap'
 import BoundingBox2D from '../../src/core/util/boundingBox2D'
@@ -95,6 +97,13 @@ export default class GridLayer {
         mode: 'none'      // 'none' | 'subdivide' | 'delete' | 'check'
     }
     EditorState: Record<string, string> = {}
+
+    activeAttrFeature: Record<string, any> = {}
+
+    attrSetter: HTMLDivElement | null = null
+    edgeDom: HTMLDivElement | null = null
+    isTopologyParsed = false
+    showLoading: Function | null = null
 
     typeChanged = false
     isShiftClick = false
@@ -188,6 +197,7 @@ export default class GridLayer {
         brushFolder.add(this.uiOption, 'level', 1, this.subdivideRules.length - 1, 1)
         brushFolder.open()
         this.gui.add(this.uiOption, 'capacity', 0, this.maxGridNum).name('Capacity').listen()
+        this.gui.close()
 
         this.capacityController = this.gui.__controllers[0]
         this.capacityController.setValue(0.0)
@@ -214,8 +224,9 @@ export default class GridLayer {
     private _hitAttribute() {
         const [gridStorageId] = this.hitSet
         const edgeSet = this.gridRecorder.getEdgeInfoByStorageId(+gridStorageId)
-        const [top1, left1, bottom1, right1] = edgeSet
-        console.log("hittedGrid info:: ", { gridStorageId, top1, left1, bottom1, right1 })
+        const [top, left, bottom, right] = edgeSet
+        console.log("hittedGrid info:: ", { gridStorageId, top, left, bottom, right })
+        this.updateAttrSetter({ gridStorageId, top, left, bottom, right })
 
     }
 
@@ -409,8 +420,9 @@ export default class GridLayer {
 
             if (e.shiftKey && e.key === 'E') {
 
-                this.gridRecorder.parseGridTopology(() => {
-                    this.updateGPUEdges
+                this.gridRecorder.parseGridTopology((fromStorageId: number, vertexBuffer: Float32Array) => {
+                    this.updateGPUEdges(fromStorageId, vertexBuffer)
+
                     // stop loading
                 })
 
@@ -428,6 +440,19 @@ export default class GridLayer {
                 this.map.triggerRepaint()
             }
         })
+
+        // [8] init the attrSettor DOM
+        this.initAttrSetter({
+            top: new Set(),
+            left: new Set(),
+            bottom: new Set(),
+            right: new Set(),
+            id: -1
+        })
+
+        // [8] loading
+        this.showLoading = initLoadingDOM()
+
 
 
         // Init GPU resources ////////////////////////////////////////////////////////////
@@ -1059,13 +1084,21 @@ export default class GridLayer {
                 this.typeChanged = true
                 switch (value) {
                     case 'topology':
+                        this.attrSetter!.style.display = 'none'
+                        this.isTopologyParsed = false
                         this.gridRecorder.resetEdges()
                         this.addTopologyEditorUIHandler()
                         break;
                     case 'attribute':
-                        this._EditorState.mode = 'none'
                         this.addAttributeEditorUIHandler()
-                        this.gridRecorder.parseGridTopology(this.updateGPUEdges)
+                        this.showLoading && this.showLoading(true)
+                        this.gridRecorder.parseGridTopology((fromStorageId: number, vertexBuffer: Float32Array) => {
+                            this.updateGPUEdges(fromStorageId, vertexBuffer)
+                            this.isTopologyParsed = true
+                            this.showLoading && this.showLoading(false)
+                            this.attrSetter!.style.display = 'block'
+                            console.log(" ====Topology Parsed==== ")
+                        })
                         this.map.triggerRepaint()
                         /*
                         Attribute setup
@@ -1094,6 +1127,162 @@ export default class GridLayer {
                 break
         }
         return true;
+    }
+
+    private _handleAttrEdgeClick(e: MouseEvent) {
+        if ((e.target as HTMLDivElement).classList.contains("edge")) {
+            // deactive last actived element
+            if (this.activeAttrFeature.dom) {
+                this.activeAttrFeature.dom.classList.remove("actived")
+            }
+            const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement
+            attrTypeDom.textContent = 'Edge';
+
+            (e.target as HTMLDivElement).classList.add("actived")
+            const eID = (e.target as HTMLDivElement).dataset.eid
+            this.activeAttrFeature.dom = e.target as HTMLDivElement
+            this.activeAttrFeature.id = Number(eID)
+            this.activeAttrFeature.t = 1
+            const [height, type] = this.getInfoFromCache(this.activeAttrFeature.id, this.activeAttrFeature.t)
+            this.activeAttrFeature.height = height
+            this.activeAttrFeature.type = type;
+
+            (document.querySelector('#height') as HTMLInputElement).value = height + '';
+            (document.querySelector('#type') as HTMLInputElement).value = type + ''
+
+        }
+    }
+
+    private _handleInput(e: FocusEvent) {
+        const [attr, value] = [
+            (e.target as HTMLInputElement).id,
+            (e.target as HTMLInputElement).value
+        ]
+        this.activeAttrFeature[attr as "height" | "type"] = +value
+        this.setCacheInfo(this.activeAttrFeature.id, this.activeAttrFeature.t, this.activeAttrFeature.height, this.activeAttrFeature.type)
+    }
+
+    initAttrSetter(info: any) {
+        //////// parse grid and edge info
+        const gridStorageId = info.gridStorageId
+        const top = Array.from(info.top)
+        const left = Array.from(info.left)
+        const bottom = Array.from(info.bottom)
+        const right = Array.from(info.right)
+
+        // default :: grid clicked
+        const [height, type] = this.getInfoFromCache(gridStorageId, 0) // 0 grid, 1 edge
+        this.activeAttrFeature.id = gridStorageId
+        this.activeAttrFeature.dom = null
+        this.activeAttrFeature.t = 0
+        this.activeAttrFeature.height = height
+        this.activeAttrFeature.type = type
+
+        //////// set HTML
+        const html = genAttrEditorHTML({ top, left, bottom, right }, { id: gridStorageId, height, type })
+        const attrSetter = this.attrSetter = document.createElement('div')
+        attrSetter.id = 'attrSetter'
+        attrSetter.classList.add("property-editor")
+        attrSetter.innerHTML = html
+        document.body.appendChild(attrSetter)
+
+        //////// set Handler
+        const edgeDom = this.edgeDom = document.querySelector('#edges') as HTMLDivElement
+        const handleEdgeClick = this._handleAttrEdgeClick.bind(this)
+        edgeDom.addEventListener('click', handleEdgeClick)
+
+        // grid click 
+        const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement
+        attrTypeDom.addEventListener('click', e => {
+            if (this.activeAttrFeature.dom) {
+                this.activeAttrFeature.dom.classList.remove("actived");
+            }
+            this.activeAttrFeature.dom = (e.target as HTMLDivElement)
+            this.activeAttrFeature.id = +(e.target as HTMLDivElement).dataset.id!
+            this.activeAttrFeature.t = 0
+            const [height, type] = this.getInfoFromCache(this.activeAttrFeature.id, this.activeAttrFeature.t)
+            this.activeAttrFeature.height = height
+            this.activeAttrFeature.type = type;
+            attrTypeDom.textContent = "Grid";
+
+            (document.querySelector('#height') as HTMLInputElement).value = height + '';
+            (document.querySelector('#type') as HTMLInputElement).value = type + ''
+        })
+
+        // input focusout
+        const attrInputDoms = ["height", "type"].map(id => document.querySelector('#' + id) as HTMLInputElement)
+        const handleInput = this._handleInput.bind(this)
+        attrInputDoms.forEach(inputDom => {
+            inputDom.addEventListener('focusout', handleInput)
+        })
+
+        this.attrSetter.style.display = 'none'
+    }
+
+    updateAttrSetter(info: any) {
+        //////// parse grid and edge info
+        const gridStorageId = info.gridStorageId
+        const top = Array.from(info.top)
+        const left = Array.from(info.left)
+        const bottom = Array.from(info.bottom)
+        const right = Array.from(info.right)
+
+        // reset default :: grid clicked
+        const [height, type] = this.getInfoFromCache(gridStorageId, 0) // 0 grid, 1 edge
+        this.activeAttrFeature.id = gridStorageId
+        this.activeAttrFeature.dom = null
+        this.activeAttrFeature.t = 0
+        this.activeAttrFeature.height = height
+        this.activeAttrFeature.type = type
+
+        // reset grid dom data-id and input value
+        const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement;
+        attrTypeDom.dataset.id = gridStorageId;
+
+        (document.querySelector('#height') as HTMLInputElement).value = height + '';
+        (document.querySelector('#type') as HTMLInputElement).value = type + '';
+
+        // reset edges dom
+        const topHtml = genEdgeHTML("top", top as number[])
+        const leftHtml = genEdgeHTML("left", left as number[])
+        const bottomHtml = genEdgeHTML("bottom", bottom as number[])
+        const rightHtml = genEdgeHTML("right", right as number[])
+
+        const edgesInnerHtml = `
+        ${topHtml}
+        ${leftHtml}
+        ${bottomHtml}
+        ${rightHtml}
+        `
+        const edgesDom = document.querySelector('#edges') as HTMLDivElement
+        edgesDom.innerHTML = edgesInnerHtml
+    }
+
+
+    getInfoFromCache(ID: number, T: number) {
+        let height = -9999, type = 0
+        if (!this.isTopologyParsed) return [height, type]
+        if (T === 0) {
+            height = this.gridRecorder.grid_attribute_cache[ID].height
+            type = this.gridRecorder.grid_attribute_cache[ID].type
+        } else {
+            height = this.gridRecorder.edge_attribute_cache[ID].height
+            type = this.gridRecorder.edge_attribute_cache[ID].type
+        }
+        return [height, type]
+    }
+
+    setCacheInfo(ID: number, T: number, height: number, type: number) {
+        if (!this.isTopologyParsed) {
+            throw "Topology Not Parsed!!" //never
+        }
+        if (T === 0) {
+            this.gridRecorder.grid_attribute_cache[ID].height = height
+            this.gridRecorder.grid_attribute_cache[ID].type = type
+        } else {
+            this.gridRecorder.edge_attribute_cache[ID].height = height
+            this.gridRecorder.edge_attribute_cache[ID].type = type
+        }
     }
 
     // Fast function to upload one grid rendering info to GPU stograge texture
@@ -1226,4 +1415,69 @@ function drawRectangle(ctx: CanvasRenderingContext2D, pickingBox: [number, numbe
     ctx.setLineDash([5, 3])
     ctx.strokeRect(startX, startY, width, height)
     ctx.fillRect(startX, startY, width, height)
+}
+
+function genEdgeHTML(edgeSide: string, edgeIds: Array<number>) {
+    const rowcol = edgeSide === "top" || edgeSide === "bottom" ? "row" : "col"
+    let html = `<div class="${edgeSide} ${rowcol}" id="${edgeSide}">\n`
+    edgeIds.forEach(eId => {
+        html += `<div class="edge" data-eId="${eId}"></div>\n`
+    })
+    html += "</div>\n"
+    return html
+}
+
+function genAttrEditorHTML(edgeInfo: any, initGridInfo: { id: number, height: number, type: number }) {
+
+    const top = Array.from(edgeInfo.top) as Array<number>
+    const left = Array.from(edgeInfo.left) as Array<number>
+    const bottom = Array.from(edgeInfo.bottom) as Array<number>
+    const right = Array.from(edgeInfo.right) as Array<number>
+
+    const topHtml = genEdgeHTML("top", top)
+    const leftHtml = genEdgeHTML("left", left)
+    const bottomHtml = genEdgeHTML("bottom", bottom)
+    const rightHtml = genEdgeHTML("right", right)
+
+    const edgesHtml = `
+            <div id="edges">
+                ${topHtml}
+                ${leftHtml}
+                ${bottomHtml}
+                ${rightHtml}
+            </div>
+        `
+    const propHtml = `
+            <div class="property col">
+              <div class="property-type f-center" id="attr_type" data-ID="${initGridInfo.id}">Grid</div>
+              <div class="property-block row ">
+                <div class="text">height</div>
+                <input class="property-input" type="number" id="height" value="${initGridInfo.height}">
+              </div>
+              <div class="property-block row ">
+                <div class="text">type</div>
+                <input class="property-input" type="number" id="type" value="${initGridInfo.type}">
+              </div>
+            </div>
+        `
+    let html = `
+            ${edgesHtml}
+            ${propHtml}
+        `
+    return html
+}
+
+function initLoadingDOM() {
+    const loadingDom = document.createElement('div')
+    loadingDom.id = 'loading-container'
+    loadingDom.innerHTML = `
+        <div class="loading"></div>
+        <div class="loading-text">Topology Parsing...</div>
+    `
+    loadingDom.style.display = 'none'
+    document.body.appendChild(loadingDom)
+
+    return (show: Boolean) => {
+        loadingDom.style.display = show ? 'block' : 'none'
+    }
 }

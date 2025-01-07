@@ -1,4 +1,5 @@
 import "./attribute.css"
+import "./loading.css"
 
 
 const grid_attribute_cache = Array.from({ length: 10 }, () => {
@@ -56,8 +57,6 @@ const genHtml = (info: any) => {
     const bottom = Array.from(info.bottom) as Array<number>
     const right = Array.from(info.right) as Array<number>
 
-    // const height = info.height
-    // const type = info.type
     const [height, type] = getInfoFromCache(activedElement.id, activedElement.t)
 
     const topHtml = genEdgeHTML("top", top)
@@ -73,8 +72,19 @@ const genHtml = (info: any) => {
             ${rightHtml}
         </div>
     `
-
-    const propHtml = genPropHTML(activedElement.id, height, type)
+    const propHtml = `
+        <div class="property col">
+          <div class="property-type f-center" id="attr_type" data-ID="${activedElement.id}">Grid</div>
+          <div class="property-block row ">
+            <div class="text">height</div>
+            <input class="property-input" type="number" id="height" value="${height}">
+          </div>
+          <div class="property-block row ">
+            <div class="text">type</div>
+            <input class="property-input" type="number" id="type" value="${type}">
+          </div>
+        </div>
+    `
 
     let html = `
         ${edgesHtml}
@@ -250,33 +260,49 @@ const setCacheInfo = (ID: number, T: number, height: number, type: number) => {
     }
 }
 
+const initLoadingDOM = () => {
+    const loadingDom = document.createElement('div')
+    loadingDom.id = 'loading-container'
+    loadingDom.innerHTML = `
+        <div class="loading"></div>
+        <div class="loading-text">Topology Parsing...</div>
+    `
+    document.body.appendChild(loadingDom)
+
+    return (show: Boolean) => {
+        loadingDom.style.display = show ? 'block' : 'none'
+    }
+}
+
 const main = () => {
-    const a = {
-        "gridStorageId": 0,
-        "top": new Set([1, 2, 3]),
-        "left": new Set([4]),
-        "bottom": new Set([5]),
-        "right": new Set([6]),
-    }
+    // const a = {
+    //     "gridStorageId": 0,
+    //     "top": new Set([1, 2, 3]),
+    //     "left": new Set([4]),
+    //     "bottom": new Set([5]),
+    //     "right": new Set([6]),
+    // }
 
-    const b = {
-        "gridStorageId": 2,
-        "top": new Set([7]),
-        "left": new Set([8]),
-        "bottom": new Set([9]),
-        "right": new Set([]),
-    }
+    // const b = {
+    //     "gridStorageId": 2,
+    //     "top": new Set([7]),
+    //     "left": new Set([8]),
+    //     "bottom": new Set([9]),
+    //     "right": new Set([]),
+    // }
 
-    setSingleGridAttrSetter(a)
+    // setSingleGridAttrSetter(a)
 
+
+
+
+    const showLoading = initLoadingDOM()
 
     document.addEventListener('keydown', e => {
         if (e.key === 'p') {
-            console.log(activedElement)
-            console.log(grid_attribute_cache)
-            console.log(edge_attribute_cache)
-        } else if (e.key === '0') {
-            updateAttrSetter(b)
+            showLoading(true)
+        } else if (e.key === 'o') {
+            showLoading(false)
         }
     })
 }
