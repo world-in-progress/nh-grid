@@ -32,7 +32,7 @@ export default class GridLayer {
     // Grid properties
     maxGridNum: number
     bBox: BoundingBox2D
-    hitSet = new Set<string>
+    hitSet = new Set<number>
     projConverter: proj4.Converter
     gridRecorder: GridRecorder
     subdivideRules: [ number, number ][]
@@ -595,28 +595,27 @@ export default class GridLayer {
             else
                 storageIds >= 0 && this.removeGrid(storageIds)
         }
-        // Subdivider type
+        // Subdivide mode
         else if (this.EditorState.mode === 'subdivide') {
 
             const ids = Array.isArray(storageIds) ? storageIds : [storageIds];
             ids.forEach((storageId: number) => {
                 if (storageId < 0) return
+                
                 const maxLevel = this.subdivideRules.length - 1
                 const [hitLevel] = this.gridRecorder.getGridInfoByStorageId(storageId)
 
                 // Nothing will happen if the hit grid has the maximize level
-                if (hitLevel === maxLevel) return
+                if (hitLevel >= maxLevel) return
 
-                const targetLevel = Math.min(this.uiOption.level, maxLevel)
+                // const targetLevel = Math.min(this.uiOption.level, maxLevel)
 
                 // Nothing will happen if subdivide grids more than one level
                 // Or target subdivided level equals to hitLevel
-                if (targetLevel - hitLevel > 1 || targetLevel == hitLevel) return
+                // if (targetLevel - hitLevel > 1 || targetLevel == hitLevel) return
+                // if (targetLevel == hitLevel) return
 
-                this.hitSet.add([
-                    storageId,      // FromStorageId
-                    targetLevel,    // ToLevel
-                ].join('-'))
+                this.hitSet.add(storageId)
             })
         }
 
@@ -652,18 +651,16 @@ export default class GridLayer {
             // Parse hitSet
             const subdividableUUIDs = new Array<string>()
             const removableStorageIds = new Array<number>()
-            this.hitSet.forEach(hitActionInfo => {
-                const [fromStorageId, toLevel] = decodeInfo(hitActionInfo)
-                const [removableLevel, removableGlobalId] = this.gridRecorder.getGridInfoByStorageId(fromStorageId)
+            this.hitSet.forEach(removableStorageId => {
 
                 // Check if valid
-                if (removableLevel >= toLevel || toLevel - removableLevel > 1) return
+                // if (removableLevel >= toLevel || toLevel - removableLevel > 1) return
 
                 // Add removable grids
-                removableStorageIds.push(fromStorageId)
+                removableStorageIds.push(removableStorageId)
 
                 // add subdividable grids
-                subdividableUUIDs.push([removableLevel, removableGlobalId].join('-'))
+                subdividableUUIDs.push(this.gridRecorder.getGridInfoByStorageId(removableStorageId).join('-'))
             })
 
             if (subdividableUUIDs.length === 1) {
@@ -886,7 +883,7 @@ export default class GridLayer {
         gl.bindFramebuffer(gl.FRAMEBUFFER, null)
 
         const set = new Set<number>()
-        const targetLevel = Math.min(this.uiOption.level, this.subdivideRules.length - 1)
+        // const targetLevel = Math.min(this.uiOption.level, this.subdivideRules.length - 1)
         for (let i = 0; i < height; i += 1) {
             for (let j = 0; j < width; j += 1) {
 
@@ -894,9 +891,9 @@ export default class GridLayer {
                 const storageId = pixel[pixleId] + (pixel[pixleId + 1] << 8) + (pixel[pixleId + 2] << 16) + (pixel[pixleId + 3] << 24)
                 if (storageId < 0 || set.has(storageId)) continue
 
-                if (this.EditorState.mode === 'subdivide' &&
-                    targetLevel - this.gridRecorder.getGridInfoByStorageId(storageId)[0] != 1)
-                    continue
+                // if (this.EditorState.mode === 'subdivide' &&
+                //     targetLevel - this.gridRecorder.getGridInfoByStorageId(storageId)[0] != 1)
+                //     continue
 
                 set.add(storageId)
             }
@@ -968,7 +965,6 @@ export default class GridLayer {
             this.map.scrollZoom.disable()
             this._boxPickingStart = e
             this._boxPickingEnd = e
-            // drawRectangle(this.ctx,)
         }
     }
 
@@ -1069,7 +1065,8 @@ export default class GridLayer {
         }
 
         if (this.isShiftClick && this.EditorState.tool === 'box' && this._boxPickingStart) {
-            // render the picking box
+
+            // Render the picking box
             this._boxPickingEnd = e
             const canvas = this._gl.canvas as HTMLCanvasElement
             const box = genPickingBox(canvas, this._boxPickingStart, this._boxPickingEnd!)

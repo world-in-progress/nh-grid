@@ -14,20 +14,20 @@ interface GridLevelInfo {
 }
 
 export interface GridLayerSerializedInfo {
-    extent: [number, number, number, number]
+    CRS: string
+    levelInfos: GridLevelInfo[]
+    extent: [ number, number, number, number ]
+    subdivideRules: [ number, number ][]
     grids: {
-        id: number
-        xMinPercent: [number, number]
-        yMinPercent: [number, number]
-        xMaxPercent: [number, number]
-        yMaxPercent: [number, number]
+        index: number,
+        level: number,
+        globalId: number,
+        edges: number[][]
     }[]
     edges: {
-        id: number
-        edgeCode: number
-        minPercent: [number, number]
-        maxPercent: [number, number]
-        adjGrids: [number | null, number | null]
+        index: number,
+        key: string,
+        adjGrids: number[]
     }[]
 }
 
@@ -52,7 +52,7 @@ export default class GridRecorder extends UndoRedoManager {
     dispatcher: Dispatcher
     levelInfos: GridLevelInfo[]
 
-    storageId_gridInfo_cache: Array<number | undefined> // [ level_0, globalId_0, level_1, globalId_1, ... , level_n, globalId_n ]
+    storageId_gridInfo_cache: Array<number> // [ level_0, globalId_0, level_1, globalId_1, ... , level_n, globalId_n ]
     storageId_edgeId_set: Array<[Set<number>, Set<number>, Set<number>, Set<number>]> = []
     grid_attribute_cache: Array<Record<string, any>> = [] // { height: number [-9999], type: number [ 0, 0-10 ] }
 
@@ -93,20 +93,18 @@ export default class GridRecorder extends UndoRedoManager {
         }
 
         // Add event listener for <Shift + S> (Download serialization json)
-        // document.addEventListener('keydown', e => {
+        document.addEventListener('keydown', e => {
 
-        //     if (e.shiftKey && e.key === 'S') {
-        //         let data = this.parseGridTopology((_: number, vertices: Float32Array) => {
-        //             console.log(vertices)
-        //         })
-        //         // let jsonData = JSON.stringify(data)
-        //         // let blob = new Blob([ jsonData ], { type: 'application/json' })
-        //         // let link = document.createElement('a')
-        //         // link.href = URL.createObjectURL(blob)
-        //         // link.download = 'gridInfo.json'
-        //         // link.click()
-        //     }
-        // })
+            if (e.shiftKey && e.key === 'S') {
+                let data = this.serialize()
+                let jsonData = JSON.stringify(data)
+                let blob = new Blob([ jsonData ], { type: 'application/json' })
+                let link = document.createElement('a')
+                link.href = URL.createObjectURL(blob)
+                link.download = 'gridInfo.json'
+                link.click()
+            }
+        })
     }
 
     get edgeNum(): number {
@@ -195,8 +193,29 @@ export default class GridRecorder extends UndoRedoManager {
         })
     }
 
-    serialize() {
+    serialize(): GridLayerSerializedInfo {
 
+        return {
+            CRS: this._subdivideRules.srcCS,
+            levelInfos: this.levelInfos,
+            extent: this._subdivideRules.bBox.boundary,
+            subdivideRules: this._subdivideRules.rules,
+            grids: this.storageId_edgeId_set.slice(0, this.gridNum).map((edgeIdSets, index) => {
+                return {
+                    index,
+                    level: this.storageId_gridInfo_cache[index * 2 + 0],
+                    globalId: this.storageId_gridInfo_cache[index * 2 + 1],
+                    edges: edgeIdSets.map(edgeIdSet => [ ...edgeIdSet ])
+                }
+            }),
+            edges: this.edgeKeys_cache.slice(0, this.edgeNum).map((key, index) => {
+                return {
+                    index,
+                    key,
+                    adjGrids: this.adjGrids_cache[index]
+                }
+            })
+        }
     }
     // serialize() {
 
@@ -512,8 +531,8 @@ export default class GridRecorder extends UndoRedoManager {
                 for (let i = fromStorageId; i <= toStorageId; i++) {
 
                     this._nextStorageId--
-                    this.storageId_gridInfo_cache[i * 2 + 0] = undefined
-                    this.storageId_gridInfo_cache[i * 2 + 1] = undefined
+                    this.storageId_gridInfo_cache[i * 2 + 0] = -1
+                    this.storageId_gridInfo_cache[i * 2 + 1] = -1
                 }
                 callback && callback(null)
             }
