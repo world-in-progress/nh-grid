@@ -201,7 +201,8 @@ export class GridEdgeManager {
         }
     }
     
-    private __calcHorizontalEdges(grid: GridNode, neighbours: GridNode[], edgeCode: number, opEdgeCode: number, sharedCoord: [ number, number ]): void {
+    /** @deprecated */
+    calcHorizontalEdges(grid: GridNode, neighbours: GridNode[], edgeCode: number, opEdgeCode: number, sharedCoord: [ number, number ]): void {
 
         // Case when neighbour has lower level /////////////////////////////////////////////////////
 
@@ -309,7 +310,8 @@ export class GridEdgeManager {
         }
     }
     
-    private __calcVerticalEdges(grid: GridNode, neighbours: GridNode[], edgeCode: number, opEdgeCode: number, sharedCoord: [ number, number ]): void {
+    /** @deprecated */
+    calcVerticalEdges(grid: GridNode, neighbours: GridNode[], edgeCode: number, opEdgeCode: number, sharedCoord: [ number, number ]): void {
 
         // Case when neighbour has lower level /////////////////////////////////////////////////////
 
