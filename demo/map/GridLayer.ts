@@ -381,22 +381,7 @@ export default class GridLayer {
             }
         })
 
-        // [6] Add event listner for <Shift + E> (Parse topology for grids and edges)
-        document.addEventListener('keydown', e => {
-
-            if (e.shiftKey && e.key === 'E') {
-
-                this.gridRecorder.parseGridTopology((fromStorageId: number, vertexBuffer: Float32Array) => {
-                    this.updateGPUEdges(fromStorageId, vertexBuffer)
-
-                    // stop loading
-                })
-
-                this.map.triggerRepaint()
-            }
-        })
-
-        // [7] Add event listner for <Shift + A> (Console Attribute Type)
+        // [6] Add event listner for <Shift + A> (Console Attribute Type)
         document.addEventListener('keydown', e => {
 
             if (e.shiftKey && e.key === 'A') {
@@ -410,7 +395,7 @@ export default class GridLayer {
             }
         })
 
-        // [8] init the attrSettor DOM
+        // [7] init the attrSettor DOM
         this.initAttrSetter({
             top: new Set(),
             left: new Set(),
@@ -419,26 +404,8 @@ export default class GridLayer {
             id: -1
         })
 
-        // [9] init loading DOM
+        // [8] init loading DOM
         this.showLoading = initLoadingDOM()!
-
-        // test 
-        document.addEventListener('keydown', e => {
-            if (e.key === 'p') {
-                console.log("grid ", this.gridRecorder.grid_attribute_cache.slice(0, 77))
-                console.log("edge ", this.gridRecorder.edge_attribute_cache)
-            }
-        })
-
-        // test 
-        document.addEventListener('keydown', e => {
-            if (e.key === 'p') {
-                console.log("grid ", this.gridRecorder.grid_attribute_cache.slice(0, 77))
-                console.log("edge ", this.gridRecorder.edge_attribute_cache)
-            }
-        })
-
-
 
         // Init GPU resources ////////////////////////////////////////////////////////////
 
@@ -1141,21 +1108,11 @@ export default class GridLayer {
                 break;
             case 'tool':
                 console.log('set tool ', value)
-                // switch (value) {
-                //     case 'brush':
-                //         break;
-                //     case 'box':
-                //         break;
-                // }
+                // do nothing extra
                 break;
             case 'mode':
                 console.log('set mode ', value)
-                // switch (value) {
-                //     case 'subdivide':
-                //         break;
-                //     case 'delete':
-                //         break;
-                // }
+                // do nothing extra
                 break
         }
         return true;
@@ -1255,9 +1212,7 @@ export default class GridLayer {
 
     updateAttrSetter(info: any) {
 
-        // if (Array.isArray(info.gridStorageId)) {
         if (this.EditorState.tool === 'box') {
-            console.log('box updateAttrSetter')
             const gridStorageIds = info.gridStorageId
 
             this.activeAttrFeature.id = gridStorageIds
