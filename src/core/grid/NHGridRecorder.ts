@@ -5,7 +5,7 @@ import Dispatcher from '../message/dispatcher'
 import { createDB, deleteDB } from '../database/db'
 import { MercatorCoordinate } from '../math/mercatorCoordinate'
 import UndoRedoManager, { UndoRedoOperation } from '../util/undoRedoManager'
-import {  EdgeRenderInfoPack, GridNodeRenderInfoPack, GridTopologyInfo, SubdivideRules } from './NHGrid'
+import { EdgeRenderInfoPack, GridNodeRenderInfoPack, GridTopologyInfo, SubdivideRules } from './NHGrid'
 
 interface GridLevelInfo {
 
@@ -316,6 +316,14 @@ export default class GridRecorder extends UndoRedoManager {
             this.edgeKeys_cache = []
             this.adjGrids_cache = []
             this.edge_attribute_cache = []
+        }
+    }
+
+    resetGrids() {
+        // better than forEach
+        for (let i = 0; i < this.gridNum; i++) {
+            this.grid_attribute_cache[i].height = -9999;
+            this.grid_attribute_cache[i].type = 0;
         }
     }
 

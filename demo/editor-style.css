@@ -350,18 +350,19 @@ div#box {
 
 .loading-text {
     position: absolute;
-    top: 55px;
+    top: 65px;
     left: 50%;
     width: 100px;
     text-align: center;
     transform: translateX(-50%);
-    font-size: 0.9rem;
+    font-size: 1.05rem;
+    font-weight: 600;
 }
 
 .loading {
     display: block;
     position: relative;
-    left: 48px;
+    left: 46px;
     width: 6px;
     height: 6px;
     animation: rectangle infinite 1s ease-in-out -0.2s;
