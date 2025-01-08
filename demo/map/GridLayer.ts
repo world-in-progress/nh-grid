@@ -36,6 +36,7 @@ export default class GridLayer {
     projConverter: proj4.Converter
     gridRecorder: GridRecorder
     subdivideRules: [number, number][]
+    hitFlag = new Uint8Array([1])   // 0 is a special value and means no selection
 
     // GPU-related //////////////////////////////////////////////////
 
@@ -55,6 +56,8 @@ export default class GridLayer {
     private _paletteTexture: WebGLTexture = 0
     private _storageTextureArray: WebGLTexture = 0
 
+    // Buffer resource
+    private _gridSignalBuffer: WebGLBuffer = 0      // [ [isHit], [isSssigned] ]
     private _gridTlStorageBuffer: WebGLBuffer = 0
     private _gridTrStorageBuffer: WebGLBuffer = 0
     private _gridBlStorageBuffer: WebGLBuffer = 0
@@ -207,7 +210,7 @@ export default class GridLayer {
     writeGridInfoToStorageBuffer(info: [storageId: number, level: number, vertices: Float32Array]) {
 
         const gl = this._gl
-        const levelByteStride = 1 * 2
+        const levelByteStride = 1 * 1
         const vertexByteStride = 2 * 4
         const [storageId, level, vertices] = info
 
@@ -220,18 +223,20 @@ export default class GridLayer {
         gl.bindBuffer(gl.ARRAY_BUFFER, this._gridBrStorageBuffer)
         gl.bufferSubData(gl.ARRAY_BUFFER, storageId * vertexByteStride, vertices, 6, 2)
         gl.bindBuffer(gl.ARRAY_BUFFER, this._gridLevelStorageBuffer)
-        gl.bufferSubData(gl.ARRAY_BUFFER, storageId * levelByteStride, new Uint16Array([level]), 0, 1)
+        gl.bufferSubData(gl.ARRAY_BUFFER, storageId * levelByteStride, new Uint8Array([level]), 0, 1)
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
+        gl.bufferSubData(gl.ARRAY_BUFFER, this.maxGridNum * 1 + storageId, new Uint8Array([0]), 0, 1)
 
         gl.bindBuffer(gl.ARRAY_BUFFER, null)
     }
 
     // Optimized function to upload multiple grid rendering info to GPU storage buffer
     // Note: grids must have continuous storageIds from 'storageId' to 'storageId + gridCount'
-    writeMultiGridInfoToStorageBuffer(infos: [fromStorageId: number, levels: Uint16Array, vertices: Float32Array]) {
+    writeMultiGridInfoToStorageBuffer(infos: [fromStorageId: number, levels: Uint8Array, vertices: Float32Array]) {
 
         const gl = this._gl
         const [fromStorageId, levels, vertices] = infos
-        const levelByteStride = 1 * 2
+        const levelByteStride = 1 * 1
         const vertexByteStride = 2 * 4
         const gridCount = vertices.length / 8
         const lengthPerAttribute = 2 * gridCount
@@ -246,6 +251,8 @@ export default class GridLayer {
         gl.bufferSubData(gl.ARRAY_BUFFER, fromStorageId * vertexByteStride, vertices, lengthPerAttribute * 3, lengthPerAttribute)
         gl.bindBuffer(gl.ARRAY_BUFFER, this._gridLevelStorageBuffer)
         gl.bufferSubData(gl.ARRAY_BUFFER, fromStorageId * levelByteStride, levels)
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
+        gl.bufferSubData(gl.ARRAY_BUFFER, this.maxGridNum * 1 + fromStorageId, new Uint8Array(gridCount).fill(0), 0, 1)
 
         gl.bindBuffer(gl.ARRAY_BUFFER, null)
     }
@@ -503,11 +510,12 @@ export default class GridLayer {
 
         // Create grid storage buffer
         this._gridStorageVAO = gl.createVertexArray()!
+        this._gridSignalBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 2 * 1, gl.DYNAMIC_DRAW)!
         this._gridTlStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 2 * 4, gl.DYNAMIC_DRAW)!
         this._gridTrStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 2 * 4, gl.DYNAMIC_DRAW)!
         this._gridBlStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 2 * 4, gl.DYNAMIC_DRAW)!
         this._gridBrStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 2 * 4, gl.DYNAMIC_DRAW)!
-        this._gridLevelStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 1 * 2, gl.DYNAMIC_DRAW)!
+        this._gridLevelStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 1 * 1, gl.DYNAMIC_DRAW)!
 
         gl.bindVertexArray(this._gridStorageVAO)
 
@@ -528,14 +536,22 @@ export default class GridLayer {
         gl.enableVertexAttribArray(3)
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this._gridLevelStorageBuffer)
-        gl.vertexAttribIPointer(4, 1, gl.UNSIGNED_SHORT, 1 * 2, 0)
+        gl.vertexAttribIPointer(4, 1, gl.UNSIGNED_BYTE, 1 * 1, 0)
         gl.enableVertexAttribArray(4)
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
+        gl.vertexAttribIPointer(5, 1, gl.UNSIGNED_BYTE, 1 * 1, 0)
+        gl.enableVertexAttribArray(5)
+        gl.vertexAttribIPointer(6, 1, gl.UNSIGNED_BYTE, 1 * 1, this.maxGridNum)
+        gl.enableVertexAttribArray(6)
 
         gl.vertexAttribDivisor(0, 1)
         gl.vertexAttribDivisor(1, 1)
         gl.vertexAttribDivisor(2, 1)
         gl.vertexAttribDivisor(3, 1)
         gl.vertexAttribDivisor(4, 1)
+        gl.vertexAttribDivisor(5, 1)
+        gl.vertexAttribDivisor(6, 1)
 
         gl.bindVertexArray(null)
         gl.bindBuffer(gl.ARRAY_BUFFER, null)
@@ -632,13 +648,6 @@ export default class GridLayer {
                     // Nothing will happen if the hit grid has the maximize level
                     if (hitLevel >= maxLevel) return
 
-                    // const targetLevel = Math.min(this.uiOption.level, maxLevel)
-
-                    // Nothing will happen if subdivide grids more than one level
-                    // Or target subdivided level equals to hitLevel
-                    // if (targetLevel - hitLevel > 1 || targetLevel == hitLevel) return
-                    // if (targetLevel == hitLevel) return
-
                     this.hitSet.add(storageId)
                 })
             }
@@ -659,7 +668,7 @@ export default class GridLayer {
 
         if (!this.isTopologyParsed) return
         if (this.EditorState.tool === "brush") this._hitAttribute()
-        else if (this.EditorState.tool === "box") this._hitsAttribute()
+        else if (this.EditorState.tool === "box") this._hitAttributes()
     }
 
     removeGrid(storageId: number) {
@@ -714,6 +723,18 @@ export default class GridLayer {
 
         }
         else if (this.EditorState.editor === "attribute") {
+
+            if (this.hitSet.size !== 0) {
+
+                // Update hit flag for this current frame
+                this._updateHitFlag()
+
+                // Highlight all hit grids
+                const gl = this._gl 
+                gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
+                this.hitSet.forEach(hitStorageId => gl.bufferSubData(gl.ARRAY_BUFFER, hitStorageId, this.hitFlag, 0))
+                gl.bindBuffer(gl.ARRAY_BUFFER, null)
+            }
 
             this.hitAttributeEditor()
 
@@ -785,8 +806,10 @@ export default class GridLayer {
         gl.activeTexture(gl.TEXTURE0)
         gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture)
 
+        gl.uniform1i(gl.getUniformLocation(this._gridMeshShader, 'hit'), this.hitFlag[0])
         gl.uniform2fv(gl.getUniformLocation(this._gridMeshShader, 'centerLow'), this.map.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this._gridMeshShader, 'centerHigh'), this.map.centerHigh)
+        gl.uniform1f(gl.getUniformLocation(this._gridMeshShader, 'mode'), this.isTopologyParsed ? 1.0 : 0.0)
         gl.uniformMatrix4fv(gl.getUniformLocation(this._gridMeshShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
 
         gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.gridRecorder.gridNum)
@@ -814,8 +837,10 @@ export default class GridLayer {
 
         const gl = this._gl
 
-        gl.disable(gl.BLEND)
         gl.disable(gl.DEPTH_TEST)
+        
+        gl.enable(gl.BLEND)
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
 
         gl.useProgram(this._edgeShader)
 
@@ -946,7 +971,7 @@ export default class GridLayer {
         this.updateAttrSetter({ gridStorageId, top, left, bottom, right })
     }
 
-    private _hitsAttribute() {
+    private _hitAttributes() {
 
         const gridStorageIds = Array.from(this.hitSet)
         this.updateAttrSetter({ gridStorageId: gridStorageIds })
@@ -961,7 +986,7 @@ export default class GridLayer {
         this.map.triggerRepaint()
     }
 
-    private _updateGPUGrids(infos?: [fromStorageId: number, levels: Uint16Array, vertices: Float32Array]) {
+    private _updateGPUGrids(infos?: [fromStorageId: number, levels: Uint8Array, vertices: Float32Array]) {
 
         if (infos) {
             this.writeMultiGridInfoToStorageBuffer(infos)
@@ -1056,7 +1081,6 @@ export default class GridLayer {
                 this.isShiftClick = false
             }
         }
-
     }
 
     private _mousemoveHandler(e: MapMouseEvent) {
@@ -1342,10 +1366,10 @@ export default class GridLayer {
             const edgesDom = document.querySelector('#edges') as HTMLDivElement
             edgesDom.innerHTML = edgesInnerHtml
         }
-
     }
 
     private _getInfoFromCache(ID: number, T: number) {
+
         let height = -9999, type = 0
         if (!this.isTopologyParsed || ID < 0) return [height, type]
         if (T === 0) {
@@ -1355,6 +1379,7 @@ export default class GridLayer {
             height = this.gridRecorder.edge_attribute_cache[ID].height
             type = this.gridRecorder.edge_attribute_cache[ID].type
         }
+
         return [height, type]
     }
 
@@ -1362,7 +1387,8 @@ export default class GridLayer {
         if (!this.isTopologyParsed) {
             throw "Topology Not Parsed!!" //never
         }
-        // valid test !
+
+        // Valid test !
         if (height < -9999 || height > 9999) {
             alert("Height out of range [-9999, 9999] !!");
             console.error("Height out of range [-9999, 9999] !!");
@@ -1381,6 +1407,15 @@ export default class GridLayer {
             this.gridRecorder.edge_attribute_cache[ID].height = height
             this.gridRecorder.edge_attribute_cache[ID].type = type
         }
+
+        console.log('???', ID)
+
+        // Make grid assigned in GPU
+        const gl = this._gl
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
+        gl.bufferSubData(gl.ARRAY_BUFFER, this.maxGridNum * 1 + ID, new Uint8Array([1]))
+        gl.bindBuffer(gl.ARRAY_BUFFER, null)
     }
 
     private _setCacheBatchInfo(IDs: number[], T: number = 0, height: number, type: number) {
@@ -1398,6 +1433,28 @@ export default class GridLayer {
                 this.gridRecorder.edge_attribute_cache[ID].type = type
             })
         }
+
+        // Make grids assigned in GPU
+        const gl = this._gl
+        const assignedFlag = new Uint8Array([1])
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
+        IDs.forEach(ID => gl.bufferSubData(gl.ARRAY_BUFFER, this.maxGridNum * 1 + ID, assignedFlag))
+        gl.bindBuffer(gl.ARRAY_BUFFER, null)
+    }
+
+    private _updateHitFlag() {
+
+        // Reset hitBuffer (Max number of hit flag is 255)
+        if (this.hitFlag[0] === 255) {
+            const gl = this._gl
+            gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
+            gl.bufferSubData(gl.ARRAY_BUFFER, 0, new Uint8Array(this.maxGridNum).fill(0))
+            gl.bindBuffer(gl.ARRAY_BUFFER, null)
+            this.hitFlag[0] = 0
+        }
+
+        this.hitFlag[0] = this.hitFlag[0] + 1
     }
 
     // Fast function to upload one grid rendering info to GPU stograge texture
@@ -1586,7 +1643,7 @@ function initLoadingDOM() {
     loadingDom.id = 'loading-container'
     loadingDom.innerHTML = `
         <div class="loading"></div>
-        <div class="loading-text">Topology Parsing...</div>
+        <div class="loading-text">Loading ...</div>
     `
     loadingDom.style.display = 'none'
     document.body.appendChild(loadingDom)

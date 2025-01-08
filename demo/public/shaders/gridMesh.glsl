@@ -10,15 +10,18 @@ layout(location = 1) in vec2 tr;
 layout(location = 2) in vec2 bl;
 layout(location = 3) in vec2 br;
 layout(location = 4) in uint level;
+layout(location = 5) in uint hit;
+layout(location = 6) in uint assignment;
 
 uniform mat4 uMatrix;
 uniform vec2 centerLow;
 uniform vec2 centerHigh;
 uniform sampler2D paletteTexture;
-// uniform usampler2D levelTexture;
-// uniform sampler2DArray storageTexture;
 
+out vec2 uv;
+out float u_hit;
 out vec3 v_color;
+out float u_assignment;
 
 const float PI = 3.141592653;
 
@@ -79,11 +82,6 @@ float stitching(float coord, float minVal, float delta, float edge) {
 
 void main() {
 
-    // ivec2 dim = textureSize(storageTexture, 0).xy;
-
-    // int storage_u = gl_InstanceID % dim.x;
-    // int storage_v = gl_InstanceID / dim.x;
-
     vec2 layerMap[4] = vec2[4](
         tl,
         tr,
@@ -91,10 +89,19 @@ void main() {
         br
     );
 
-    // int level = int(texelFetch(levelTexture, ivec2(storage_u, storage_v), 0).r);
-    // vec2 xy = texelFetch(storageTexture, ivec3(storage_u, storage_v, layerMap[gl_VertexID]), 0).rg;
+    vec2 uvs[4] = vec2[4](
+        vec2(0.0, 1.0),
+        vec2(1.0, 1.0),
+        vec2(0.0, 0.0),
+        vec2(1.0, 0.0)
+    );
+    
     vec2 xy = layerMap[gl_VertexID];
 
+    u_hit = float(hit);
+    u_assignment = float(assignment);
+
+    uv = uvs[gl_VertexID] * 2.0 - 1.0;
     v_color = texelFetch(paletteTexture, ivec2(level, 0), 0).rgb;
     gl_Position = uMatrix * vec4(translateRelativeToEye(xy, vec2(0.0)), 0.0, 1.0);
 }
@@ -105,11 +112,44 @@ void main() {
 
 precision highp float;
 
+uniform int hit;
+uniform float mode;
+
+in vec2 uv;
+in float u_hit;
 in vec3 v_color;
+in float u_assignment;
+
 out vec4 fragColor;
 
 void main() {
-    fragColor = vec4(v_color, 0.2);
+
+    // Shading in topology editor
+    if(mode == 0.0) {
+    
+        fragColor = vec4(v_color, 0.2);
+
+    }
+    // Shading in attribute editor
+    else {
+
+        float distance = uv.x * uv.x + uv.y * uv.y;
+        bool isHit = hit == int(u_hit);
+        bool isAssigned = 1 == int(u_assignment);
+        
+        if (distance <= 0.25 && distance >= 0.2) {
+            if (isHit) fragColor = vec4(1.0, 1.0, 1.0, 0.2);
+            else fragColor = vec4(0.64, 0.09, 0.09, 0.8);
+        }
+        else {
+            if (isHit) fragColor = vec4(0.64, 0.09, 0.09, 0.8);
+            else fragColor = vec4(1.0, 1.0, 1.0, 0.2);
+        }
+
+        if (isAssigned) {
+            fragColor = vec4(1.0 - fragColor.rgb, fragColor.a);
+        }
+    }
 }
 
 #endif

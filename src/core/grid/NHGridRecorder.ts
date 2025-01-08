@@ -45,7 +45,7 @@ export interface GridRecordOptions {
     dispatcher?: Dispatcher
     operationCapacity?: number
     autoDeleteIndexedDB?: boolean
-    projectLoadCallback?: (infos: [fromStorageId: number, levels: Uint16Array, vertexBuffer: Float32Array]) => void
+    projectLoadCallback?: (infos: [fromStorageId: number, levels: Uint8Array, vertexBuffer: Float32Array]) => void
 }
 
 export default class GridRecorder extends UndoRedoManager {
@@ -56,7 +56,7 @@ export default class GridRecorder extends UndoRedoManager {
     isReady = false
     dispatcher: Dispatcher
     levelInfos: GridLevelInfo[]
-    projectLoadCallback: undefined | ((infos: [fromStorageId: number, levels: Uint16Array, vertexBuffer: Float32Array]) => void)
+    projectLoadCallback: undefined | ((infos: [fromStorageId: number, levels: Uint8Array, vertexBuffer: Float32Array]) => void)
 
     // Grid containers
     storageId_gridInfo_cache: Array<number> // [ level_0, globalId_0, level_1, globalId_1, ... , level_n, globalId_n ]
@@ -177,6 +177,7 @@ export default class GridRecorder extends UndoRedoManager {
             // init attribute cache 
             this.edge_attribute_cache = Array.from({ length: this.edgeNum }, () => { return { height: -9999, type: 0 } })
 
+            let preparedChunkNum = 0
             const actorNum = WorkerPool.workerCount - 1
             const edgeChunk = Math.ceil(this.edgeKeys_cache.length / actorNum)
             for (let actorIndex = 0; actorIndex < actorNum; actorIndex++) {
@@ -185,8 +186,9 @@ export default class GridRecorder extends UndoRedoManager {
                     { index: actorIndex, keys: this.edgeKeys_cache.slice(actorIndex * edgeChunk, Math.min(this.edgeKeys_cache.length, (actorIndex + 1) * edgeChunk)) },
                     (_, edgeRenderInfos: EdgeRenderInfoPack) => {
 
+                        preparedChunkNum += 1
                         const fromStorageId = edgeRenderInfos.actorIndex * edgeChunk
-                        callback && callback(actorIndex === actorNum - 1, fromStorageId, edgeRenderInfos.vertexBuffer)
+                        callback && callback(preparedChunkNum === actorNum, fromStorageId, edgeRenderInfos.vertexBuffer)
                     }
                 )
             }
@@ -248,7 +250,7 @@ export default class GridRecorder extends UndoRedoManager {
             const gridNum = grids.length
             const vertices = new Float32Array(8)
             const vertexBuffer = new Float32Array(gridNum * 8)
-            const levels = new Uint16Array(grids.map(grid => grid.level))
+            const levels = new Uint8Array(grids.map(grid => grid.level))
             grids.forEach((grid, storageId) => {
                 this._createNodeRenderVertices(grid.level, grid.globalId, vertices)
                 vertexBuffer[gridNum * 2 * 0 + storageId * 2 + 0] = vertices[0]
@@ -491,7 +493,7 @@ export default class GridRecorder extends UndoRedoManager {
                     this.storageId_gridInfo_cache[storageId * 2 + 0] = replacedLevel
                     this.storageId_gridInfo_cache[storageId * 2 + 1] = replacedGlobalId
 
-                    callback && callback([storageId, new Uint16Array([replacedLevel]), this._createNodeRenderVertices(replacedLevel, replacedGlobalId)])
+                    callback && callback([storageId, new Uint8Array([replacedLevel]), this._createNodeRenderVertices(replacedLevel, replacedGlobalId)])
                 })
             },
             inverse: () => {
@@ -505,7 +507,7 @@ export default class GridRecorder extends UndoRedoManager {
                     const removableGlobalId = removableGlobalIds[index]
                     this.storageId_gridInfo_cache[storageId * 2 + 0] = removableLevel
                     this.storageId_gridInfo_cache[storageId * 2 + 1] = removableGlobalId
-                    callback && callback([storageId, new Uint16Array([removableLevel]), this._createNodeRenderVertices(removableLevel, removableGlobalId)])
+                    callback && callback([storageId, new Uint8Array([removableLevel]), this._createNodeRenderVertices(removableLevel, removableGlobalId)])
 
                     // Revert info about the grid having the replaced storageId
                     if (index <= replacedGridInfo.length - 1) {
@@ -513,7 +515,7 @@ export default class GridRecorder extends UndoRedoManager {
                         const [replacedStorageId, replacedLevel, replacedGlobalId] = replacedGridInfo[index]
                         this.storageId_gridInfo_cache[replacedStorageId * 2 + 0] = replacedLevel
                         this.storageId_gridInfo_cache[replacedStorageId * 2 + 1] = replacedGlobalId
-                        callback && callback([replacedStorageId, new Uint16Array([replacedLevel]), this._createNodeRenderVertices(replacedLevel, replacedGlobalId)])
+                        callback && callback([replacedStorageId, new Uint8Array([replacedLevel]), this._createNodeRenderVertices(replacedLevel, replacedGlobalId)])
                     }
                 })
             }
@@ -540,7 +542,7 @@ export default class GridRecorder extends UndoRedoManager {
                     this.storageId_gridInfo_cache[storageId * 2 + 1] = globalId
 
                 })
-                const levels = new Uint16Array(infoLength).fill(level)
+                const levels = new Uint8Array(infoLength).fill(level)
                 callback && callback([fromStorageId, levels, renderInfos.vertexBuffer])
             },
             inverse: () => {
