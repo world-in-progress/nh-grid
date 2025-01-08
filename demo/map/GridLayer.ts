@@ -381,18 +381,7 @@ export default class GridLayer {
             }
         })
 
-        // [6] Add event listner for <Shift + E> (Parse topology for grids and edges)
-        document.addEventListener('keydown', e => {
-
-            if (e.shiftKey && e.key === 'E') {
-
-                this.gridRecorder.parseGridTopology(this.updateGPUEdges)
-
-                this.map.triggerRepaint()
-            }
-        })
-
-        // [7] Add event listner for <Shift + A> (Console Attribute Type)
+        // [6] Add event listner for <Shift + A> (Console Attribute Type)
         document.addEventListener('keydown', e => {
 
             if (e.shiftKey && e.key === 'A') {
@@ -1122,20 +1111,20 @@ export default class GridLayer {
         // Resize canvas 2d
         const canvas = this._ctx!.canvas;
         if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
-            canvas.width = canvas.clientWidth;
-            canvas.height = canvas.clientHeight;
+            canvas.width = canvas.clientWidth
+            canvas.height = canvas.clientHeight
         }
     }
 
     private _handleStateGet(target: Record<string, string>, prop: string): string {
-        return Reflect.get(target, prop);
+        return Reflect.get(target, prop)
     }
 
     private _handleStateSet(target: Record<string, string>, prop: string, value: string): boolean {
         if (!(prop in target))
             throw new Error(`Property ${prop} does not exist on editorControl`);
 
-        target[prop] = value;
+        target[prop] = value
         switch (prop) {
             case 'editor':
                 console.log('set editor ', value)
@@ -1149,12 +1138,16 @@ export default class GridLayer {
                         this.isTopologyParsed = false
                         this.gridRecorder.resetEdges()
                         this.addTopologyEditorUIHandler()
-                        break;
+                        break
                     case 'attribute':
                         this.addAttributeEditorUIHandler()
                         this.showLoading!(true)
-                        this.gridRecorder.parseGridTopology((fromStorageId: number, vertexBuffer: Float32Array) => {
+                        this.gridRecorder.parseGridTopology((isCompleted: boolean, fromStorageId: number, vertexBuffer: Float32Array) => {
+                            
                             this.updateGPUEdges(fromStorageId, vertexBuffer)
+                            
+                            if (!isCompleted) return
+
                             this.isTopologyParsed = true
                             this.showLoading!(false)
                             this.updateAttrSetter({
@@ -1171,14 +1164,14 @@ export default class GridLayer {
                             console.log(" ====Topology Parsed==== ")
                         })
                         this.map.triggerRepaint()
-                        break;
+                        break
                 }
                 this.map.triggerRepaint()
-                break;
+                break
             case 'tool':
                 console.log('set tool ', value)
                 // do nothing extra
-                break;
+                break
             case 'mode':
                 console.log('set mode ', value)
                 // do nothing extra
@@ -1188,25 +1181,26 @@ export default class GridLayer {
     }
 
     private _handleAttrEdgeClick(e: MouseEvent) {
+
         if ((e.target as HTMLDivElement).classList.contains("edge")) {
             // deactive last actived element
             if (this.activeAttrFeature.dom) {
                 this.activeAttrFeature.dom.classList.remove("actived")
             }
             const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement
-            attrTypeDom.textContent = 'Edge';
+            attrTypeDom.textContent = 'Edge'
 
-            (e.target as HTMLDivElement).classList.add("actived")
+            ;(e.target as HTMLDivElement).classList.add("actived")
             const eID = (e.target as HTMLDivElement).dataset.eid
             this.activeAttrFeature.dom = e.target as HTMLDivElement
             this.activeAttrFeature.id = Number(eID)
             this.activeAttrFeature.t = 1
             const [height, type] = this._getInfoFromCache(this.activeAttrFeature.id, this.activeAttrFeature.t)
             this.activeAttrFeature.height = height
-            this.activeAttrFeature.type = type;
+            this.activeAttrFeature.type = type
 
-            (document.querySelector('#height') as HTMLInputElement).value = height + '';
-            (document.querySelector('#type') as HTMLInputElement).value = type + ''
+            ;(document.querySelector('#height') as HTMLInputElement).value = height + ''
+            ;(document.querySelector('#type') as HTMLInputElement).value = type + ''
 
         }
     }
@@ -1262,11 +1256,11 @@ export default class GridLayer {
             this.activeAttrFeature.t = 0
             const [height, type] = this._getInfoFromCache(this.activeAttrFeature.id, this.activeAttrFeature.t)
             this.activeAttrFeature.height = height
-            this.activeAttrFeature.type = type;
-            attrTypeDom.textContent = "Grid";
+            this.activeAttrFeature.type = type
+            attrTypeDom.textContent = "Grid"
 
-            (document.querySelector('#height') as HTMLInputElement).value = height + '';
-            (document.querySelector('#type') as HTMLInputElement).value = type + ''
+            ;(document.querySelector('#height') as HTMLInputElement).value = height + ''
+            ;(document.querySelector('#type') as HTMLInputElement).value = type + ''
         })
 
         // input focusout
@@ -1291,26 +1285,27 @@ export default class GridLayer {
             this.activeAttrFeature.type = 0
 
             // reset grid dom data-id and input value
-            const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement;
-            attrTypeDom.dataset.id = '-1';
-            attrTypeDom.textContent = 'Grid';
+            const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement
+            attrTypeDom.dataset.id = '-1'
+            attrTypeDom.textContent = 'Grid'
 
-            const topHtml = genEdgeHTML("top", []);
-            const leftHtml = genEdgeHTML("left", []);
-            const bottomHtml = genEdgeHTML("bottom", []);
-            const rightHtml = genEdgeHTML("right", []);
+            const topHtml = genEdgeHTML("top", [])
+            const leftHtml = genEdgeHTML("left", [])
+            const bottomHtml = genEdgeHTML("bottom", [])
+            const rightHtml = genEdgeHTML("right", [])
 
             const edgesInnerHtml = `
                 ${topHtml}
                 ${leftHtml}
                 ${bottomHtml}
                 ${rightHtml}
-                `;
+            `
             const edgesDom = document.querySelector('#edges') as HTMLDivElement
             edgesDom.innerHTML = edgesInnerHtml;
 
-            (document.querySelector('#height') as HTMLInputElement).value = -9999 + '';
-            (document.querySelector('#type') as HTMLInputElement).value = 0 + '';
+            (document.querySelector('#height') as HTMLInputElement).value = -9999 + ''
+            ;(document.querySelector('#type') as HTMLInputElement).value = 0 + ''
+
         } else if (this.EditorState.tool === 'brush') {
 
             //////// parse grid and edge info
@@ -1349,7 +1344,6 @@ export default class GridLayer {
         }
 
     }
-
 
     private _getInfoFromCache(ID: number, T: number) {
         let height = -9999, type = 0
@@ -1491,7 +1485,6 @@ export default class GridLayer {
             gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, 0, toStorageV, updateBlockWidth, 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, levels, srcOffset)
         }
     }
-
 }
 
 // Helpers //////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1505,10 +1498,6 @@ function isMacOS(): boolean {
     return navigator.userAgent.includes('Mac')
 }
 
-<<<<<<< HEAD
-
-=======
->>>>>>> upstream/main
 // ADDON
 function genPickingBox(canvas: HTMLCanvasElement, startEvent: MapMouseEvent, endEvent: MapMouseEvent) {
 
