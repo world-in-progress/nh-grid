@@ -318,7 +318,20 @@ export default class GridRecorder extends UndoRedoManager {
     }
 
     getEdgeInfoByStorageId(storageId: number) {
-        return this.storageId_edgeId_set[storageId]
+
+        return this.storageId_edgeId_set[storageId].map(edgeSet => {
+            return Array.from(edgeSet).sort((edgeA, edgeB) => {
+                const keyA = this.edgeKeys_cache[edgeA]
+                const keyB = this.edgeKeys_cache[edgeB]
+                const dir = keyA.slice(0, 1)
+                const posA = keyA.slice(1).split('-')
+                const posB = keyB.slice(1).split('-')
+
+                const minA = (+posA[0]) / (+posA[1])
+                const minB = (+posB[0]) / (+posB[1])
+                return dir === 'h' ? minA - minB : minB - minA
+            })
+        })
     }
 
     setGridAttributeByStorageId(storageId: number, attr: { height: number, type: number }) {

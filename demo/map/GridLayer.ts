@@ -3,9 +3,7 @@ import { mat4 } from 'gl-matrix'
 import { MapMouseEvent } from 'mapbox-gl'
 import { GUI, GUIController } from 'dat.gui'
 
-import "../pannel.css"
-import "../attribute.css"
-import "../loading.css"
+import '../editor-style.css'
 import gll from './GlLib'
 import NHMap from './NHMap'
 import BoundingBox2D from '../../src/core/util/boundingBox2D'
@@ -98,8 +96,8 @@ export default class GridLayer {
     }
     EditorState: Record<string, string> = {}
 
+    // Attr-Setter
     activeAttrFeature: Record<string, any> = {}
-
     attrSetter: HTMLDivElement | null = null
     edgeDom: HTMLDivElement | null = null
     isTopologyParsed = false
@@ -203,38 +201,6 @@ export default class GridLayer {
         this.capacityController = this.gui.__controllers[0]
         this.capacityController.setValue(0.0)
         this.capacityController.domElement.style.pointerEvents = 'none'
-    }
-
-    hitAttributeEditor() {
-        if (!this.isTopologyParsed) return
-        if (this.EditorState.tool === "brush") {
-            this._hitAttribute()
-        }
-        // box tool
-        else if (this.EditorState.tool === "box") {
-            this._hitsAttribute()
-        }
-        // this.hitGridList.forEach(grid => {
-        //     if (grid.within(this.bBox, lon, lat)) {
-        //         grid.hit = true
-        //         // this.edgeRecorder.calcGridEdges(grid, this.gridRecorder)
-        //         console.log(grid.edges)
-        //     }
-        // })
-    }
-
-    private _hitAttribute() {
-
-        const [gridStorageId] = this.hitSet
-        const edgeSet = this.gridRecorder.getEdgeInfoByStorageId(+gridStorageId)
-        const [top, left, bottom, right] = edgeSet
-        this.updateAttrSetter({ gridStorageId, top, left, bottom, right })
-    }
-
-    private _hitsAttribute() {
-
-        const gridStorageIds = Array.from(this.hitSet)
-        this.updateAttrSetter({ gridStorageId: gridStorageIds })
     }
 
     // Fast function to upload one grid rendering info to GPU stograge buffer
@@ -664,6 +630,13 @@ export default class GridLayer {
         this.map.triggerRepaint()
     }
 
+    hitAttributeEditor() {
+
+        if (!this.isTopologyParsed) return
+        if (this.EditorState.tool === "brush") this._hitAttribute()
+        else if (this.EditorState.tool === "box") this._hitsAttribute()
+    }
+
     removeGrid(storageId: number) {
         this.gridRecorder.removeGrid(storageId, this.updateGPUGrid)
         this.map.triggerRepaint()
@@ -718,7 +691,6 @@ export default class GridLayer {
         else if (this.EditorState.editor === "attribute") {
 
             this.hitAttributeEditor()
-            // this.tickEditor()
 
         }
 
@@ -942,6 +914,19 @@ export default class GridLayer {
         return Array.from(set)
     }
 
+    private _hitAttribute() {
+
+        const [gridStorageId] = this.hitSet
+        const [top, left, bottom, right] = this.gridRecorder.getEdgeInfoByStorageId(+gridStorageId)
+        this.updateAttrSetter({ gridStorageId, top, left, bottom, right })
+    }
+
+    private _hitsAttribute() {
+
+        const gridStorageIds = Array.from(this.hitSet)
+        this.updateAttrSetter({ gridStorageId: gridStorageIds })
+    }
+
     private _updateGPUGrid(info?: [storageId: number, level: number, vertices: Float32Array]) {
 
         if (info) {
@@ -1137,10 +1122,10 @@ export default class GridLayer {
                             this.isTopologyParsed = true
                             this.showLoading!(false)
                             this.updateAttrSetter({
-                                top: new Set(),
-                                left: new Set(),
-                                bottom: new Set(),
-                                right: new Set(),
+                                top: [],
+                                left: [],
+                                bottom: [],
+                                right: [],
                                 gridStorageId: -1
                             })
                             this.attrSetter!.style.display = 'block'
@@ -1150,9 +1135,6 @@ export default class GridLayer {
                             console.log(" ====Topology Parsed==== ")
                         })
                         this.map.triggerRepaint()
-                        /*
-                        Attribute setup
-                        */
                         break;
                 }
                 this.map.triggerRepaint()
@@ -1190,11 +1172,10 @@ export default class GridLayer {
 
             (e.target as HTMLDivElement).classList.add("actived")
             const eID = (e.target as HTMLDivElement).dataset.eid
-            console.log('eID', eID)
             this.activeAttrFeature.dom = e.target as HTMLDivElement
             this.activeAttrFeature.id = Number(eID)
             this.activeAttrFeature.t = 1
-            const [height, type] = this.getInfoFromCache(this.activeAttrFeature.id, this.activeAttrFeature.t)
+            const [height, type] = this._getInfoFromCache(this.activeAttrFeature.id, this.activeAttrFeature.t)
             this.activeAttrFeature.height = height
             this.activeAttrFeature.type = type;
 
@@ -1211,22 +1192,18 @@ export default class GridLayer {
         ]
         this.activeAttrFeature[attr as "height" | "type"] = +value
         if (!Array.isArray(this.activeAttrFeature.id)) {
-            this.setCacheInfo(this.activeAttrFeature.id, this.activeAttrFeature.t, this.activeAttrFeature.height, this.activeAttrFeature.type)
+            this._setCacheInfo(this.activeAttrFeature.id, this.activeAttrFeature.t, this.activeAttrFeature.height, this.activeAttrFeature.type)
         } else {
-            this.setCacheBatchInfo(this.activeAttrFeature.id, this.activeAttrFeature.t, this.activeAttrFeature.height, this.activeAttrFeature.type)
+            this._setCacheBatchInfo(this.activeAttrFeature.id, this.activeAttrFeature.t, this.activeAttrFeature.height, this.activeAttrFeature.type)
         }
     }
 
     initAttrSetter(info: any) {
         //////// parse grid and edge info
-        const gridStorageId = info.gridStorageId
-        const top = Array.from(info.top)
-        const left = Array.from(info.left)
-        const bottom = Array.from(info.bottom)
-        const right = Array.from(info.right)
+        const { gridStorageId, top, left, bottom, right } = info
 
         // default :: grid clicked
-        const [height, type] = this.getInfoFromCache(gridStorageId, 0) // 0 grid, 1 edge
+        const [height, type] = this._getInfoFromCache(gridStorageId, 0) // 0 grid, 1 edge
         this.activeAttrFeature.id = gridStorageId
         this.activeAttrFeature.dom = null
         this.activeAttrFeature.t = 0
@@ -1257,7 +1234,7 @@ export default class GridLayer {
             this.activeAttrFeature.dom = (e.target as HTMLDivElement)
             this.activeAttrFeature.id = +(e.target as HTMLDivElement).dataset.id!
             this.activeAttrFeature.t = 0
-            const [height, type] = this.getInfoFromCache(this.activeAttrFeature.id, this.activeAttrFeature.t)
+            const [height, type] = this._getInfoFromCache(this.activeAttrFeature.id, this.activeAttrFeature.t)
             this.activeAttrFeature.height = height
             this.activeAttrFeature.type = type;
             attrTypeDom.textContent = "Grid";
@@ -1313,14 +1290,10 @@ export default class GridLayer {
         } else if (this.EditorState.tool === 'brush') {
 
             //////// parse grid and edge info
-            const gridStorageId = info.gridStorageId
-            const top = Array.from(info.top)
-            const left = Array.from(info.left)
-            const bottom = Array.from(info.bottom)
-            const right = Array.from(info.right)
+            const { top, left, bottom, right, gridStorageId } = info
 
             // reset default :: grid clicked
-            const [height, type] = this.getInfoFromCache(gridStorageId, 0) // 0 grid, 1 edge
+            const [height, type] = this._getInfoFromCache(gridStorageId, 0) // 0 grid, 1 edge
             this.activeAttrFeature.id = gridStorageId
             this.activeAttrFeature.dom = null
             this.activeAttrFeature.t = 0
@@ -1351,12 +1324,10 @@ export default class GridLayer {
             edgesDom.innerHTML = edgesInnerHtml
         }
 
-
     }
 
 
-    getInfoFromCache(ID: number, T: number) {
-        console.log(ID)
+    private _getInfoFromCache(ID: number, T: number) {
         let height = -9999, type = 0
         if (!this.isTopologyParsed || ID < 0) return [height, type]
         if (T === 0) {
@@ -1365,12 +1336,11 @@ export default class GridLayer {
         } else {
             height = this.gridRecorder.edge_attribute_cache[ID].height
             type = this.gridRecorder.edge_attribute_cache[ID].type
-            console.log("get edge ", ID, height, type)
         }
         return [height, type]
     }
 
-    setCacheInfo(ID: number, T: number, height: number, type: number) {
+    private _setCacheInfo(ID: number, T: number, height: number, type: number) {
         if (!this.isTopologyParsed) {
             throw "Topology Not Parsed!!" //never
         }
@@ -1381,8 +1351,8 @@ export default class GridLayer {
             (document.querySelector('#height') as HTMLInputElement).value = '0'
         }
         if (type < 0 || type > 10) {
-            alert("type out of range [-0, 10] !!");
-            console.error("type out of range [-0, 10] !");
+            alert("type out of range [0, 10] !!");
+            console.error("type out of range [0, 10] !");
             (document.querySelector('#type') as HTMLInputElement).value = '0'
         }
 
@@ -1395,7 +1365,7 @@ export default class GridLayer {
         }
     }
 
-    setCacheBatchInfo(IDs: number[], T: number = 0, height: number, type: number) {
+    private _setCacheBatchInfo(IDs: number[], T: number = 0, height: number, type: number) {
         if (!this.isTopologyParsed) {
             throw "Topology Not Parsed!!" //never
         }
@@ -1497,6 +1467,7 @@ export default class GridLayer {
             gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, 0, toStorageV, updateBlockWidth, 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, levels, srcOffset)
         }
     }
+
 }
 
 // Helpers //////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1556,15 +1527,10 @@ function genEdgeHTML(edgeSide: string, edgeIds: Array<number>) {
 
 function genAttrEditorHTML(edgeInfo: any, initGridInfo: { id: number, height: number, type: number }) {
 
-    const top = Array.from(edgeInfo.top) as Array<number>
-    const left = Array.from(edgeInfo.left) as Array<number>
-    const bottom = Array.from(edgeInfo.bottom) as Array<number>
-    const right = Array.from(edgeInfo.right) as Array<number>
-
-    const topHtml = genEdgeHTML("top", top)
-    const leftHtml = genEdgeHTML("left", left)
-    const bottomHtml = genEdgeHTML("bottom", bottom)
-    const rightHtml = genEdgeHTML("right", right)
+    const topHtml = genEdgeHTML("top", edgeInfo.top)
+    const leftHtml = genEdgeHTML("left", edgeInfo.left)
+    const bottomHtml = genEdgeHTML("bottom", edgeInfo.bottom)
+    const rightHtml = genEdgeHTML("right", edgeInfo.right)
 
     const edgesHtml = `
             <div id="edges">
