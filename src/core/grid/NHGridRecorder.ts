@@ -1,11 +1,11 @@
 import proj4 from 'proj4'
 
+import WorkerPool from '../worker/workerPool'
 import Dispatcher from '../message/dispatcher'
 import { createDB, deleteDB } from '../database/db'
 import { MercatorCoordinate } from '../math/mercatorCoordinate'
 import UndoRedoManager, { UndoRedoOperation } from '../util/undoRedoManager'
-import { EDGE_CODE, EDGE_CODE_EAST, EDGE_CODE_NORTH, EDGE_CODE_SOUTH, EDGE_CODE_WEST, EdgeRenderInfoPack, GridEdge, GridNode, GridNodeRecord, GridNodeRenderInfo, GridNodeRenderInfoPack, GridTopologyInfo, SubdivideRules } from './NHGrid'
-import WorkerPool from '../worker/workerPool'
+import {  EdgeRenderInfoPack, GridNodeRenderInfoPack, GridTopologyInfo, SubdivideRules } from './NHGrid'
 
 interface GridLevelInfo {
 
@@ -19,14 +19,18 @@ export interface GridLayerSerializedInfo {
     extent: [number, number, number, number]
     subdivideRules: [number, number][]
     grids: {
-        index: number,
-        level: number,
-        globalId: number,
+        type: number
+        index: number
+        level: number
+        height: number
+        globalId: number
         edges: number[][]
     }[]
     edges: {
-        index: number,
-        key: string,
+        type: number
+        key: string
+        index: number
+        height: number
         adjGrids: number[]
     }[]
 }
@@ -54,10 +58,12 @@ export default class GridRecorder extends UndoRedoManager {
     levelInfos: GridLevelInfo[]
     projectLoadCallback: undefined | ((infos: [fromStorageId: number, levels: Uint16Array, vertexBuffer: Float32Array]) => void)
 
+    // Grid containers
     storageId_gridInfo_cache: Array<number> // [ level_0, globalId_0, level_1, globalId_1, ... , level_n, globalId_n ]
     storageId_edgeId_set: Array<[Set<number>, Set<number>, Set<number>, Set<number>]> = []
     grid_attribute_cache: Array<Record<string, any>> = [] // { height: number [-9999], type: number [ 0, 0-10 ] }
 
+    // Edge containers
     edgeKeys_cache: string[] = []
     adjGrids_cache: number[][] = []
     edge_attribute_cache: Array<Record<string, any>> = [] // { height: number [-9999], type: number [ 0, 0-10 ] }
@@ -197,16 +203,20 @@ export default class GridRecorder extends UndoRedoManager {
             grids: this.storageId_edgeId_set.slice(0, this.gridNum).map((edgeIdSets, index) => {
                 return {
                     index,
+                    type: this.grid_attribute_cache[index]['type'],
+                    height: this.grid_attribute_cache[index]['height'],
+                    edges: edgeIdSets.map(edgeIdSet => [...edgeIdSet]),
                     level: this.storageId_gridInfo_cache[index * 2 + 0],
                     globalId: this.storageId_gridInfo_cache[index * 2 + 1],
-                    edges: edgeIdSets.map(edgeIdSet => [...edgeIdSet])
                 }
             }),
             edges: this.edgeKeys_cache.slice(0, this.edgeNum).map((key, index) => {
                 return {
-                    index,
                     key,
-                    adjGrids: this.adjGrids_cache[index]
+                    index,
+                    adjGrids: this.adjGrids_cache[index],
+                    type: this.edge_attribute_cache[index]['type'],
+                    height: this.edge_attribute_cache[index]['height'],
                 }
             })
         }

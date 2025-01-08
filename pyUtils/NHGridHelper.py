@@ -32,11 +32,13 @@ def distance2D(x1: float, y1: float, x2: float, y2: float):
 
 class NHGridNode:
     
-    def __init__(self, id: int, level: int, global_id: int, vertices: list[float], edges: list[list[int]]):
+    def __init__(self, id: int, level: int, global_id: int, type: int, altitude: float, vertices: list[float], edges: list[list[int]]):
         
         self.id = id
+        self.type = type
         self.level = level
         self.edge_ids = edges
+        self.altitude = altitude
         self.x_min = vertices[0]
         self.y_min = vertices[1]
         self.x_max = vertices[2]
@@ -114,14 +116,16 @@ class NHGridNode:
 
 class NHGridEdge:
     
-    def __init__(self, id: int, key: str, adjacent_grids: list[int], vertices: list[float]):
+    def __init__(self, id: int, key: str, type: int, altitude: float, adjacent_grids: list[int], vertices: list[float]):
         
         self.id = id
         self.key = key
+        self.type = type
         self.x1 = vertices[0]
         self.y1 = vertices[1]
         self.x2 = vertices[2]
         self.y2 = vertices[3]
+        self.altitude = altitude
         self.grid_ids: list[int | None] = adjacent_grids
             
     def get_p1(self) -> list[float]:
@@ -204,7 +208,9 @@ class NHGridHelper:
             
             # Parse info
             grid_id: int = grid_info['index']
+            grid_type: int = grid_info['type']
             grid_level: int = grid_info['level']
+            grid_altitude: float = grid_info['height']
             grid_global_id: int = grid_info['globalId']
             grid_edges: list[list[int]] = grid_info['edges']
             grid_vertices: list[float] = self.create_grid_vertices(grid_global_id, self.level_infos[grid_level]['width'], self.level_infos[grid_level]['height'])
@@ -214,6 +220,8 @@ class NHGridHelper:
                 grid_id,
                 grid_level,
                 grid_global_id,
+                grid_type,
+                grid_altitude,
                 grid_vertices,
                 grid_edges
             )
@@ -226,6 +234,8 @@ class NHGridHelper:
             # Parse info
             edge_id: int = edge_info['index']
             edge_key: str = edge_info['key']
+            edge_type: int = edge_info['type']
+            edge_altitude: float = edge_info['height']
             adj_grids: list[int] = edge_info['adjGrids']
             edge_vertices: list[float] = self.create_edge_vertices(edge_key)
             
@@ -233,6 +243,8 @@ class NHGridHelper:
             edge = NHGridEdge(
                 edge_id,
                 edge_key,
+                edge_type,
+                edge_altitude,
                 adj_grids,
                 edge_vertices
             )
@@ -396,9 +408,9 @@ class NHGridHelper:
             top_edge_ids = ', '.join(map(str, [id + 1 for id in grid.get_north_edge_ids()]))
             
             center_point = grid.get_center()
-            center = ', '.join(map(str, [ *center_point, sampler.sampling(*center_point) ]))
+            center = ', '.join(map(str, [ *center_point, sampler.sampling(*center_point) if grid.altitude == invalid_data else grid.altitude ]))
             
-            gridInfo += f'{id + 1}, {left_edge_num}, {right_edge_num}, {bottom_edge_num}, {top_edge_num}, {left_edge_ids}, {right_edge_ids}, {bottom_edge_ids}, {top_edge_ids}, {center}\n'
+            gridInfo += f'{id + 1}, {left_edge_num}, {right_edge_num}, {bottom_edge_num}, {top_edge_num}, {left_edge_ids}, {right_edge_ids}, {bottom_edge_ids}, {top_edge_ids}, {center}, {grid.type}\n'
                 
         with open(os.path.join(output_path, 'ne.txt'), 'w', encoding='utf-8') as file:
             file.write(gridInfo)
@@ -422,11 +434,11 @@ class NHGridHelper:
             bottom_grid_id = south_id + 1 if south_id is not None else 0
             
             center_point = edge.get_center()
-            center = ', '.join(map(str, [ *center_point, sampler.sampling(*center_point) ]))
+            center = ', '.join(map(str, [ *center_point, sampler.sampling(*center_point) if edge.altitude == invalid_data else edge.altitude ]))
             
             distance = edge.get_length()
             
-            edge_info += f'{id + 1}, {direction}, {left_grid_id}, {right_grid_id}, {bottom_grid_id}, {top_grid_id}, {distance}, {center}\n'
+            edge_info += f'{id + 1}, {direction}, {left_grid_id}, {right_grid_id}, {bottom_grid_id}, {top_grid_id}, {distance}, {center}, {edge.type}\n'
         
         with open(os.path.join(output_path, 'ns.txt'), 'w', encoding='utf-8') as file:
             file.write(edge_info)
