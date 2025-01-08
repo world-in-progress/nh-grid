@@ -406,6 +406,67 @@ export default class GridLayer {
 
         // [8] init loading DOM
         this.showLoading = initLoadingDOM()!
+        
+        // [-1] Add event lister for gridRecorder
+        document.addEventListener('keydown', e => {
+
+            const ctrlOrCmd = isMacOS() ? e.metaKey : e.ctrlKey
+
+            // Register UNDO operation
+            if (ctrlOrCmd && e.key.toLocaleLowerCase() === 'z' && !e.shiftKey) {
+                e.preventDefault()
+                this.gridRecorder.undo()
+            }
+
+            // Register REDO operation
+            if (ctrlOrCmd && e.key.toLocaleLowerCase() === 'z' && e.shiftKey) {
+                e.preventDefault()
+                this.gridRecorder.redo()
+            }
+
+            // Register LOAD operation
+            if (ctrlOrCmd && e.key.toLocaleLowerCase() === 'l') {
+                e.preventDefault()
+                
+                const input = document.createElement('input')
+                input.accept = '.json'
+                input.type = 'file'
+                input.click()
+        
+                input.addEventListener('change', e => {
+
+                    if (!e.target) return
+                    const inputElement = e.target as HTMLInputElement
+                    if (!inputElement || !inputElement.files) return
+                    const file = inputElement.files[0]
+                    if (file) {
+                        const reader = new FileReader()
+                        reader.onload = () => {
+                            try {
+                                const data = JSON.parse(reader.result as string)
+                                this.gridRecorder.deserialize(data)
+                            } catch (err) {
+                                console.error('Error parsing JSON file:', err)
+                            }
+                        }
+                        reader.readAsText(file)
+                    }
+                })
+            }
+
+            // Register SAVE operation
+            if (ctrlOrCmd && e.key.toLocaleLowerCase() === 's') {
+                e.preventDefault()
+                
+                const data = this.gridRecorder.serialize()
+                const jsonData = JSON.stringify(data)
+                const blob = new Blob([ jsonData ], { type: 'application/json' })
+                const link = document.createElement('a')
+                link.href = URL.createObjectURL(blob)
+                link.download = 'gridInfo.json'
+                link.click()
+            }
+        })
 
         // Init GPU resources ////////////////////////////////////////////////////////////
 
@@ -680,8 +741,8 @@ export default class GridLayer {
         this.map.update()
         this.tickGrids()
 
-            // Tick render: Mesh Pass
-            ; (!this.isTransparent) && this.drawGridMeshes()
+        // Tick render: Mesh Pass
+        ; (!this.isTransparent) && this.drawGridMeshes()
 
         // Tick render: Line Pass
         if (this.gridRecorder.edgeNum) {
@@ -1431,6 +1492,11 @@ function decodeInfo(infoKey: string): Array<number> {
 
     return infoKey.split('-').map(key => +key)
 }
+
+function isMacOS(): boolean {
+    return navigator.userAgent.includes('Mac')
+}
+
 
 // ADDON
 function genPickingBox(canvas: HTMLCanvasElement, startEvent: MapMouseEvent, endEvent: MapMouseEvent) {

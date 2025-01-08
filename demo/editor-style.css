@@ -38,7 +38,6 @@ div.property>.property-type{
 div.property>.property-block {
     width: calc((var(--hheight)) - 10px);
     height: 25px;
-    /* background-color: rgb(232, 10, 10); */
     justify-content: space-between;
 }
 div.text {
@@ -51,7 +50,6 @@ div.text {
     text-align: center;
 }
 input.property-input {
-    /* width: 70px !important; */
     width: 55px;
     height: 25px;
     text-align: center;
@@ -61,7 +59,6 @@ input.property-input {
     border: #e6fcff solid 2px;
     outline: none;
     box-sizing: border-box;
-    /* display: none; */
 }
 
 div.property>.property-input.disabled {
@@ -72,9 +69,6 @@ div.property>.property-input:focus {
     outline: none;
     border: rgb(255, 175, 175) solid 2px;
 }
-
-
-
 
 div.top {
     position: absolute;
@@ -97,7 +91,6 @@ div.left {
 div.right {
     position: absolute;
     top: var(--wwidth);
-    /* right: 0; */
     right: 0;
     height: var(--hheight);
     width: var(--wwidth);
@@ -168,7 +161,6 @@ input[type="number"]::-webkit-outer-spin-button {
     top: 0px;
     height: 200px;
     width: 200px;
-    /* background-color: rgba(206, 206, 206, 0.9); */
     background-color: rgb(55, 55, 55);
     border-radius: 5px;
     font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
@@ -195,7 +187,6 @@ input[type="number"]::-webkit-outer-spin-button {
     position: relative;
     height: 55px;
     width: 200px;
-    /* background-color: yellow; */
 }
 
 .tool-title {
@@ -366,9 +357,6 @@ div#box {
     transform: translateX(-50%);
     font-size: 0.9rem;
 }
-
-
-
 
 .loading {
     display: block;

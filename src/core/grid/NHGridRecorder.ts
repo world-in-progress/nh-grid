@@ -1,11 +1,11 @@
 import proj4 from 'proj4'
 
+import WorkerPool from '../worker/workerPool'
 import Dispatcher from '../message/dispatcher'
 import { createDB, deleteDB } from '../database/db'
 import { MercatorCoordinate } from '../math/mercatorCoordinate'
 import UndoRedoManager, { UndoRedoOperation } from '../util/undoRedoManager'
-import { EDGE_CODE, EDGE_CODE_EAST, EDGE_CODE_NORTH, EDGE_CODE_SOUTH, EDGE_CODE_WEST, EdgeRenderInfoPack, GridEdge, GridNode, GridNodeRecord, GridNodeRenderInfo, GridNodeRenderInfoPack, GridTopologyInfo, SubdivideRules } from './NHGrid'
-import WorkerPool from '../worker/workerPool'
+import {  EdgeRenderInfoPack, GridNodeRenderInfoPack, GridTopologyInfo, SubdivideRules } from './NHGrid'
 
 interface GridLevelInfo {
 
@@ -19,14 +19,18 @@ export interface GridLayerSerializedInfo {
     extent: [number, number, number, number]
     subdivideRules: [number, number][]
     grids: {
-        index: number,
-        level: number,
-        globalId: number,
+        type: number
+        index: number
+        level: number
+        height: number
+        globalId: number
         edges: number[][]
     }[]
     edges: {
-        index: number,
-        key: string,
+        type: number
+        key: string
+        index: number
+        height: number
         adjGrids: number[]
     }[]
 }
@@ -54,10 +58,12 @@ export default class GridRecorder extends UndoRedoManager {
     levelInfos: GridLevelInfo[]
     projectLoadCallback: undefined | ((infos: [fromStorageId: number, levels: Uint16Array, vertexBuffer: Float32Array]) => void)
 
+    // Grid containers
     storageId_gridInfo_cache: Array<number> // [ level_0, globalId_0, level_1, globalId_1, ... , level_n, globalId_n ]
     storageId_edgeId_set: Array<[Set<number>, Set<number>, Set<number>, Set<number>]> = []
     grid_attribute_cache: Array<Record<string, any>> = [] // { height: number [-9999], type: number [ 0, 0-10 ] }
 
+    // Edge containers
     edgeKeys_cache: string[] = []
     adjGrids_cache: number[][] = []
     edge_attribute_cache: Array<Record<string, any>> = [] // { height: number [-9999], type: number [ 0, 0-10 ] }
@@ -96,51 +102,6 @@ export default class GridRecorder extends UndoRedoManager {
         if (options.autoDeleteIndexedDB === undefined ? true : options.autoDeleteIndexedDB) {
             window.onbeforeunload = () => deleteDB('GridDB')
         }
-
-        // Add event listener for <Shift + S> (Download serialization json)
-        document.addEventListener('keydown', e => {
-
-            if (e.shiftKey && e.key === 'S') {
-                let data = this.serialize()
-                let jsonData = JSON.stringify(data)
-                let blob = new Blob([jsonData], { type: 'application/json' })
-                let link = document.createElement('a')
-                link.href = URL.createObjectURL(blob)
-                link.download = 'gridInfo.json'
-                link.click()
-            }
-        })
-
-        // Add event listener for <Shift + L> (Load serialization json)
-        document.addEventListener('keydown', e => {
-
-            if (e.shiftKey && e.key === 'L') {
-
-                let input = document.createElement('input')
-                input.type = 'file'
-                input.accept = '.json'
-                input.click()
-
-                input.addEventListener('change', (event) => {
-                    if (!event.target) return
-                    let inputElement = event.target as HTMLInputElement
-                    if (!inputElement || !inputElement.files) return
-                    let file = inputElement.files[0]
-                    if (file) {
-                        const reader = new FileReader()
-                        reader.onload = () => {
-                            try {
-                                const data = JSON.parse(reader.result as string)
-                                this.deserialize(data)
-                            } catch (err) {
-                                console.error('Error parsing JSON file:', err)
-                            }
-                        }
-                        reader.readAsText(file)
-                    }
-                })
-            }
-        })
     }
 
     get edgeNum(): number {
@@ -242,16 +203,20 @@ export default class GridRecorder extends UndoRedoManager {
             grids: this.storageId_edgeId_set.slice(0, this.gridNum).map((edgeIdSets, index) => {
                 return {
                     index,
+                    type: this.grid_attribute_cache[index]['type'],
+                    height: this.grid_attribute_cache[index]['height'],
+                    edges: edgeIdSets.map(edgeIdSet => [...edgeIdSet]),
                     level: this.storageId_gridInfo_cache[index * 2 + 0],
                     globalId: this.storageId_gridInfo_cache[index * 2 + 1],
-                    edges: edgeIdSets.map(edgeIdSet => [...edgeIdSet])
                 }
             }),
             edges: this.edgeKeys_cache.slice(0, this.edgeNum).map((key, index) => {
                 return {
-                    index,
                     key,
-                    adjGrids: this.adjGrids_cache[index]
+                    index,
+                    adjGrids: this.adjGrids_cache[index],
+                    type: this.edge_attribute_cache[index]['type'],
+                    height: this.edge_attribute_cache[index]['height'],
                 }
             })
         }
