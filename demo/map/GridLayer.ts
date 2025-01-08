@@ -14,7 +14,7 @@ proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555
 
 export interface GridLayerOptions {
 
-    maxGridNum?: number
+    maxGridNum?: number 
     edgeProperties?: string[]
 }
 
@@ -381,31 +381,28 @@ export default class GridLayer {
             }
         })
 
-        // [6] Add event listner for <Shift + A> (Console Attribute Type)
+        // [6] Add event listner for <Shift + E> (Parse topology for grids and edges)
         document.addEventListener('keydown', e => {
 
-            if (e.shiftKey && e.key === 'A') {
+            if (e.shiftKey && e.key === 'E') {
 
-                if (this.EditorState.mode === 'check') {
-                    this.EditorState.mode = 'none'
-                } else
-                    this.EditorState.mode = 'check'
+                this.gridRecorder.parseGridTopology(this.updateGPUEdges)
 
                 this.map.triggerRepaint()
             }
         })
 
-        // [7] init the attrSettor DOM
-        this.initAttrSetter({
-            top: new Set(),
-            left: new Set(),
-            bottom: new Set(),
-            right: new Set(),
-            id: -1
+        // [7] Add event listner for <Shift + A> (Console Attribute Type)
+        document.addEventListener('keydown', e => {
+
+            if (e.shiftKey && e.key === 'A') {
+
+                this.EditorState.mode = 'check'
+
+                this.map.triggerRepaint()
+            }
         })
 
-        // [8] init loading DOM
-        this.showLoading = initLoadingDOM()!
 
         // Init GPU resources ////////////////////////////////////////////////////////////
 
@@ -1430,6 +1427,10 @@ export default class GridLayer {
 function decodeInfo(infoKey: string): Array<number> {
 
     return infoKey.split('-').map(key => +key)
+}
+
+function isMacOS(): boolean {
+    return navigator.userAgent.includes('Mac')
 }
 
 // ADDON

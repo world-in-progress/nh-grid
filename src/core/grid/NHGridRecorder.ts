@@ -96,51 +96,6 @@ export default class GridRecorder extends UndoRedoManager {
         if (options.autoDeleteIndexedDB === undefined ? true : options.autoDeleteIndexedDB) {
             window.onbeforeunload = () => deleteDB('GridDB')
         }
-
-        // Add event listener for <Shift + S> (Download serialization json)
-        document.addEventListener('keydown', e => {
-
-            if (e.shiftKey && e.key === 'S') {
-                let data = this.serialize()
-                let jsonData = JSON.stringify(data)
-                let blob = new Blob([jsonData], { type: 'application/json' })
-                let link = document.createElement('a')
-                link.href = URL.createObjectURL(blob)
-                link.download = 'gridInfo.json'
-                link.click()
-            }
-        })
-
-        // Add event listener for <Shift + L> (Load serialization json)
-        document.addEventListener('keydown', e => {
-
-            if (e.shiftKey && e.key === 'L') {
-
-                let input = document.createElement('input')
-                input.type = 'file'
-                input.accept = '.json'
-                input.click()
-
-                input.addEventListener('change', (event) => {
-                    if (!event.target) return
-                    let inputElement = event.target as HTMLInputElement
-                    if (!inputElement || !inputElement.files) return
-                    let file = inputElement.files[0]
-                    if (file) {
-                        const reader = new FileReader()
-                        reader.onload = () => {
-                            try {
-                                const data = JSON.parse(reader.result as string)
-                                this.deserialize(data)
-                            } catch (err) {
-                                console.error('Error parsing JSON file:', err)
-                            }
-                        }
-                        reader.readAsText(file)
-                    }
-                })
-            }
-        })
     }
 
     get edgeNum(): number {
@@ -450,7 +405,6 @@ export default class GridRecorder extends UndoRedoManager {
 
                 callback && callback([storageId, lastLevel, this._createNodeRenderVertices(lastLevel, lastGlobalId)])
             },
-
             inverse: () => {
                 this._nextStorageId += 1
 
@@ -530,7 +484,6 @@ export default class GridRecorder extends UndoRedoManager {
                     callback && callback([storageId, new Uint16Array([replacedLevel]), this._createNodeRenderVertices(replacedLevel, replacedGlobalId)])
                 })
             },
-
             inverse: () => {
 
                 this._nextStorageId += removableGridNum

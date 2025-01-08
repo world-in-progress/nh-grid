@@ -15,7 +15,6 @@ class UndoRedoManager {
         
         this._undoBuffer = new RingBuffer<UndoRedoOperation>(operationCapacity)
         this._redoBuffer = new RingBuffer<UndoRedoOperation>(operationCapacity)
-        this._registerKeyboardShortcuts()
     }
 
     execute(operation: UndoRedoOperation): void {
@@ -52,30 +51,6 @@ class UndoRedoManager {
             redo: this._redoBuffer.toArray(),
         }
     }
-
-    private _registerKeyboardShortcuts(): void {
-
-        document.addEventListener('keydown', (event: KeyboardEvent) => {
-
-            const ctrlOrCmd = isMacOS() ? event.metaKey : event.ctrlKey
-
-            if (ctrlOrCmd && event.key.toLocaleLowerCase() === 'z' && !event.shiftKey) {
-                event.preventDefault()
-                this.undo()
-            }
-
-            if (ctrlOrCmd && event.key.toLocaleLowerCase() === 'z' && event.shiftKey) {
-                event.preventDefault()
-                this.redo()
-            }
-        })
-    }
-}
-
-// Helpers //////////////////////////////////////////////////
-
-function isMacOS(): boolean {
-    return navigator.userAgent.includes('Mac')
 }
 
 export default UndoRedoManager

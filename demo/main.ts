@@ -71,4 +71,3 @@ const map = new NHMap({
 
     map.addLayer(gridLayer as unknown as CustomLayerInterface)
 })
-

@@ -78,8 +78,130 @@ export class GridEdgeManager {
         // Calculate east edges
         this._calcVerticalEdges(grid, neighbours[EDGE_CODE_EAST], EDGE_CODE_EAST, EDGE_CODE_WEST, grid.xMaxPercent)
     }
-    
+
     private _calcHorizontalEdges(grid: GridNode, neighbours: GridNode[], edgeCode: number, opEdgeCode: number, sharedCoord: [ number, number ]): void {
+
+        // Case when no neighbour /////////////////////////////////////////////////////
+
+        if (neighbours.length === 0) {
+
+            const edge = this.getEdgeKeyByInfo(grid, null, 'h', [ grid.xMinPercent, grid.xMaxPercent, sharedCoord ])
+            grid.addEdge(edge, edgeCode)
+            return
+        }
+
+        // Case when neighbour has lower level /////////////////////////////////////////////////////
+
+        if (neighbours.length === 1 && neighbours[0].level < grid.level) {
+
+            const edge = this.getEdgeKeyByInfo(grid, neighbours[0], 'h', [ grid.xMinPercent, grid.xMaxPercent, sharedCoord ])
+            grid.addEdge(edge, edgeCode)
+            neighbours[0].addEdge(edge, opEdgeCode)
+            return
+        }
+
+        // Case when neighbours have equal or higher levels ////////////////////////////////////////
+
+        neighbours.sort((neighbourA, neighbourB) => neighbourA.xMin - neighbourB.xMin)
+
+        // Calculate edge between grid xMin and first neighbour if existed
+        if (grid.xMin !== neighbours[0].xMin) {
+            const edge = this.getEdgeKeyByInfo(grid, null, 'h', [ grid.xMinPercent, neighbours[0].xMinPercent, sharedCoord ])
+            grid.addEdge(edge, edgeCode)
+        }
+
+        // Calculate edges between neighbours
+        for(let i = 0; i < neighbours.length - 1; i++) {
+            const neighbourFrom = neighbours[i]
+            const neighbourTo = neighbours[i + 1]
+
+            // Calculate edge of neighbourFrom
+            const edge = this.getEdgeKeyByInfo(grid, neighbourFrom, 'h', [ neighbourFrom.xMinPercent, neighbourFrom.xMaxPercent, sharedCoord ])
+            grid.addEdge(edge, edgeCode)
+            neighbourFrom.addEdge(edge, opEdgeCode)
+
+            // Calculate edge between neighbourFrom and neighbourTo if existed
+            if (neighbourFrom.xMax !== neighbourTo.xMin) {
+                const edge = this.getEdgeKeyByInfo(grid, null, 'h', [ neighbourFrom.xMaxPercent, neighbourTo.xMinPercent, sharedCoord ])
+                grid.addEdge(edge, edgeCode)
+            }
+        }
+
+        // Calculate edge of last neighbour
+        const lastNeighbour = neighbours[neighbours.length - 1]
+        const edge = this.getEdgeKeyByInfo(grid, lastNeighbour, 'h', [ lastNeighbour.xMinPercent, lastNeighbour.xMaxPercent, sharedCoord ])
+        grid.addEdge(edge, edgeCode)
+        lastNeighbour.addEdge(edge, opEdgeCode)
+
+        // Calculate edge between last neighbour and grid xMax if existed
+        if (lastNeighbour.xMax !== grid.xMax) {
+            const edge = this.getEdgeKeyByInfo(grid, null, 'h', [ lastNeighbour.xMaxPercent, grid.xMaxPercent, sharedCoord ])
+            grid.addEdge(edge, edgeCode)
+        }
+    }
+
+    private _calcVerticalEdges(grid: GridNode, neighbours: GridNode[], edgeCode: number, opEdgeCode: number, sharedCoord: [ number, number ]): void {
+
+        // Case when no neighbour /////////////////////////////////////////////////////
+
+        if (neighbours.length === 0) {
+
+            const edge = this.getEdgeKeyByInfo(grid, null, 'v', [ grid.yMinPercent, grid.yMaxPercent, sharedCoord ])
+            grid.addEdge(edge, edgeCode)
+            return
+        }
+
+        // Case when neighbour has lower level /////////////////////////////////////////////////////
+
+        if (neighbours.length === 1 && neighbours[0].level < grid.level) {
+
+            const edge = this.getEdgeKeyByInfo(grid, neighbours[0], 'v', [ grid.yMinPercent, grid.yMaxPercent, sharedCoord ])
+            grid.addEdge(edge, edgeCode)
+            neighbours[0].addEdge(edge, opEdgeCode)
+            return
+        }
+
+        // Case when neighbours have equal or higher levels ////////////////////////////////////////
+
+        neighbours.sort((neighbourA, neighbourB) => neighbourA.yMin - neighbourB.yMin)
+
+        // Calculate edge between grid yMin and first neighbour if existed
+        if (grid.yMin !== neighbours[0].yMin) {
+            const edge = this.getEdgeKeyByInfo(grid, null, 'v', [ grid.yMinPercent, neighbours[0].yMinPercent, sharedCoord ])
+            grid.addEdge(edge, edgeCode)
+        }
+
+        // Calculate edges between neighbours
+        for(let i = 0; i < neighbours.length - 1; i++) {
+            const neighbourFrom = neighbours[i]
+            const neighbourTo = neighbours[i + 1]
+
+            // Calculate edge of neighbourFrom
+            const edge = this.getEdgeKeyByInfo(grid, neighbourFrom, 'v', [ neighbourFrom.yMinPercent, neighbourFrom.yMaxPercent, sharedCoord ])
+            grid.addEdge(edge, edgeCode)
+            neighbourFrom.addEdge(edge, opEdgeCode)
+
+            // Calculate edge between neighbourFrom and neighbourTo if existed
+            if (neighbourFrom.yMax !== neighbourTo.yMin) {
+                const edge = this.getEdgeKeyByInfo(grid, null, 'v', [ neighbourFrom.yMaxPercent, neighbourTo.yMinPercent, sharedCoord ])
+                grid.addEdge(edge, edgeCode)
+            }
+        }
+
+        // Calculate edge of last neighbour
+        const lastNeighbour = neighbours[neighbours.length - 1]
+        const edge = this.getEdgeKeyByInfo(grid, lastNeighbour, 'v', [ lastNeighbour.yMinPercent, lastNeighbour.yMaxPercent, sharedCoord ])
+        grid.addEdge(edge, edgeCode)
+        lastNeighbour.addEdge(edge, opEdgeCode)
+
+        // Calculate edge between last neighbour and grid yMax if existed
+        if (lastNeighbour.yMax !== grid.yMax) {
+            const edge = this.getEdgeKeyByInfo(grid, null, 'v', [ lastNeighbour.yMaxPercent, grid.yMaxPercent, sharedCoord ])
+            grid.addEdge(edge, edgeCode)
+        }
+    }
+    
+    private __calcHorizontalEdges(grid: GridNode, neighbours: GridNode[], edgeCode: number, opEdgeCode: number, sharedCoord: [ number, number ]): void {
 
         // Case when neighbour has lower level /////////////////////////////////////////////////////
 
@@ -187,7 +309,7 @@ export class GridEdgeManager {
         }
     }
     
-    private _calcVerticalEdges(grid: GridNode, neighbours: GridNode[], edgeCode: number, opEdgeCode: number, sharedCoord: [ number, number ]): void {
+    private __calcVerticalEdges(grid: GridNode, neighbours: GridNode[], edgeCode: number, opEdgeCode: number, sharedCoord: [ number, number ]): void {
 
         // Case when neighbour has lower level /////////////////////////////////////////////////////
 
@@ -453,10 +575,9 @@ export default class GridManager {
         // Local map from uuId to storageId
         const uuId_storageId_map = new Map<string, number>()
         storageId_grid_cache.forEach(grid => uuId_storageId_map.set(grid.uuId, grid.storageId))
-        const grid_sorted_cache = storageId_grid_cache.slice().sort((gridA, gridB) => gridA.level - gridB.level)
 
         // Iterate all grids and find their neighbours
-        grid_sorted_cache.forEach(grid => {
+        storageId_grid_cache.forEach(grid => {
 
             const width = this._levelInfos[grid.level].width
 
