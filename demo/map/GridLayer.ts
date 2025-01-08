@@ -3,7 +3,7 @@ import { mat4 } from 'gl-matrix'
 import { MapMouseEvent } from 'mapbox-gl'
 import { GUI, GUIController } from 'dat.gui'
 
-import "../pannel.css"
+import '../editor-style.css'
 import gll from './GlLib'
 import NHMap from './NHMap'
 import BoundingBox2D from '../../src/core/util/boundingBox2D'
@@ -14,7 +14,7 @@ proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555
 
 export interface GridLayerOptions {
 
-    maxGridNum?: number 
+    maxGridNum?: number
     edgeProperties?: string[]
 }
 
@@ -35,7 +35,7 @@ export default class GridLayer {
     hitSet = new Set<number>
     projConverter: proj4.Converter
     gridRecorder: GridRecorder
-    subdivideRules: [ number, number ][]
+    subdivideRules: [number, number][]
 
     // GPU-related //////////////////////////////////////////////////
 
@@ -96,6 +96,13 @@ export default class GridLayer {
     }
     EditorState: Record<string, string> = {}
 
+    // Attr-Setter
+    activeAttrFeature: Record<string, any> = {}
+    attrSetter: HTMLDivElement | null = null
+    edgeDom: HTMLDivElement | null = null
+    isTopologyParsed = false
+    showLoading: Function | null = null
+
     typeChanged = false
     isShiftClick = false
     isTransparent = false
@@ -144,12 +151,12 @@ export default class GridLayer {
             targetCS: 'EPSG:4326',
             rules: this.subdivideRules
         },
-        this.maxGridNum,
-        {
-            workerCount: 4,
-            operationCapacity: 200,
-            projectLoadCallback: this._updateGPUGrids.bind(this),
-        })
+            this.maxGridNum,
+            {
+                workerCount: 4,
+                operationCapacity: 200,
+                projectLoadCallback: this._updateGPUGrids.bind(this),
+            })
 
         // Set WebGL2 context
         this._gl = this.map.painter.context.gl
@@ -188,81 +195,21 @@ export default class GridLayer {
         brushFolder.add(this.uiOption, 'level', 1, this.subdivideRules.length - 1, 1)
         brushFolder.open()
         this.gui.add(this.uiOption, 'capacity', 0, this.maxGridNum).name('Capacity').listen()
+        // this.gui.close()
+        this.gui.hide()
 
         this.capacityController = this.gui.__controllers[0]
         this.capacityController.setValue(0.0)
         this.capacityController.domElement.style.pointerEvents = 'none'
     }
 
-    // set currentType(type: number) {
-
-    //     const gl = this._gl
-
-    //     if (type === this._currentType) return
-
-    //     this.typeChanged = true
-    //     this._currentType = type
-
-    //     if (type === this.EDITOR_TYPE) {
-
-    //         // // Change event handlers
-    //         // this.addEditorUIHandler()
-
-    //         // // Find neighbours for all grids
-    //         // // this.gridRecorder.findNeighbours()
-
-    //         // // Generate hit list
-    //         // this.gridRecorder.uuId_gridNode_map.forEach(grid => {
-    //         //     if (grid.hit === true && grid.level !== 0) {
-    //         //         this.hitGridList.push(grid)
-    //         //         grid.hit = false
-    //         //     }
-    //         // })
-
-    //         // // Set show list (it is static when in Editor type)
-    //         // this.lineList = this.hitGridList.map(grid => this.gridRecorder.uuId_storageId_map.get(grid.uuId)!)
-
-    //         // // Refill palette texture
-    //         // gll.fillSubTexture2DByArray(gl, this._paletteTexture, 0, 0, 0, this.subdivideRules.length, 1, gl.RGB, gl.UNSIGNED_BYTE, this.paletteColorList)
-
-    //     } else {
-
-    //         // Change event handlers
-    //         this.addSubdividerUIHandler()
-
-    //         // Release cache
-    //         // this.hitGridList.forEach(grid => grid.hit = true)
-    //         // this.hitGridList = []
-
-    //         // Refill palette texture
-    //         const colorList = new Uint8Array(this.subdivideRules.length * 3)
-    //         for (let i = 0; i < this.subdivideRules.length; i++) {
-    //             colorList.set([0, 127, 127], i * 3)
-    //         }
-    //         gll.fillSubTexture2DByArray(gl, this._paletteTexture, 0, 0, 0, this.subdivideRules.length, 1, gl.RGB, gl.UNSIGNED_BYTE, colorList)
-    //     }
-
-    //     this.map.triggerRepaint()
-    // }
-
-    hitAttributeEditor(lon: number, lat: number) {
-
-        // this.hitGridList.forEach(grid => {
-        //     if (grid.within(this.bBox, lon, lat)) {
-        //         grid.hit = true
-        //         // this.edgeRecorder.calcGridEdges(grid, this.gridRecorder)
-        //         console.log(grid.edges)
-        //     }
-        // })
-    }
-
     // Fast function to upload one grid rendering info to GPU stograge buffer
-    writeGridInfoToStorageBuffer(info: [ storageId: number, level: number, vertices: Float32Array ]) {
+    writeGridInfoToStorageBuffer(info: [storageId: number, level: number, vertices: Float32Array]) {
 
         const gl = this._gl
         const levelByteStride = 1 * 2
         const vertexByteStride = 2 * 4
-        const [ storageId, level, vertices ] = info
+        const [storageId, level, vertices] = info
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this._gridTlStorageBuffer)
         gl.bufferSubData(gl.ARRAY_BUFFER, storageId * vertexByteStride, vertices, 0, 2)
@@ -280,10 +227,10 @@ export default class GridLayer {
 
     // Optimized function to upload multiple grid rendering info to GPU storage buffer
     // Note: grids must have continuous storageIds from 'storageId' to 'storageId + gridCount'
-    writeMultiGridInfoToStorageBuffer(infos: [ fromStorageId: number, levels: Uint16Array, vertices: Float32Array ]) {
-        
+    writeMultiGridInfoToStorageBuffer(infos: [fromStorageId: number, levels: Uint16Array, vertices: Float32Array]) {
+
         const gl = this._gl
-        const [ fromStorageId, levels, vertices ] = infos
+        const [fromStorageId, levels, vertices] = infos
         const levelByteStride = 1 * 2
         const vertexByteStride = 2 * 4
         const gridCount = vertices.length / 8
@@ -302,7 +249,7 @@ export default class GridLayer {
 
         gl.bindBuffer(gl.ARRAY_BUFFER, null)
     }
-    
+
     async init() {
 
         // Init DOM Elements and handlers ////////////////////////////////////////////////////////////
@@ -376,7 +323,7 @@ export default class GridLayer {
                     type === "editor" && deactivate("mode")
                 })
             }
-    
+
             function activate(this: GridLayer, dom: HTMLDivElement) {
                 dom.dataset.active = 'true'
                 if (dom.dataset.val === "topology") {
@@ -428,29 +375,21 @@ export default class GridLayer {
         document.addEventListener('keydown', e => {
 
             if (e.shiftKey && e.key === 'T') {
-                this.isTransparent = !this.isTransparent 
-                console.log(`Grid Transparent: ${ this.isTransparent ? 'ON' : 'OFF' }`)
+                this.isTransparent = !this.isTransparent
+                console.log(`Grid Transparent: ${this.isTransparent ? 'ON' : 'OFF'}`)
                 this.map.triggerRepaint()
             }
         })
 
-        // [6] Add event listner for <Shift + E> (Parse topology for grids and edges)
-        document.addEventListener('keydown', e => {
-
-            if (e.shiftKey && e.key === 'E') {
-
-                this.gridRecorder.parseGridTopology(this.updateGPUEdges)
-
-                this.map.triggerRepaint()
-            }
-        })
-
-        // [7] Add event listner for <Shift + A> (Console Attribute Type)
+        // [6] Add event listner for <Shift + A> (Console Attribute Type)
         document.addEventListener('keydown', e => {
 
             if (e.shiftKey && e.key === 'A') {
 
-                this.EditorState.mode = 'check'
+                if (this.EditorState.mode === 'check') {
+                    this.EditorState.mode = 'none'
+                } else
+                    this.EditorState.mode = 'check'
 
                 this.map.triggerRepaint()
             }
@@ -539,7 +478,7 @@ export default class GridLayer {
         gl.useProgram(null)
 
         // Create edge storage buffer
-        this._edgeStorageVAO = gl.createVertexArray()
+        this._edgeStorageVAO = gl.createVertexArray()!
         // Max edge Size = maxGridNum * 4
         this._edgeStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 4 * 4 * 4, gl.DYNAMIC_DRAW)!
 
@@ -554,7 +493,7 @@ export default class GridLayer {
         gl.bindBuffer(gl.ARRAY_BUFFER, null)
 
         // Create grid storage buffer
-        this._gridStorageVAO = gl.createVertexArray()
+        this._gridStorageVAO = gl.createVertexArray()!
         this._gridTlStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 2 * 4, gl.DYNAMIC_DRAW)!
         this._gridTrStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 2 * 4, gl.DYNAMIC_DRAW)!
         this._gridBlStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 2 * 4, gl.DYNAMIC_DRAW)!
@@ -598,11 +537,11 @@ export default class GridLayer {
         // Create picking pass
         this._pickingTexture = gll.createTexture2D(gl, 0, 1, 1, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]))
         this._pickingRBO = gll.createRenderBuffer(gl, 1, 1)
-        this._pickingFBO = gll.createFrameBuffer(gl, [this._pickingTexture], 0, this._pickingRBO)
+        this._pickingFBO = gll.createFrameBuffer(gl, [this._pickingTexture], 0, this._pickingRBO)!
 
         this._boxPickingTexture = gll.createTexture2D(gl, 0, gl.canvas.width, gl.canvas.height, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(gl.canvas.width * gl.canvas.height * 4).fill(0))
         this._boxPickingRBO = gll.createRenderBuffer(gl, gl.canvas.width, gl.canvas.height)
-        this._boxPickingFBO = gll.createFrameBuffer(gl, [this._boxPickingTexture], 0, this._boxPickingRBO)
+        this._boxPickingFBO = gll.createFrameBuffer(gl, [this._boxPickingTexture], 0, this._boxPickingRBO)!
 
 
         // Init palette texture (default in subdivider type)
@@ -650,48 +589,68 @@ export default class GridLayer {
     }
 
     addAttributeEditorUIHandler() {
-        
+
         this.removeUIHandler()
 
         this.map
             .on('mouseup', this.mouseupHandler as any)
             .on('mousedown', this.mousedownHandler as any)
+            .on('mousemove', this.mousemoveHandler as any)
+            .on('mouseout', this.mouseoutHandler as any)
+            .on('resize', this.resizeHandler as any)
     }
 
     hit(storageIds: number | number[]) {
+        // topology editor
+        if (this.EditorState.editor === "topology") {
+            // Delete mode
+            if (this.EditorState.mode === 'delete') {
+                if (Array.isArray(storageIds))
+                    this.removeGrids(storageIds)
+                else
+                    storageIds >= 0 && this.removeGrid(storageIds)
+            }
+            // Subdivider type
+            else if (this.EditorState.mode === 'subdivide') {
 
-        // Delete mode
-        if (this.EditorState.mode === 'delete') {
-            if (Array.isArray(storageIds))
-                this.removeGrids(storageIds)
-            else
-                storageIds >= 0 && this.removeGrid(storageIds)
+                const ids = Array.isArray(storageIds) ? storageIds : [storageIds];
+                ids.forEach((storageId: number) => {
+                    if (storageId < 0) return
+
+                    const maxLevel = this.subdivideRules.length - 1
+                    const [hitLevel] = this.gridRecorder.getGridInfoByStorageId(storageId)
+
+                    // Nothing will happen if the hit grid has the maximize level
+                    if (hitLevel >= maxLevel) return
+
+                    // const targetLevel = Math.min(this.uiOption.level, maxLevel)
+
+                    // Nothing will happen if subdivide grids more than one level
+                    // Or target subdivided level equals to hitLevel
+                    // if (targetLevel - hitLevel > 1 || targetLevel == hitLevel) return
+                    // if (targetLevel == hitLevel) return
+
+                    this.hitSet.add(storageId)
+                })
+            }
         }
-        // Subdivide mode
-        else if (this.EditorState.mode === 'subdivide') {
-
+        // attribute editor
+        else if (this.EditorState.editor === "attribute") {
             const ids = Array.isArray(storageIds) ? storageIds : [storageIds];
             ids.forEach((storageId: number) => {
                 if (storageId < 0) return
-                
-                const maxLevel = this.subdivideRules.length - 1
-                const [hitLevel] = this.gridRecorder.getGridInfoByStorageId(storageId)
-
-                // Nothing will happen if the hit grid has the maximize level
-                if (hitLevel >= maxLevel) return
-
-                // const targetLevel = Math.min(this.uiOption.level, maxLevel)
-
-                // Nothing will happen if subdivide grids more than one level
-                // Or target subdivided level equals to hitLevel
-                // if (targetLevel - hitLevel > 1 || targetLevel == hitLevel) return
-                // if (targetLevel == hitLevel) return
-
-                this.hitSet.add(storageId)
+                this.hitSet.add(storageId) //only storage when attribute-editor
             })
         }
 
         this.map.triggerRepaint()
+    }
+
+    hitAttributeEditor() {
+
+        if (!this.isTopologyParsed) return
+        if (this.EditorState.tool === "brush") this._hitAttribute()
+        else if (this.EditorState.tool === "box") this._hitsAttribute()
     }
 
     removeGrid(storageId: number) {
@@ -710,13 +669,13 @@ export default class GridLayer {
     }
 
     subdivideGrids(uuIds: string[]) {
-        const infos = uuIds.map(uuId => decodeInfo(uuId)) as [ level: number, globalId: number ][]
+        const infos = uuIds.map(uuId => decodeInfo(uuId)) as [level: number, globalId: number][]
         this.gridRecorder.subdivideGrids(infos, this.updateGPUGrids)
     }
 
     tickGrids() {
 
-        if(this.hitSet.size === 0) return
+        if (this.hitSet.size === 0) return
 
         if (this.EditorState.editor === "topology") {
 
@@ -744,13 +703,11 @@ export default class GridLayer {
                 this.subdivideGrids(subdividableUUIDs)
             }
 
-        } else {
+        }
+        else if (this.EditorState.editor === "attribute") {
 
-            // (this.hitSet as Set<{ lon: number, lat: number }>).forEach(({ lon, lat }) => {
-            //     this.hitEditor(lon, lat)
-            // })
+            this.hitAttributeEditor()
 
-            // this.tickEditor()
         }
 
         this.hitSet.clear()
@@ -772,9 +729,9 @@ export default class GridLayer {
         this.map.update()
         this.tickGrids()
 
-        // Tick render: Mesh Pass
-        ;(!this.isTransparent) && this.drawGridMeshes()
-        
+            // Tick render: Mesh Pass
+            ; (!this.isTransparent) && this.drawGridMeshes()
+
         // Tick render: Line Pass
         if (this.gridRecorder.edgeNum) {
             !this.isTransparent && this.drawEdges()
@@ -815,7 +772,7 @@ export default class GridLayer {
         gl.useProgram(this._gridMeshShader)
 
         gl.bindVertexArray(this._gridStorageVAO)
-        
+
         gl.activeTexture(gl.TEXTURE0)
         gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture)
 
@@ -882,7 +839,7 @@ export default class GridLayer {
         gl.enable(gl.DEPTH_TEST)
 
         gl.useProgram(this._pickingShader)
-        
+
         gl.bindVertexArray(this._gridStorageVAO)
 
         gl.uniform2fv(gl.getUniformLocation(this._pickingShader, 'centerLow'), this.map.centerLow)
@@ -973,6 +930,19 @@ export default class GridLayer {
         return Array.from(set)
     }
 
+    private _hitAttribute() {
+
+        const [gridStorageId] = this.hitSet
+        const [top, left, bottom, right] = this.gridRecorder.getEdgeInfoByStorageId(+gridStorageId)
+        this.updateAttrSetter({ gridStorageId, top, left, bottom, right })
+    }
+
+    private _hitsAttribute() {
+
+        const gridStorageIds = Array.from(this.hitSet)
+        this.updateAttrSetter({ gridStorageId: gridStorageIds })
+    }
+
     private _updateGPUGrid(info?: [storageId: number, level: number, vertices: Float32Array]) {
 
         if (info) {
@@ -1026,130 +996,85 @@ export default class GridLayer {
 
     private _mousedownHandler(e: MapMouseEvent) {
 
-        if (e.originalEvent.shiftKey && e.originalEvent.button === 0 && this.EditorState.tool === 'brush') {
-            this.isShiftClick = true
-            this.map.dragPan.disable()
+        if (this.EditorState.editor === "topology" || this.EditorState.editor === "attribute") {
+            if (e.originalEvent.shiftKey && e.originalEvent.button === 0 && this.EditorState.tool === 'brush') {
+                this.isShiftClick = true
+                this.map.dragPan.disable()
+            }
+            //// ADDON 
+            if (e.originalEvent.shiftKey && e.originalEvent.button === 0 && this.EditorState.tool === 'box') {
+                this.isShiftClick = true
+                this.map.dragPan.disable()
+                this.map.scrollZoom.disable()
+                this._boxPickingStart = e
+                this._boxPickingEnd = e
+            }
         }
-        //// ADDON 
-        if (e.originalEvent.shiftKey && e.originalEvent.button === 0 && this.EditorState.tool === 'box') {
-            this.isShiftClick = true
-            this.map.dragPan.disable()
-            this.map.scrollZoom.disable()
-            this._boxPickingStart = e
-            this._boxPickingEnd = e
-        }
+
     }
 
     private _mouseupHandler(e: MapMouseEvent) {
 
-        if (this.isShiftClick) {
+        if (this.EditorState.editor === "topology" || this.EditorState.editor === "attribute") {
+            if (this.isShiftClick) {
 
-            this.map.dragPan.enable()
-            this.map.scrollZoom.enable()
+                this.map.dragPan.enable()
+                this.map.scrollZoom.enable()
 
-            let e1, e2
-            if (this.EditorState.tool === 'brush') {
-                e1 = e
-                e2 = undefined
-            } else {
-                this._boxPickingEnd = e
-                e1 = this._boxPickingStart!
-                e2 = this._boxPickingEnd
-            }
+                let e1, e2
+                if (this.EditorState.tool === 'brush') {
+                    e1 = e
+                    e2 = undefined
+                } else {
+                    this._boxPickingEnd = e
+                    e1 = this._boxPickingStart!
+                    e2 = this._boxPickingEnd
+                }
 
-            const storageIds = this.picking(e1, e2)
-            if (this.EditorState.mode === 'check') {
-                const storageId = Array.isArray(storageIds) ? storageIds[0] : storageIds
-                console.log(this.gridRecorder.checkGrid(storageId))
+                const storageIds = this.picking(e1, e2)
+                if (this.EditorState.mode === 'check') {
+                    const storageId = Array.isArray(storageIds) ? storageIds[0] : storageIds
+                    console.log(this.gridRecorder.checkGrid(storageId))
 
-            } else {
+                } else {
 
-                this.hit(storageIds)
-            }
+                    this.hit(storageIds)
+                }
 
-            clear(this._ctx!)
-            this._boxPickingStart = null
-            this._boxPickingEnd = null
-            this.isShiftClick = false
-        }
-
-
-        /*        
-        if (this.isShiftClick && this.EditorState.tool === 'brush') {
-            this.map.dragPan.enable()
-            this.isShiftClick = false
-
-            const storageId = this.picking(this._calcPickingMatrix(e))
-            storageId >= 0 && this.hit(storageId)
-
-            // GPU Picking Vs CPU Picking
-            if (0) {
-                // let start = 0, end = 0
-
-                // // GPU Picking
-                // start = Date.now()
-                // let uuid: string | null = this.picking(this._calcPickingMatrix(e))
-                // if (uuid) {
-                //     const [ level, globalId ] = uuid.split('-').map(key => Number(key))
-                //     console.log(level, globalId)
-                //     end = Date.now()
-                //     console.log(`GPU Picking: ${end - start} ms`)
-                // }
-
-                // // CPU Picking
-                // uuid = ''
-                // start = Date.now()
-                // const [ lon, lat ] = this.projConverter.inverse(e.lngLat.toArray())
-                // this.gridRecorder.storageId_uuId_map.values()
-                // .filter(uuId => node.hit && node.within(this.bBox, lon, lat)).forEach(node => uuid = node.uuId)
-                // if (uuid !== '') {
-                //     const [ level, globalId ] = uuid.split('-').map(key => Number(key))
-                //     console.log(level, globalId)
-                //     end = Date.now()
-                //     console.log(`CPU Picking: ${end - start} ms`)
-                // }
+                clear(this._ctx!)
+                this._boxPickingStart = null
+                this._boxPickingEnd = null
+                this.isShiftClick = false
             }
         }
-        //// ADDON 2025/1/3
-        if (this.isShiftClick && this.EditorState.tool === 'box') {
 
-            this.map.dragPan.enable()
-            this.map.scrollZoom.enable()
-            this.isShiftClick = false
-            this._boxPickingEnd = e
-
-            const canvas = this._gl.canvas as HTMLCanvasElement
-            const box = genPickingBox(canvas, this._boxPickingStart!, this._boxPickingEnd!)
-            const storageIds = this.boxPicking(box)
-
-            // storageIds.forEach(sid => this.hit(sid))
-            this.hits(storageIds)
-
-            // reset
-            clear(this.ctx!)
-            this._boxPickingStart = null
-            this._boxPickingEnd = null
-        }
-
-        */
     }
 
     private _mousemoveHandler(e: MapMouseEvent) {
 
-        if (this.isShiftClick && this.EditorState.tool === 'brush') {
-            this.map.dragPan.disable()
-            
-            const storageId = this.picking(e) as number
-            this.hit(storageId)
+        if (this.EditorState.editor === "topology") {
+            if (this.isShiftClick && this.EditorState.tool === 'brush') {
+                this.map.dragPan.disable()
+                const storageId = this.picking(e) as number
+                this.hit(storageId)
+            }
+
+            if (this.isShiftClick && this.EditorState.tool === 'box' && this._boxPickingStart) {
+                // Render the picking box
+                this._boxPickingEnd = e
+                const canvas = this._gl.canvas as HTMLCanvasElement
+                const box = genPickingBox(canvas, this._boxPickingStart, this._boxPickingEnd!)
+                drawRectangle(this._ctx!, box)
+            }
         }
-
-        if (this.isShiftClick && this.EditorState.tool === 'box' && this._boxPickingStart) {
-
-            // Render the picking box
-            this._boxPickingEnd = e
-            const canvas = this._gl.canvas as HTMLCanvasElement
-            const box = genPickingBox(canvas, this._boxPickingStart, this._boxPickingEnd!)
-            drawRectangle(this._ctx!, box)
+        else if (this.EditorState.editor === "attribute") {
+            if (this.isShiftClick && this.EditorState.tool === 'box' && this._boxPickingStart) {
+                // Render the picking box
+                this._boxPickingEnd = e
+                const canvas = this._gl.canvas as HTMLCanvasElement
+                const box = genPickingBox(canvas, this._boxPickingStart, this._boxPickingEnd!)
+                drawRectangle(this._ctx!, box)
+            }
         }
     }
 
@@ -1185,7 +1110,7 @@ export default class GridLayer {
     private _handleStateGet(target: Record<string, string>, prop: string): string {
         return Reflect.get(target, prop);
     }
-    
+
     private _handleStateSet(target: Record<string, string>, prop: string, value: string): boolean {
         if (!(prop in target))
             throw new Error(`Property ${prop} does not exist on editorControl`);
@@ -1197,38 +1122,268 @@ export default class GridLayer {
                 this.typeChanged = true
                 switch (value) {
                     case 'topology':
+                        this.attrSetter!.style.display = 'none'
+                        const pannel = document.querySelector('#pannel') as HTMLDivElement
+                        pannel.style.height = '200px'
+
+                        this.isTopologyParsed = false
+                        this.gridRecorder.resetEdges()
                         this.addTopologyEditorUIHandler()
                         break;
                     case 'attribute':
-                        this._EditorState.mode = 'none'
                         this.addAttributeEditorUIHandler()
-                        /*
-                        Attribute setup
-                        */
+                        this.showLoading!(true)
+                        this.gridRecorder.parseGridTopology((fromStorageId: number, vertexBuffer: Float32Array) => {
+                            this.updateGPUEdges(fromStorageId, vertexBuffer)
+                            this.isTopologyParsed = true
+                            this.showLoading!(false)
+                            this.updateAttrSetter({
+                                top: [],
+                                left: [],
+                                bottom: [],
+                                right: [],
+                                gridStorageId: -1
+                            })
+                            this.attrSetter!.style.display = 'block'
+                            const pannel = document.querySelector('#pannel') as HTMLDivElement
+                            pannel.style.height = '400px'
+
+                            console.log(" ====Topology Parsed==== ")
+                        })
+                        this.map.triggerRepaint()
                         break;
                 }
                 this.map.triggerRepaint()
                 break;
             case 'tool':
                 console.log('set tool ', value)
-                // switch (value) {
-                //     case 'brush':
-                //         break;
-                //     case 'box':
-                //         break;
-                // }
+                // do nothing extra
                 break;
             case 'mode':
                 console.log('set mode ', value)
-                // switch (value) {
-                //     case 'subdivide':
-                //         break;
-                //     case 'delete':
-                //         break;
-                // }
+                // do nothing extra
                 break
         }
         return true;
+    }
+
+    private _handleAttrEdgeClick(e: MouseEvent) {
+        if ((e.target as HTMLDivElement).classList.contains("edge")) {
+            // deactive last actived element
+            if (this.activeAttrFeature.dom) {
+                this.activeAttrFeature.dom.classList.remove("actived")
+            }
+            const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement
+            attrTypeDom.textContent = 'Edge';
+
+            (e.target as HTMLDivElement).classList.add("actived")
+            const eID = (e.target as HTMLDivElement).dataset.eid
+            this.activeAttrFeature.dom = e.target as HTMLDivElement
+            this.activeAttrFeature.id = Number(eID)
+            this.activeAttrFeature.t = 1
+            const [height, type] = this._getInfoFromCache(this.activeAttrFeature.id, this.activeAttrFeature.t)
+            this.activeAttrFeature.height = height
+            this.activeAttrFeature.type = type;
+
+            (document.querySelector('#height') as HTMLInputElement).value = height + '';
+            (document.querySelector('#type') as HTMLInputElement).value = type + ''
+
+        }
+    }
+
+    private _handleInput(e: FocusEvent) {
+        const [attr, value] = [
+            (e.target as HTMLInputElement).id,
+            (e.target as HTMLInputElement).value
+        ]
+        this.activeAttrFeature[attr as "height" | "type"] = +value
+        if (!Array.isArray(this.activeAttrFeature.id)) {
+            this._setCacheInfo(this.activeAttrFeature.id, this.activeAttrFeature.t, this.activeAttrFeature.height, this.activeAttrFeature.type)
+        } else {
+            this._setCacheBatchInfo(this.activeAttrFeature.id, this.activeAttrFeature.t, this.activeAttrFeature.height, this.activeAttrFeature.type)
+        }
+    }
+
+    initAttrSetter(info: any) {
+        //////// parse grid and edge info
+        const { gridStorageId, top, left, bottom, right } = info
+
+        // default :: grid clicked
+        const [height, type] = this._getInfoFromCache(gridStorageId, 0) // 0 grid, 1 edge
+        this.activeAttrFeature.id = gridStorageId
+        this.activeAttrFeature.dom = null
+        this.activeAttrFeature.t = 0
+        this.activeAttrFeature.height = height
+        this.activeAttrFeature.type = type
+
+        //////// set HTML
+        const html = genAttrEditorHTML({ top, left, bottom, right }, { id: gridStorageId, height, type })
+        const attrSetter = this.attrSetter = document.createElement('div')
+        attrSetter.id = 'attrSetter'
+        attrSetter.classList.add("property-editor")
+        attrSetter.innerHTML = html
+        document.body.appendChild(attrSetter)
+
+        //////// set Handler
+        const edgeDom = this.edgeDom = document.querySelector('#edges') as HTMLDivElement
+        const handleEdgeClick = this._handleAttrEdgeClick.bind(this)
+        edgeDom.addEventListener('click', handleEdgeClick)
+
+        // grid click 
+        const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement
+        attrTypeDom.addEventListener('click', e => {
+
+            if (this.EditorState.tool === 'box') return
+            if (this.activeAttrFeature.dom) {
+                this.activeAttrFeature.dom.classList.remove("actived");
+            }
+            this.activeAttrFeature.dom = (e.target as HTMLDivElement)
+            this.activeAttrFeature.id = +(e.target as HTMLDivElement).dataset.id!
+            this.activeAttrFeature.t = 0
+            const [height, type] = this._getInfoFromCache(this.activeAttrFeature.id, this.activeAttrFeature.t)
+            this.activeAttrFeature.height = height
+            this.activeAttrFeature.type = type;
+            attrTypeDom.textContent = "Grid";
+
+            (document.querySelector('#height') as HTMLInputElement).value = height + '';
+            (document.querySelector('#type') as HTMLInputElement).value = type + ''
+        })
+
+        // input focusout
+        const attrInputDoms = ["height", "type"].map(id => document.querySelector('#' + id) as HTMLInputElement)
+        const handleInput = this._handleInput.bind(this)
+        attrInputDoms.forEach(inputDom => {
+            inputDom.addEventListener('focusout', handleInput)
+        })
+
+        this.attrSetter.style.display = 'none'
+    }
+
+    updateAttrSetter(info: any) {
+
+        if (this.EditorState.tool === 'box') {
+            const gridStorageIds = info.gridStorageId
+
+            this.activeAttrFeature.id = gridStorageIds
+            this.activeAttrFeature.dom = null
+            this.activeAttrFeature.t = 0
+            this.activeAttrFeature.height = -9999
+            this.activeAttrFeature.type = 0
+
+            // reset grid dom data-id and input value
+            const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement;
+            attrTypeDom.dataset.id = '-1';
+            attrTypeDom.textContent = 'Grid';
+
+            const topHtml = genEdgeHTML("top", []);
+            const leftHtml = genEdgeHTML("left", []);
+            const bottomHtml = genEdgeHTML("bottom", []);
+            const rightHtml = genEdgeHTML("right", []);
+
+            const edgesInnerHtml = `
+                ${topHtml}
+                ${leftHtml}
+                ${bottomHtml}
+                ${rightHtml}
+                `;
+            const edgesDom = document.querySelector('#edges') as HTMLDivElement
+            edgesDom.innerHTML = edgesInnerHtml;
+
+            (document.querySelector('#height') as HTMLInputElement).value = -9999 + '';
+            (document.querySelector('#type') as HTMLInputElement).value = 0 + '';
+        } else if (this.EditorState.tool === 'brush') {
+
+            //////// parse grid and edge info
+            const { top, left, bottom, right, gridStorageId } = info
+
+            // reset default :: grid clicked
+            const [height, type] = this._getInfoFromCache(gridStorageId, 0) // 0 grid, 1 edge
+            this.activeAttrFeature.id = gridStorageId
+            this.activeAttrFeature.dom = null
+            this.activeAttrFeature.t = 0
+            this.activeAttrFeature.height = height
+            this.activeAttrFeature.type = type
+
+            // reset grid dom data-id and input value
+            const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement;
+            attrTypeDom.dataset.id = gridStorageId;
+            attrTypeDom.textContent = 'Grid';
+
+            (document.querySelector('#height') as HTMLInputElement).value = height + '';
+            (document.querySelector('#type') as HTMLInputElement).value = type + '';
+
+            // reset edges dom
+            const topHtml = genEdgeHTML("top", top as number[])
+            const leftHtml = genEdgeHTML("left", left as number[])
+            const bottomHtml = genEdgeHTML("bottom", bottom as number[])
+            const rightHtml = genEdgeHTML("right", right as number[])
+
+            const edgesInnerHtml = `
+                ${topHtml}
+                ${leftHtml}
+                ${bottomHtml}
+                ${rightHtml}
+                `
+            const edgesDom = document.querySelector('#edges') as HTMLDivElement
+            edgesDom.innerHTML = edgesInnerHtml
+        }
+
+    }
+
+
+    private _getInfoFromCache(ID: number, T: number) {
+        let height = -9999, type = 0
+        if (!this.isTopologyParsed || ID < 0) return [height, type]
+        if (T === 0) {
+            height = this.gridRecorder.grid_attribute_cache[ID].height
+            type = this.gridRecorder.grid_attribute_cache[ID].type
+        } else {
+            height = this.gridRecorder.edge_attribute_cache[ID].height
+            type = this.gridRecorder.edge_attribute_cache[ID].type
+        }
+        return [height, type]
+    }
+
+    private _setCacheInfo(ID: number, T: number, height: number, type: number) {
+        if (!this.isTopologyParsed) {
+            throw "Topology Not Parsed!!" //never
+        }
+        // valid test !
+        if (height < -9999 || height > 9999) {
+            alert("Height out of range [-9999, 9999] !!");
+            console.error("Height out of range [-9999, 9999] !!");
+            (document.querySelector('#height') as HTMLInputElement).value = '0'
+        }
+        if (type < 0 || type > 10) {
+            alert("type out of range [0, 10] !!");
+            console.error("type out of range [0, 10] !");
+            (document.querySelector('#type') as HTMLInputElement).value = '0'
+        }
+
+        if (T === 0) {
+            this.gridRecorder.grid_attribute_cache[ID].height = height
+            this.gridRecorder.grid_attribute_cache[ID].type = type
+        } else {
+            this.gridRecorder.edge_attribute_cache[ID].height = height
+            this.gridRecorder.edge_attribute_cache[ID].type = type
+        }
+    }
+
+    private _setCacheBatchInfo(IDs: number[], T: number = 0, height: number, type: number) {
+        if (!this.isTopologyParsed) {
+            throw "Topology Not Parsed!!" //never
+        }
+        if (T === 0) {
+            IDs.forEach(ID => {
+                this.gridRecorder.grid_attribute_cache[ID].height = height
+                this.gridRecorder.grid_attribute_cache[ID].type = type
+            })
+        } else {
+            IDs.forEach(ID => {
+                this.gridRecorder.edge_attribute_cache[ID].height = height
+                this.gridRecorder.edge_attribute_cache[ID].type = type
+            })
+        }
     }
 
     // Fast function to upload one grid rendering info to GPU stograge texture
@@ -1316,6 +1471,7 @@ export default class GridLayer {
             gll.fillSubTexture2DByArray(gl, this._levelTexture, 0, 0, toStorageV, updateBlockWidth, 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, levels, srcOffset)
         }
     }
+
 }
 
 // Helpers //////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1365,4 +1521,64 @@ function drawRectangle(ctx: CanvasRenderingContext2D, pickingBox: [number, numbe
     ctx.setLineDash([5, 3])
     ctx.strokeRect(startX, startY, width, height)
     ctx.fillRect(startX, startY, width, height)
+}
+
+function genEdgeHTML(edgeSide: string, edgeIds: Array<number>) {
+    const rowcol = edgeSide === "top" || edgeSide === "bottom" ? "row" : "col"
+    let html = `<div class="${edgeSide} ${rowcol}" id="${edgeSide}">\n`
+    edgeIds.forEach(eId => {
+        html += `<div class="edge" data-eId="${eId}"></div>\n`
+    })
+    html += "</div>\n"
+    return html
+}
+
+function genAttrEditorHTML(edgeInfo: any, initGridInfo: { id: number, height: number, type: number }) {
+
+    const topHtml = genEdgeHTML("top", edgeInfo.top)
+    const leftHtml = genEdgeHTML("left", edgeInfo.left)
+    const bottomHtml = genEdgeHTML("bottom", edgeInfo.bottom)
+    const rightHtml = genEdgeHTML("right", edgeInfo.right)
+
+    const edgesHtml = `
+            <div id="edges">
+                ${topHtml}
+                ${leftHtml}
+                ${bottomHtml}
+                ${rightHtml}
+            </div>
+        `
+    const propHtml = `
+            <div class="property col">
+              <div class="property-type f-center" id="attr_type" data-ID="${initGridInfo.id}">Grid</div>
+              <div class="property-block row ">
+                <div class="text">height</div>
+                <input class="property-input" type="number" id="height" value="${initGridInfo.height}">
+              </div>
+              <div class="property-block row ">
+                <div class="text">type</div>
+                <input class="property-input" type="number" id="type" value="${initGridInfo.type}">
+              </div>
+            </div>
+        `
+    let html = `
+            ${edgesHtml}
+            ${propHtml}
+        `
+    return html
+}
+
+function initLoadingDOM() {
+    const loadingDom = document.createElement('div')
+    loadingDom.id = 'loading-container'
+    loadingDom.innerHTML = `
+        <div class="loading"></div>
+        <div class="loading-text">Topology Parsing...</div>
+    `
+    loadingDom.style.display = 'none'
+    document.body.appendChild(loadingDom)
+
+    return (show: Boolean) => {
+        loadingDom.style.display = show ? 'block' : 'none'
+    }
 }
