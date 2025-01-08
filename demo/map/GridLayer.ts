@@ -14,7 +14,7 @@ proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555
 
 export interface GridLayerOptions {
 
-    maxGridNum?: number 
+    maxGridNum?: number
     edgeProperties?: string[]
 }
 
@@ -260,6 +260,11 @@ export default class GridLayer {
     async init() {
 
         // Init DOM Elements and handlers ////////////////////////////////////////////////////////////
+
+        // [--1] init loading DOM
+        this.showLoading = initLoadingDOM()!
+        this.showLoading(true)
+
         // [0] Box Picking Canvas
         const canvas2d = document.querySelector('#canvas2d') as HTMLCanvasElement
         const rect = canvas2d.getBoundingClientRect()
@@ -408,9 +413,7 @@ export default class GridLayer {
             id: -1
         })
 
-        // [8] init loading DOM
-        this.showLoading = initLoadingDOM()!
-        
+
         // [-1] Add event lister for gridRecorder
         document.addEventListener('keydown', e => {
 
@@ -431,12 +434,12 @@ export default class GridLayer {
             // Register LOAD operation
             if (ctrlOrCmd && e.key.toLocaleLowerCase() === 'l') {
                 e.preventDefault()
-                
+
                 const input = document.createElement('input')
                 input.accept = '.json'
                 input.type = 'file'
                 input.click()
-        
+
                 input.addEventListener('change', e => {
 
                     if (!e.target) return
@@ -461,10 +464,10 @@ export default class GridLayer {
             // Register SAVE operation
             if (ctrlOrCmd && e.key.toLocaleLowerCase() === 's') {
                 e.preventDefault()
-                
+
                 const data = this.gridRecorder.serialize()
                 const jsonData = JSON.stringify(data)
-                const blob = new Blob([ jsonData ], { type: 'application/json' })
+                const blob = new Blob([jsonData], { type: 'application/json' })
                 const link = document.createElement('a')
                 link.href = URL.createObjectURL(blob)
                 link.download = 'gridInfo.json'
@@ -538,7 +541,7 @@ export default class GridLayer {
         gl.bindBuffer(gl.ARRAY_BUFFER, this._gridLevelStorageBuffer)
         gl.vertexAttribIPointer(4, 1, gl.UNSIGNED_BYTE, 1 * 1, 0)
         gl.enableVertexAttribArray(4)
-        
+
         gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
         gl.vertexAttribIPointer(5, 1, gl.UNSIGNED_BYTE, 1 * 1, 0)
         gl.enableVertexAttribArray(5)
@@ -586,6 +589,7 @@ export default class GridLayer {
 
                 // Raise flag when the root grid (level: 0, globalId: 0) has been subdivided
                 this.isInitialized = true
+                this.showLoading!(false)
             })
         })
     }
@@ -638,7 +642,7 @@ export default class GridLayer {
             // Subdivider type
             else if (this.EditorState.mode === 'subdivide') {
 
-                const ids = Array.isArray(storageIds) ? storageIds : [storageIds];
+                const ids = Array.isArray(storageIds) ? storageIds : [storageIds]
                 ids.forEach((storageId: number) => {
                     if (storageId < 0) return
 
@@ -654,7 +658,7 @@ export default class GridLayer {
         }
         // attribute editor
         else if (this.EditorState.editor === "attribute") {
-            const ids = Array.isArray(storageIds) ? storageIds : [storageIds];
+            const ids = Array.isArray(storageIds) ? storageIds : [storageIds]
             ids.forEach((storageId: number) => {
                 if (storageId < 0) return
                 this.hitSet.add(storageId) //only storage when attribute-editor
@@ -730,7 +734,7 @@ export default class GridLayer {
                 this._updateHitFlag()
 
                 // Highlight all hit grids
-                const gl = this._gl 
+                const gl = this._gl
                 gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
                 this.hitSet.forEach(hitStorageId => gl.bufferSubData(gl.ARRAY_BUFFER, hitStorageId, this.hitFlag, 0))
                 gl.bindBuffer(gl.ARRAY_BUFFER, null)
@@ -759,8 +763,8 @@ export default class GridLayer {
         this.map.update()
         this.tickGrids()
 
-        // Tick render: Mesh Pass
-        ; (!this.isTransparent) && this.drawGridMeshes()
+            // Tick render: Mesh Pass
+            ; (!this.isTransparent) && this.drawGridMeshes()
 
         // Tick render: Line Pass
         if (this.gridRecorder.edgeNum) {
@@ -838,7 +842,7 @@ export default class GridLayer {
         const gl = this._gl
 
         gl.disable(gl.DEPTH_TEST)
-        
+
         gl.enable(gl.BLEND)
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
 
@@ -946,17 +950,12 @@ export default class GridLayer {
         gl.bindFramebuffer(gl.FRAMEBUFFER, null)
 
         const set = new Set<number>()
-        // const targetLevel = Math.min(this.uiOption.level, this.subdivideRules.length - 1)
         for (let i = 0; i < height; i += 1) {
             for (let j = 0; j < width; j += 1) {
 
                 const pixleId = 4 * (i * width + j)
                 const storageId = pixel[pixleId] + (pixel[pixleId + 1] << 8) + (pixel[pixleId + 2] << 16) + (pixel[pixleId + 3] << 24)
                 if (storageId < 0 || set.has(storageId)) continue
-
-                // if (this.EditorState.mode === 'subdivide' &&
-                //     targetLevel - this.gridRecorder.getGridInfoByStorageId(storageId)[0] != 1)
-                //     continue
 
                 set.add(storageId)
             }
@@ -1133,7 +1132,7 @@ export default class GridLayer {
 
     private _resizeHandler() {
         // Resize canvas 2d
-        const canvas = this._ctx!.canvas;
+        const canvas = this._ctx!.canvas
         if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
             canvas.width = canvas.clientWidth
             canvas.height = canvas.clientHeight
@@ -1146,7 +1145,7 @@ export default class GridLayer {
 
     private _handleStateSet(target: Record<string, string>, prop: string, value: string): boolean {
         if (!(prop in target))
-            throw new Error(`Property ${prop} does not exist on editorControl`);
+            throw new Error(`Property ${prop} does not exist on editorControl`)
 
         target[prop] = value
         switch (prop) {
@@ -1158,18 +1157,21 @@ export default class GridLayer {
                         this.attrSetter!.style.display = 'none'
                         const pannel = document.querySelector('#pannel') as HTMLDivElement
                         pannel.style.height = '200px'
-
+                        // reset state, attr cache, gridSignalBuffer
                         this.isTopologyParsed = false
                         this.gridRecorder.resetEdges()
+                        this.gridRecorder.resetGrids()
+                        this._resetHitFlag()
                         this.addTopologyEditorUIHandler()
+
                         break
                     case 'attribute':
                         this.addAttributeEditorUIHandler()
                         this.showLoading!(true)
                         this.gridRecorder.parseGridTopology((isCompleted: boolean, fromStorageId: number, vertexBuffer: Float32Array) => {
-                            
+
                             this.updateGPUEdges(fromStorageId, vertexBuffer)
-                            
+
                             if (!isCompleted) return
 
                             this.isTopologyParsed = true
@@ -1201,7 +1203,7 @@ export default class GridLayer {
                 // do nothing extra
                 break
         }
-        return true;
+        return true
     }
 
     private _handleAttrEdgeClick(e: MouseEvent) {
@@ -1214,7 +1216,7 @@ export default class GridLayer {
             const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement
             attrTypeDom.textContent = 'Edge'
 
-            ;(e.target as HTMLDivElement).classList.add("actived")
+                ; (e.target as HTMLDivElement).classList.add("actived")
             const eID = (e.target as HTMLDivElement).dataset.eid
             this.activeAttrFeature.dom = e.target as HTMLDivElement
             this.activeAttrFeature.id = Number(eID)
@@ -1223,24 +1225,28 @@ export default class GridLayer {
             this.activeAttrFeature.height = height
             this.activeAttrFeature.type = type
 
-            ;(document.querySelector('#height') as HTMLInputElement).value = height + ''
-            ;(document.querySelector('#type') as HTMLInputElement).value = type + ''
+                ; (document.querySelector('#height') as HTMLInputElement).value = height + ''
+                ; (document.querySelector('#type') as HTMLInputElement).value = type + ''
 
         }
     }
 
-    private _handleInput(e: FocusEvent) {
-        const [attr, value] = [
-            (e.target as HTMLInputElement).id,
-            (e.target as HTMLInputElement).value
+    private _handleAttrSetterKeyDown(_: KeyboardEvent) {
+
+        const [heightVal, typeVal] = [
+            (document.querySelector('#height') as HTMLInputElement).value,
+            (document.querySelector('#type') as HTMLInputElement).value
         ]
-        this.activeAttrFeature[attr as "height" | "type"] = +value
+        this.activeAttrFeature.height = +heightVal
+        this.activeAttrFeature.type = +typeVal
+
         if (!Array.isArray(this.activeAttrFeature.id)) {
             this._setCacheInfo(this.activeAttrFeature.id, this.activeAttrFeature.t, this.activeAttrFeature.height, this.activeAttrFeature.type)
         } else {
             this._setCacheBatchInfo(this.activeAttrFeature.id, this.activeAttrFeature.t, this.activeAttrFeature.height, this.activeAttrFeature.type)
         }
     }
+
 
     initAttrSetter(info: any) {
         //////// parse grid and edge info
@@ -1273,7 +1279,7 @@ export default class GridLayer {
 
             if (this.EditorState.tool === 'box') return
             if (this.activeAttrFeature.dom) {
-                this.activeAttrFeature.dom.classList.remove("actived");
+                this.activeAttrFeature.dom.classList.remove("actived")
             }
             this.activeAttrFeature.dom = (e.target as HTMLDivElement)
             this.activeAttrFeature.id = +(e.target as HTMLDivElement).dataset.id!
@@ -1283,15 +1289,14 @@ export default class GridLayer {
             this.activeAttrFeature.type = type
             attrTypeDom.textContent = "Grid"
 
-            ;(document.querySelector('#height') as HTMLInputElement).value = height + ''
-            ;(document.querySelector('#type') as HTMLInputElement).value = type + ''
+                ; (document.querySelector('#height') as HTMLInputElement).value = height + ''
+                ; (document.querySelector('#type') as HTMLInputElement).value = type + ''
         })
 
-        // input focusout
-        const attrInputDoms = ["height", "type"].map(id => document.querySelector('#' + id) as HTMLInputElement)
-        const handleInput = this._handleInput.bind(this)
-        attrInputDoms.forEach(inputDom => {
-            inputDom.addEventListener('focusout', handleInput)
+        // input commit when "enter" down
+        const handleAttrSetterKeyDown = this._handleAttrSetterKeyDown.bind(this)
+        this.attrSetter.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') handleAttrSetterKeyDown(e)
         })
 
         this.attrSetter.style.display = 'none'
@@ -1325,10 +1330,10 @@ export default class GridLayer {
                 ${rightHtml}
             `
             const edgesDom = document.querySelector('#edges') as HTMLDivElement
-            edgesDom.innerHTML = edgesInnerHtml;
+            edgesDom.innerHTML = edgesInnerHtml
 
-            (document.querySelector('#height') as HTMLInputElement).value = -9999 + ''
-            ;(document.querySelector('#type') as HTMLInputElement).value = 0 + ''
+                ; (document.querySelector('#height') as HTMLInputElement).value = -9999 + ''
+                ; (document.querySelector('#type') as HTMLInputElement).value = 0 + ''
 
         } else if (this.EditorState.tool === 'brush') {
 
@@ -1344,12 +1349,12 @@ export default class GridLayer {
             this.activeAttrFeature.type = type
 
             // reset grid dom data-id and input value
-            const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement;
-            attrTypeDom.dataset.id = gridStorageId;
-            attrTypeDom.textContent = 'Grid';
+            const attrTypeDom = document.querySelector('#attr_type') as HTMLDivElement
+            attrTypeDom.dataset.id = gridStorageId
+            attrTypeDom.textContent = 'Grid'
 
-            (document.querySelector('#height') as HTMLInputElement).value = height + '';
-            (document.querySelector('#type') as HTMLInputElement).value = type + '';
+                ; (document.querySelector('#height') as HTMLInputElement).value = height + ''
+                ; (document.querySelector('#type') as HTMLInputElement).value = type + ''
 
             // reset edges dom
             const topHtml = genEdgeHTML("top", top as number[])
@@ -1390,14 +1395,14 @@ export default class GridLayer {
 
         // Valid test !
         if (height < -9999 || height > 9999) {
-            alert("Height out of range [-9999, 9999] !!");
-            console.error("Height out of range [-9999, 9999] !!");
-            (document.querySelector('#height') as HTMLInputElement).value = '0'
+            alert("Height out of range [-9999, 9999] !!")
+            console.error("Height out of range [-9999, 9999] !!")
+                ; (document.querySelector('#height') as HTMLInputElement).value = '0'
         }
         if (type < 0 || type > 10) {
-            alert("type out of range [0, 10] !!");
-            console.error("type out of range [0, 10] !");
-            (document.querySelector('#type') as HTMLInputElement).value = '0'
+            alert("type out of range [0, 10] !!")
+            console.error("type out of range [0, 10] !")
+                ; (document.querySelector('#type') as HTMLInputElement).value = '0'
         }
 
         if (T === 0) {
@@ -1408,11 +1413,9 @@ export default class GridLayer {
             this.gridRecorder.edge_attribute_cache[ID].type = type
         }
 
-        console.log('???', ID)
-
         // Make grid assigned in GPU
         const gl = this._gl
-        
+
         gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
         gl.bufferSubData(gl.ARRAY_BUFFER, this.maxGridNum * 1 + ID, new Uint8Array([1]))
         gl.bindBuffer(gl.ARRAY_BUFFER, null)
@@ -1437,7 +1440,7 @@ export default class GridLayer {
         // Make grids assigned in GPU
         const gl = this._gl
         const assignedFlag = new Uint8Array([1])
-        
+
         gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
         IDs.forEach(ID => gl.bufferSubData(gl.ARRAY_BUFFER, this.maxGridNum * 1 + ID, assignedFlag))
         gl.bindBuffer(gl.ARRAY_BUFFER, null)
@@ -1455,6 +1458,15 @@ export default class GridLayer {
         }
 
         this.hitFlag[0] = this.hitFlag[0] + 1
+    }
+
+    private _resetHitFlag() {
+        if (this._gridSignalBuffer) {
+            const gl = this._gl
+            gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
+            gl.bufferData(gl.ARRAY_BUFFER, this.maxGridNum * 2 * 1, gl.DYNAMIC_DRAW)
+            gl.bindBuffer(gl.ARRAY_BUFFER, null)
+        }
     }
 
     // Fast function to upload one grid rendering info to GPU stograge texture
@@ -1570,7 +1582,7 @@ function genPickingBox(canvas: HTMLCanvasElement, startEvent: MapMouseEvent, end
 }
 
 function clear(ctx: CanvasRenderingContext2D) {
-    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
 }
 
 function drawRectangle(ctx: CanvasRenderingContext2D, pickingBox: [number, number, number, number]) {
@@ -1586,7 +1598,7 @@ function drawRectangle(ctx: CanvasRenderingContext2D, pickingBox: [number, numbe
     const height = (endY - startY)
 
     ctx.strokeStyle = 'rgba(227, 102, 0, 0.67)'
-    ctx.fillStyle = 'rgba(235, 190, 148, 0.52)';
+    ctx.fillStyle = 'rgba(235, 190, 148, 0.52)'
     ctx.lineWidth = 2
     ctx.setLineDash([5, 3])
     ctx.strokeRect(startX, startY, width, height)
