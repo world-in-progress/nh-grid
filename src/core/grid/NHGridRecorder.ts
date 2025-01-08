@@ -166,7 +166,7 @@ export default class GridRecorder extends UndoRedoManager {
         })
     }
 
-    parseGridTopology(callback?: (fromStorageId: number, vertexBuffer: Float32Array) => any): void {
+    parseGridTopology(callback?: (isCompleted: boolean, fromStorageId: number, vertexBuffer: Float32Array) => any): void {
 
         // Dispatch a worker to parse the topology about all grids
         this._actor.send('parseTopology', this.storageId_gridInfo_cache.slice(0, this._nextStorageId * 2), (_, topologyInfo: GridTopologyInfo) => {
@@ -186,7 +186,7 @@ export default class GridRecorder extends UndoRedoManager {
                     (_, edgeRenderInfos: EdgeRenderInfoPack) => {
 
                         const fromStorageId = edgeRenderInfos.actorIndex * edgeChunk
-                        callback && callback(fromStorageId, edgeRenderInfos.vertexBuffer)
+                        callback && callback(actorIndex === actorNum - 1, fromStorageId, edgeRenderInfos.vertexBuffer)
                     }
                 )
             }
