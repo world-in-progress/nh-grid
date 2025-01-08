@@ -505,6 +505,8 @@ export default class GridLayer {
 
             // Register SAVE operation
             if (ctrlOrCmd && e.key.toLocaleLowerCase() === 's') {
+                e.preventDefault()
+
                 const data = this.gridRecorder.serialize()
                 const jsonData = JSON.stringify(data)
                 const blob = new Blob([ jsonData ], { type: 'application/json' })
