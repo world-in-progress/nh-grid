@@ -14,7 +14,7 @@ proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555
 
 export interface GridLayerOptions {
 
-    maxGridNum?: number
+    maxGridNum?: number 
     edgeProperties?: string[]
 }
 
@@ -381,92 +381,28 @@ export default class GridLayer {
             }
         })
 
-        // [6] Add event listner for <Shift + A> (Console Attribute Type)
+        // [6] Add event listner for <Shift + E> (Parse topology for grids and edges)
         document.addEventListener('keydown', e => {
 
-            if (e.shiftKey && e.key === 'A') {
+            if (e.shiftKey && e.key === 'E') {
 
-                if (this.EditorState.mode === 'check') {
-                    this.EditorState.mode = 'none'
-                } else
-                    this.EditorState.mode = 'check'
+                this.gridRecorder.parseGridTopology(this.updateGPUEdges)
 
                 this.map.triggerRepaint()
             }
         })
 
-        // [7] init the attrSettor DOM
-        this.initAttrSetter({
-            top: new Set(),
-            left: new Set(),
-            bottom: new Set(),
-            right: new Set(),
-            id: -1
-        })
-
-        // [8] init loading DOM
-        this.showLoading = initLoadingDOM()!
-        
-        // [-1] Add event lister for gridRecorder
+        // [7] Add event listner for <Shift + A> (Console Attribute Type)
         document.addEventListener('keydown', e => {
 
-            const ctrlOrCmd = isMacOS() ? e.metaKey : e.ctrlKey
+            if (e.shiftKey && e.key === 'A') {
 
-            // Register UNDO operation
-            if (ctrlOrCmd && e.key.toLocaleLowerCase() === 'z' && !e.shiftKey) {
-                e.preventDefault()
-                this.gridRecorder.undo()
-            }
+                this.EditorState.mode = 'check'
 
-            // Register REDO operation
-            if (ctrlOrCmd && e.key.toLocaleLowerCase() === 'z' && e.shiftKey) {
-                e.preventDefault()
-                this.gridRecorder.redo()
-            }
-
-            // Register LOAD operation
-            if (ctrlOrCmd && e.key.toLocaleLowerCase() === 'l') {
-                e.preventDefault()
-                
-                const input = document.createElement('input')
-                input.accept = '.json'
-                input.type = 'file'
-                input.click()
-        
-                input.addEventListener('change', e => {
-
-                    if (!e.target) return
-                    const inputElement = e.target as HTMLInputElement
-                    if (!inputElement || !inputElement.files) return
-                    const file = inputElement.files[0]
-                    if (file) {
-                        const reader = new FileReader()
-                        reader.onload = () => {
-                            try {
-                                const data = JSON.parse(reader.result as string)
-                                this.gridRecorder.deserialize(data)
-                            } catch (err) {
-                                console.error('Error parsing JSON file:', err)
-                            }
-                        }
-                        reader.readAsText(file)
-                    }
-                })
-            }
-
-            // Register SAVE operation
-            if (ctrlOrCmd && e.key.toLocaleLowerCase() === 's') {
-                e.preventDefault()
-                
-                const data = this.gridRecorder.serialize()
-                const jsonData = JSON.stringify(data)
-                const blob = new Blob([ jsonData ], { type: 'application/json' })
-                const link = document.createElement('a')
-                link.href = URL.createObjectURL(blob)
-                link.download = 'gridInfo.json'
-                link.click()
+                this.map.triggerRepaint()
             }
         })
+
 
         // Init GPU resources ////////////////////////////////////////////////////////////
 
