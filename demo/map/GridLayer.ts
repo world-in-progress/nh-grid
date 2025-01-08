@@ -14,7 +14,7 @@ proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555
 
 export interface GridLayerOptions {
 
-    maxGridNum?: number
+    maxGridNum?: number 
     edgeProperties?: string[]
 }
 
@@ -381,15 +381,23 @@ export default class GridLayer {
             }
         })
 
-        // [6] Add event listner for <Shift + A> (Console Attribute Type)
+        // [6] Add event listner for <Shift + E> (Parse topology for grids and edges)
+        document.addEventListener('keydown', e => {
+
+            if (e.shiftKey && e.key === 'E') {
+
+                this.gridRecorder.parseGridTopology(this.updateGPUEdges)
+
+                this.map.triggerRepaint()
+            }
+        })
+
+        // [7] Add event listner for <Shift + A> (Console Attribute Type)
         document.addEventListener('keydown', e => {
 
             if (e.shiftKey && e.key === 'A') {
 
-                if (this.EditorState.mode === 'check') {
-                    this.EditorState.mode = 'none'
-                } else
-                    this.EditorState.mode = 'check'
+                this.EditorState.mode = 'check'
 
                 this.map.triggerRepaint()
             }
@@ -1497,7 +1505,10 @@ function isMacOS(): boolean {
     return navigator.userAgent.includes('Mac')
 }
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> upstream/main
 // ADDON
 function genPickingBox(canvas: HTMLCanvasElement, startEvent: MapMouseEvent, endEvent: MapMouseEvent) {
 

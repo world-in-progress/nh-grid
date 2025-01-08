@@ -415,7 +415,6 @@ export default class GridRecorder extends UndoRedoManager {
 
                 callback && callback([storageId, lastLevel, this._createNodeRenderVertices(lastLevel, lastGlobalId)])
             },
-
             inverse: () => {
                 this._nextStorageId += 1
 
@@ -495,7 +494,6 @@ export default class GridRecorder extends UndoRedoManager {
                     callback && callback([storageId, new Uint16Array([replacedLevel]), this._createNodeRenderVertices(replacedLevel, replacedGlobalId)])
                 })
             },
-
             inverse: () => {
 
                 this._nextStorageId += removableGridNum
