@@ -320,10 +320,10 @@ export default class GridRecorder extends UndoRedoManager {
     }
 
     resetGrids() {
-        // better than forEach
+        // Better than forEach
         for (let i = 0; i < this.gridNum; i++) {
-            this.grid_attribute_cache[i].height = -9999;
-            this.grid_attribute_cache[i].type = 0;
+            this.grid_attribute_cache[i].height = -9999
+            this.grid_attribute_cache[i].type = 0
         }
     }
 
