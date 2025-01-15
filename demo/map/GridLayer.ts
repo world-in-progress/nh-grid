@@ -33,10 +33,10 @@ export default class GridLayer {
     maxGridNum: number
     bBox: BoundingBox2D
     hitSet = new Set<number>
-    projConverter: proj4.Converter
     gridRecorder: GridRecorder
-    subdivideRules: [number, number][]
     hitFlag = new Uint8Array([1])   // 0 is a special value and means no selection
+    projConverter: proj4.Converter
+    subdivideRules: [number, number][]
 
     // GPU-related //////////////////////////////////////////////////
 
@@ -199,7 +199,7 @@ export default class GridLayer {
         brushFolder.open()
         this.gui.add(this.uiOption, 'capacity', 0, this.maxGridNum).name('Capacity').listen()
         // this.gui.close()
-        this.gui.hide()
+        // this.gui.hide()
 
         this.capacityController = this.gui.__controllers[0]
         this.capacityController.setValue(0.0)

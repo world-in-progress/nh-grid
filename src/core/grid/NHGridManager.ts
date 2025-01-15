@@ -594,7 +594,7 @@ export default class GridManager {
             const lGridinfo = this._getGridInfoFromUV(grid.level, globalU - 1, globalV)
             lGridinfo && findNeighboursAlongEdge.call(this, grid, EDGE_CODE_WEST, lGridinfo, (localId: number, subWidth: number, _: number) => localId % subWidth === subWidth - 1)
 
-            // Check bottom edge with rGrid
+            // Check bottom edge with bGrid
             const bGridInfo = this._getGridInfoFromUV(grid.level, globalU, globalV - 1)
             bGridInfo && findNeighboursAlongEdge.call(this, grid, EDGE_CODE_SOUTH, bGridInfo, (localId: number, subWidth: number, subHeight: number) => localId >= subWidth * (subHeight - 1))
 
@@ -634,6 +634,33 @@ export default class GridManager {
 
         // ---------------------------------------------------------------
         // Local helpers /////////////////////////////////////////////////
+
+        function getToggleEdgeCode(code: number): EDGE_CODE | typeof EDGE_CODE_INVALID {
+        
+            switch (code) {
+                case EDGE_CODE_NORTH:
+                    return EDGE_CODE_SOUTH
+        
+                case EDGE_CODE_WEST:
+                    return EDGE_CODE_EAST
+        
+                case EDGE_CODE_SOUTH:
+                    return EDGE_CODE_NORTH
+        
+                case EDGE_CODE_EAST:
+                    return EDGE_CODE_WEST
+                default:
+                    console.error('Provided edge code is invalid.')
+                    return EDGE_CODE_INVALID
+            }
+        }
+
+        function updateGridNeighbour(grid: GridNode, neighbour: GridNode, edgeCode: EDGE_CODE) {
+
+            const oppoCode = getToggleEdgeCode(edgeCode) as EDGE_CODE
+            grid.neighbours[edgeCode].add(neighbour.storageId)
+            neighbour.neighbours[oppoCode].add(grid.storageId)
+        }
 
         function findNeighboursAlongEdge(this: GridManager, grid: GridNode, edgeCode: EDGE_CODE, gridInfo: GridInfo, adjacentCheckFunc: Function) {
 
@@ -684,33 +711,6 @@ export default class GridManager {
             }
         }
 
-        function updateGridNeighbour(grid: GridNode, neighbour: GridNode, edgeCode: EDGE_CODE) {
-
-            const oppoCode = getToggleEdgeCode(edgeCode) as EDGE_CODE
-            grid.neighbours[edgeCode].add(neighbour.storageId)
-            neighbour.neighbours[oppoCode].add(grid.storageId)
-        }
-
-        function getToggleEdgeCode(code: number): EDGE_CODE | typeof EDGE_CODE_INVALID {
-        
-            switch (code) {
-                case EDGE_CODE_NORTH:
-                    return EDGE_CODE_SOUTH
-        
-                case EDGE_CODE_WEST:
-                    return EDGE_CODE_EAST
-        
-                case EDGE_CODE_SOUTH:
-                    return EDGE_CODE_NORTH
-        
-                case EDGE_CODE_EAST:
-                    return EDGE_CODE_WEST
-                default:
-                    console.error('Provided edge code is invalid.')
-                    return EDGE_CODE_INVALID
-            }
-        }
-
         function getGridNeighbours(grid: GridNode): [ GridNode[], GridNode[], GridNode[], GridNode[] ] {
 
             const neighbourStorageIds = grid.neighbours
@@ -735,7 +735,7 @@ export default class GridManager {
 
     getEdgeRenderInfos(keys: string[]): Float32Array {
 
-        const vertexBuffer  =new Float32Array(keys.length * 4)
+        const vertexBuffer = new Float32Array(keys.length * 4)
         keys.forEach((key, index) => this._getEdgeRenderInfo(index, key, vertexBuffer))
         return vertexBuffer
     }
