@@ -3,6 +3,8 @@ import { DbAction } from '../database/db'
 import BoundingBox2D from '../util/boundingBox2D'
 import { MercatorCoordinate } from '../math/mercatorCoordinate'
 
+proj4.defs('ESRI:102140', '+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs')
+
 export const EDGE_CODE_INVALID = -1
 export const EDGE_CODE_NORTH   = 0b00
 export const EDGE_CODE_WEST    = 0b01
