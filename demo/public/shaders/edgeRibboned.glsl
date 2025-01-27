@@ -5,17 +5,16 @@ precision highp sampler2D;
 precision highp usampler2D;
 precision highp sampler2DArray;
 
-layout(location = 0) in vec2 tl;
-layout(location = 1) in vec2 tr;
-layout(location = 2) in vec2 bl;
-layout(location = 3) in vec2 br;
-layout(location = 4) in uint level;
-layout(location = 5) in uint assignment;
+layout(location = 0) in vec4 pos;
 
 uniform mat4 uMatrix;
 uniform vec2 centerLow;
 uniform vec2 centerHigh;
-// uniform sampler2DArray storageTexture;
+uniform sampler2D paletteTexture;
+uniform float lineWidth;
+uniform vec2 viewport;
+
+out vec4 v_color;
 
 const float PI = 3.141592653;
 
@@ -28,7 +27,6 @@ vec2 calcWebMercatorCoord(vec2 coord) {
 vec2 uvCorrection(vec2 uv, vec2 dim) {
     return clamp(uv, vec2(0.0), dim - vec2(1.0));
 }
-
 
 vec4 linearSampling(sampler2D texture, vec2 uv, vec2 dim) {
     vec4 tl = textureLod(texture, uv / dim, 0.0);
@@ -74,24 +72,30 @@ float stitching(float coord, float minVal, float delta, float edge) {
     return -order * delta;
 }
 
+vec2 get_vector(vec2 beginVertex, vec2 endVertex) {
+    return normalize(endVertex - beginVertex);
+}
 
 void main() {
+    vec2 xy = vec2(0.0);
+    vec2 p1 = pos.xy;   // 端点1
+    vec2 p2 = pos.zw;   // 端点2
+    float parity = float(gl_VertexID % 2);     // 判断顶点偏移方向
+    if(gl_VertexID / 2 == 0) {
+        xy = p1;
+    } else {
+        xy = p2;
+    }
 
-    // ivec2 dim = textureSize(storageTexture, 0).xy;
+    vec2 cn_vector = get_vector(p1, p2);
+    // float lineWidth = distance(p1, p2) * 0.1;
+    // float screenOffset = lineWidth / 2.0;
 
-    // int storage_u = gl_InstanceID % dim.x;
-    // int storage_v = gl_InstanceID / dim.x;
-
-    vec2 layerMap[4] = vec2[4](
-        tl,
-        tr,
-        br,
-        bl
-    );
-
-    // vec2 xy = texelFetch(storageTexture, ivec3(storage_u, storage_v, layerMap[gl_VertexID]), 0).rg;
-    vec2 xy = layerMap[gl_VertexID];
-    gl_Position = uMatrix * vec4(translateRelativeToEye(xy, vec2(0.0)), 0.0, 1.0);
+    vec3 view = vec3(0.0, 0.0, 1.0);
+    vec2 v_offset = normalize(cross(view, vec3(cn_vector, 0.0))).xy * mix(1.0, -1.0, parity);
+    vec2 v_pos = xy + v_offset * lineWidth / viewport;
+    v_color = vec4(0.25 * float(gl_VertexID), 1, 1, 1);
+    gl_Position = uMatrix * vec4(translateRelativeToEye(v_pos, vec2(0.0)), 0.0, 1.0);
 }
 
 #endif
@@ -100,10 +104,13 @@ void main() {
 
 precision highp float;
 
+in vec4 v_color;
 out vec4 fragColor;
 
 void main() {
-    fragColor = vec4(1.0);
+    fragColor = vec4(0.54, 0.97, 1.0, 1.0);
+
+    // fragColor = v_color;
 }
 
 #endif

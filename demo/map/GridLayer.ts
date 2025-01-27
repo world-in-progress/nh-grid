@@ -47,6 +47,7 @@ export default class GridLayer {
 
     // Shader
     private _edgeShader: WebGLProgram = 0
+    private _edgeRibbonedShader: WebGLProgram = 0
     private _pickingShader: WebGLProgram = 0
     private _gridMeshShader: WebGLProgram = 0
     private _gridLineShader: WebGLProgram = 0
@@ -66,7 +67,9 @@ export default class GridLayer {
     private _gridStorageVAO: WebGLVertexArrayObject = 0
 
     private _edgeStorageBuffer: WebGLBuffer = 0
+    private _edgeRibbonedBuffer: WebGLBuffer = 0
     private _edgeStorageVAO: WebGLVertexArrayObject = 0
+    private _edgeRibbonedVAO: WebGLVertexArrayObject = 0
 
     // Picking pass resource
     private _pickingFBO: WebGLFramebuffer = 0
@@ -83,6 +86,10 @@ export default class GridLayer {
     private _boxPickingEnd: MapMouseEvent | null = null
 
     private _ctx: CanvasRenderingContext2D | null = null
+
+    // Edge assignment resource
+    private _vertexBuffer!: Float32Array
+    private _assignedEdges: Array<number> = []
 
     // GPU grid update function
     updateGPUGrid: Function
@@ -242,6 +249,7 @@ export default class GridLayer {
         const lengthPerAttribute = 2 * gridCount
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this._gridTlStorageBuffer)
+        // 此处四个方向顶点从vertices数组的不同位置读取，故采用不同offset
         gl.bufferSubData(gl.ARRAY_BUFFER, fromStorageId * vertexByteStride, vertices, lengthPerAttribute * 0, lengthPerAttribute)
         gl.bindBuffer(gl.ARRAY_BUFFER, this._gridTrStorageBuffer)
         gl.bufferSubData(gl.ARRAY_BUFFER, fromStorageId * vertexByteStride, vertices, lengthPerAttribute * 1, lengthPerAttribute)
@@ -309,6 +317,7 @@ export default class GridLayer {
         const ids = ['box', 'brush', 'topology', 'attribute', 'subdivide', 'delete']
         const doms = ids.map(id => document.querySelector(`#${id}`)! as HTMLDivElement)
 
+        // dom.dataset用于访问元素的自定义数据属性(如data-active)
         const handleClick = (dom: HTMLDivElement) => {
             const { type, val, active } = dom.dataset as { type: string, val: string, active: string }
             if (active === 'true' && val === 'topology') {
@@ -357,6 +366,7 @@ export default class GridLayer {
             get: this._handleStateGet.bind(this)
         }
 
+        // 监听编辑器属性变化, 执行相应操作
         this.EditorState = new Proxy(this._EditorState, proxyHandler)
 
         // Default Editor State
@@ -483,6 +493,7 @@ export default class GridLayer {
 
         // Create shader
         this._edgeShader = await gll.createShader(gl, '/shaders/edge.glsl')
+        this._edgeRibbonedShader = await gll.createShader(gl, '/shaders/edgeRibboned.glsl')
         this._pickingShader = await gll.createShader(gl, '/shaders/picking.glsl')
         this._gridLineShader = await gll.createShader(gl, '/shaders/gridLine.glsl')
         this._gridMeshShader = await gll.createShader(gl, '/shaders/gridMesh.glsl')
@@ -494,17 +505,32 @@ export default class GridLayer {
         gl.useProgram(this._edgeShader)
         gl.uniform1i(gl.getUniformLocation(this._edgeShader, 'paletteTexture'), 0)
 
+        gl.useProgram(this._edgeRibbonedShader)
+        gl.uniform1f(gl.getUniformLocation(this._edgeRibbonedShader, 'lineWidth'), 0.00003)
+        gl.uniform2fv(gl.getUniformLocation(this._edgeRibbonedShader, 'viewport'), [gl.canvas.width, gl.canvas.height])
+
         gl.useProgram(null)
 
         // Create edge storage buffer
         this._edgeStorageVAO = gl.createVertexArray()!
         // Max edge Size = maxGridNum * 4
+        // 4个顶点有4个分量（注意不是2个! 目的是将一条边的两个端点分别存入两个分量），每个占4字节
         this._edgeStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 4 * 4 * 4, gl.DYNAMIC_DRAW)!
 
         gl.bindVertexArray(this._edgeStorageVAO)
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this._edgeStorageBuffer)
-        gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 4 * 4, 0)
+        gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 4 * 4, 0)     // 4 * 4为绘制一个顶点所需步长
+        gl.enableVertexAttribArray(0)
+        gl.vertexAttribDivisor(0, 1)    // 每绘制一个实例，更新顶点属性的值。
+        //！！在一个实例的绘制中，只会读取一个vec4数据，在vertexShader中被拆分成两个端点的坐标
+
+        // Create ribboned edge buffer
+        this._edgeRibbonedVAO = gl.createVertexArray()!
+        this._edgeRibbonedBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 4 * 4 * 4, gl.DYNAMIC_DRAW)!
+        gl.bindVertexArray(this._edgeRibbonedVAO)
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._edgeRibbonedBuffer)
+        gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 4 * 4, 0);
         gl.enableVertexAttribArray(0)
         gl.vertexAttribDivisor(0, 1)
 
@@ -514,6 +540,7 @@ export default class GridLayer {
         // Create grid storage buffer
         this._gridStorageVAO = gl.createVertexArray()!
         this._gridSignalBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 2 * 1, gl.DYNAMIC_DRAW)!
+        // 四个方向的顶点
         this._gridTlStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 2 * 4, gl.DYNAMIC_DRAW)!
         this._gridTrStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 2 * 4, gl.DYNAMIC_DRAW)!
         this._gridBlStorageBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 2 * 4, gl.DYNAMIC_DRAW)!
@@ -539,15 +566,16 @@ export default class GridLayer {
         gl.enableVertexAttribArray(3)
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this._gridLevelStorageBuffer)
-        gl.vertexAttribIPointer(4, 1, gl.UNSIGNED_BYTE, 1 * 1, 0)
+        gl.vertexAttribIPointer(4, 1, gl.UNSIGNED_BYTE, 1 * 1, 0)       // 传递整型顶点属性
         gl.enableVertexAttribArray(4)
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
-        gl.vertexAttribIPointer(5, 1, gl.UNSIGNED_BYTE, 1 * 1, 0)
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)      // 标记属性存在同一buffer
+        gl.vertexAttribIPointer(5, 1, gl.UNSIGNED_BYTE, 1 * 1, 0)       // hit属性, 表示选中状态
         gl.enableVertexAttribArray(5)
-        gl.vertexAttribIPointer(6, 1, gl.UNSIGNED_BYTE, 1 * 1, this.maxGridNum)
+        gl.vertexAttribIPointer(6, 1, gl.UNSIGNED_BYTE, 1 * 1, this.maxGridNum)     // assignment属性, 表示已更改状态
         gl.enableVertexAttribArray(6)
 
+        // gridStorageVAO下，gridLine和gridMesh可共用属性
         gl.vertexAttribDivisor(0, 1)
         gl.vertexAttribDivisor(1, 1)
         gl.vertexAttribDivisor(2, 1)
@@ -560,11 +588,11 @@ export default class GridLayer {
         gl.bindBuffer(gl.ARRAY_BUFFER, null)
 
         // Create texture
-        this._paletteTexture = gll.createTexture2D(gl, 1, this.subdivideRules.length, 1, gl.RGB8)
+        this._paletteTexture = gll.createTexture2D(gl, 1, this.subdivideRules.length, 1, gl.RGB8)   // this.subdivideRules.length * 1的调色板纹理
 
         // Create picking pass
         this._pickingTexture = gll.createTexture2D(gl, 0, 1, 1, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]))
-        this._pickingRBO = gll.createRenderBuffer(gl, 1, 1)
+        this._pickingRBO = gll.createRenderBuffer(gl, 1, 1)     // 渲染缓冲(1*1)
         this._pickingFBO = gll.createFrameBuffer(gl, [this._pickingTexture], 0, this._pickingRBO)!
 
         this._boxPickingTexture = gll.createTexture2D(gl, 0, gl.canvas.width, gl.canvas.height, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(gl.canvas.width * gl.canvas.height * 4).fill(0))
@@ -575,8 +603,9 @@ export default class GridLayer {
         // Init palette texture (default in subdivider type)
         const colorList = new Uint8Array(this.subdivideRules.length * 3)
         for (let i = 0; i < this.subdivideRules.length; i++) {
-            colorList.set([0, 127, 127], i * 3)
+            colorList.set([0, 127, 127], i * 3)     // 循环将每个颜色设置为[0, 127, 127]
         }
+        // 将调色板颜色数据填充到paletteTexture
         gll.fillSubTexture2DByArray(gl, this._paletteTexture, 0, 0, 0, this.subdivideRules.length, 1, gl.RGB, gl.UNSIGNED_BYTE, this.paletteColorList)
 
         // Init workers of gridRecorder ////////////////////////////////////////////////////////////
@@ -695,6 +724,7 @@ export default class GridLayer {
         this.gridRecorder.subdivideGrids(infos, this.updateGPUGrids)
     }
 
+    // 绘制逻辑
     tickGrids() {
 
         if (this.hitSet.size === 0) return
@@ -819,8 +849,8 @@ export default class GridLayer {
         gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.gridRecorder.gridNum)
     }
 
+    // 进入拓扑编辑器后触发
     drawGridLines() {
-
         const gl = this._gl
 
         gl.disable(gl.BLEND)
@@ -834,9 +864,10 @@ export default class GridLayer {
         gl.uniform2fv(gl.getUniformLocation(this._gridLineShader, 'centerHigh'), this.map.centerHigh)
         gl.uniformMatrix4fv(gl.getUniformLocation(this._gridLineShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
 
-        gl.drawArraysInstanced(gl.LINE_LOOP, 0, 4, this.gridRecorder.gridNum)
+        gl.drawArraysInstanced(gl.LINE_LOOP, 0, 4, this.gridRecorder.gridNum)   // 绘制首尾相连的线
     }
 
+    // 进入属性编辑器后触发
     drawEdges() {
 
         const gl = this._gl
@@ -855,6 +886,15 @@ export default class GridLayer {
         gl.uniformMatrix4fv(gl.getUniformLocation(this._edgeShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
 
         gl.drawArraysInstanced(gl.LINE_STRIP, 0, 2, this.gridRecorder.edgeNum)
+
+
+        // draw ribboned edges
+        gl.useProgram(this._edgeRibbonedShader)
+        gl.bindVertexArray(this._edgeRibbonedVAO)
+        gl.uniform2fv(gl.getUniformLocation(this._edgeRibbonedShader, 'centerLow'), this.map.centerLow)
+        gl.uniform2fv(gl.getUniformLocation(this._edgeRibbonedShader, 'centerHigh'), this.map.centerHigh)
+        gl.uniformMatrix4fv(gl.getUniformLocation(this._edgeRibbonedShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this._assignedEdges.length)
     }
 
     /**
@@ -989,20 +1029,21 @@ export default class GridLayer {
 
         if (infos) {
             this.writeMultiGridInfoToStorageBuffer(infos)
-            this._gl.flush()
+            this._gl.flush()    // 强制刷新缓冲
         }
         this.map.triggerRepaint()
     }
 
+    // 更新某一线程处理得到的vertexBuffer，fromStorageId为对应chunk的起始offset
     private _updateGPUEdges(fromStorageId: number, vertexBuffer: Float32Array) {
 
         const gl = this._gl
         const vertexByteStride = 4 * 4
-
         gl.bindBuffer(gl.ARRAY_BUFFER, this._edgeStorageBuffer)
         gl.bufferSubData(gl.ARRAY_BUFFER, fromStorageId * vertexByteStride, vertexBuffer)
 
         gl.bindBuffer(gl.ARRAY_BUFFER, null)
+
 
         this.map.triggerRepaint()
     }
@@ -1168,11 +1209,25 @@ export default class GridLayer {
                     case 'attribute':
                         this.addAttributeEditorUIHandler()
                         this.showLoading!(true)
+
+                        interface BufferInfoItem {
+                            fromStorageId: number;
+                            vertexBuffer: Float32Array;
+                        }
+                        
+                        let bufferInfo: BufferInfoItem[] = [];
                         this.gridRecorder.parseGridTopology((isCompleted: boolean, fromStorageId: number, vertexBuffer: Float32Array) => {
 
                             this.updateGPUEdges(fromStorageId, vertexBuffer)
+                            bufferInfo.push({ fromStorageId, vertexBuffer })
 
                             if (!isCompleted) return
+
+                            this._vertexBuffer = new Float32Array(this.gridRecorder.edgeNum * 4).fill(0)
+                            this._assignedEdges = []
+                            bufferInfo.forEach((info) => {
+                                this._vertexBuffer.set(info.vertexBuffer, info.fromStorageId * 4)
+                            })
 
                             this.isTopologyParsed = true
                             this.showLoading!(false)
@@ -1221,6 +1276,7 @@ export default class GridLayer {
             this.activeAttrFeature.dom = e.target as HTMLDivElement
             this.activeAttrFeature.id = Number(eID)
             this.activeAttrFeature.t = 1
+            console.log(this.activeAttrFeature)
             const [height, type] = this._getInfoFromCache(this.activeAttrFeature.id, this.activeAttrFeature.t)
             this.activeAttrFeature.height = height
             this.activeAttrFeature.type = type
@@ -1373,10 +1429,12 @@ export default class GridLayer {
         }
     }
 
+    // 根据id获取边/网格信息
     private _getInfoFromCache(ID: number, T: number) {
-
+        console.log(ID)
         let height = -9999, type = 0
         if (!this.isTopologyParsed || ID < 0) return [height, type]
+        // T判断是格网还是线
         if (T === 0) {
             height = this.gridRecorder.grid_attribute_cache[ID].height
             type = this.gridRecorder.grid_attribute_cache[ID].type
@@ -1388,6 +1446,7 @@ export default class GridLayer {
         return [height, type]
     }
 
+    // 设置网格和边的更改状态
     private _setCacheInfo(ID: number, T: number, height: number, type: number) {
         if (!this.isTopologyParsed) {
             throw "Topology Not Parsed!!" //never
@@ -1411,11 +1470,22 @@ export default class GridLayer {
         } else {
             this.gridRecorder.edge_attribute_cache[ID].height = height
             this.gridRecorder.edge_attribute_cache[ID].type = type
+
+            if (this._vertexBuffer !== null) {
+                for (let i = 0; i < 4; i++) {
+                    if (!this._assignedEdges.includes(ID)) {
+                        this._assignedEdges.push(ID);
+                        console.log(this._assignedEdges);
+                    }
+                }
+            }
+
+            this._updateRibbonedEdges();
         }
 
         // Make grid assigned in GPU
         const gl = this._gl
-
+        console.log("assign", ID)
         gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
         gl.bufferSubData(gl.ARRAY_BUFFER, this.maxGridNum * 1 + ID, new Uint8Array([1]))
         gl.bindBuffer(gl.ARRAY_BUFFER, null)
@@ -1441,9 +1511,28 @@ export default class GridLayer {
         const gl = this._gl
         const assignedFlag = new Uint8Array([1])
 
+        console.log("assign batch", IDs)
         gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
         IDs.forEach(ID => gl.bufferSubData(gl.ARRAY_BUFFER, this.maxGridNum * 1 + ID, assignedFlag))
         gl.bindBuffer(gl.ARRAY_BUFFER, null)
+    }
+
+    private _updateRibbonedEdges() {
+        let tempArray: number[] = []
+        this._assignedEdges.forEach((ID) => {
+            for (let i = 0; i < 4; i++) {
+                tempArray.push(this._vertexBuffer[ID * 4 + i])
+            }
+        })
+        const ribbonedEdgeBuffer = new Float32Array(tempArray)
+        console.log(ribbonedEdgeBuffer)
+
+        const gl = this._gl
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._edgeRibbonedBuffer)
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, ribbonedEdgeBuffer)
+        gl.bindBuffer(gl.ARRAY_BUFFER, null)
+
+        this.map.triggerRepaint()
     }
 
     private _updateHitFlag() {
