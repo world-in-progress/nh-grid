@@ -41,6 +41,10 @@ __pycache__/
 ehthumbs.db
 Thumbs.db
 
+# Front-end build files #
+#########################
+dist/
+
 # Directories #
 ######################
 node_modules/
