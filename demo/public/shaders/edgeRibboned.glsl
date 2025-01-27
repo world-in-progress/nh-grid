@@ -78,9 +78,9 @@ vec2 get_vector(vec2 beginVertex, vec2 endVertex) {
 
 void main() {
     vec2 xy = vec2(0.0);
-    vec2 p1 = pos.xy;   // 端点1
-    vec2 p2 = pos.zw;   // 端点2
-    float parity = float(gl_VertexID % 2);     // 判断顶点偏移方向
+    vec2 p1 = pos.xy;
+    vec2 p2 = pos.zw;
+    float parity = float(gl_VertexID % 2);
     if(gl_VertexID / 2 == 0) {
         xy = p1;
     } else {
