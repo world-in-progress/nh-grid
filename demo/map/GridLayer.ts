@@ -36,7 +36,7 @@ export default class GridLayer {
     gridRecorder: GridRecorder
     hitFlag = new Uint8Array([1])   // 0 is a special value and means no selection
     projConverter: proj4.Converter
-    subdivideRules: [number, number][]
+    // subdivideRules: [number, number][]
 
     // GPU-related //////////////////////////////////////////////////
 
@@ -147,26 +147,27 @@ export default class GridLayer {
         this.bBox = new BoundingBox2D(...boundaryCondition)
 
         // Set first level rule of subdivide rules by new boundary condition
-        this.subdivideRules = [[
+        const modifiedSubdivideRules: [number, number][] = [[
             (boundaryCondition[2] - boundaryCondition[0]) / this.firstLevelSize[0],
             (boundaryCondition[3] - boundaryCondition[1]) / this.firstLevelSize[1],
         ]]
-        // Add other level rules to subdivide rules
-        this.subdivideRules.push(...subdivideRules)
+        // Add other level rules to modified subdivide rules
+        modifiedSubdivideRules.push(...subdivideRules)
 
         // Create core recorders
-        this.gridRecorder = new GridRecorder({
+        this.gridRecorder = new GridRecorder(
+        {
             bBox: this.bBox,
             srcCS: this.srcCS,
             targetCS: 'EPSG:4326',
-            rules: this.subdivideRules
+            rules: modifiedSubdivideRules
         },
-            this.maxGridNum,
-            {
-                workerCount: 4,
-                operationCapacity: 200,
-                projectLoadCallback: this._updateGPUGrids.bind(this),
-            })
+        this.maxGridNum,
+        {
+            workerCount: 4,
+            operationCapacity: 200,
+            projectLoadCallback: this._updateGPUGrids.bind(this),
+        })
 
         // Set WebGL2 context
         this._gl = this.map.painter.context.gl
@@ -211,6 +212,10 @@ export default class GridLayer {
         this.capacityController = this.gui.__controllers[0]
         this.capacityController.setValue(0.0)
         this.capacityController.domElement.style.pointerEvents = 'none'
+    }
+
+    get subdivideRules() {
+        return this.gridRecorder.subdivideRules.rules
     }
 
     // Fast function to upload one grid rendering info to GPU stograge buffer
@@ -521,6 +526,9 @@ export default class GridLayer {
         gl.enableVertexAttribArray(0)
         gl.vertexAttribDivisor(0, 1)
 
+        gl.bindVertexArray(null)
+        gl.bindBuffer(gl.ARRAY_BUFFER, null)
+
         // Create ribboned edge buffer
         this._edgeRibbonedVAO = gl.createVertexArray()!
         this._edgeRibbonedBuffer = gll.createArrayBuffer(gl, this.maxGridNum * 4 * 4 * 4, gl.DYNAMIC_DRAW)!
@@ -654,7 +662,7 @@ export default class GridLayer {
     }
 
     hit(storageIds: number | number[]) {
-        // topology editor
+        // Topology editor
         if (this.EditorState.editor === "topology") {
             // Delete mode
             if (this.EditorState.mode === 'delete') {
@@ -680,7 +688,7 @@ export default class GridLayer {
                 })
             }
         }
-        // attribute editor
+        // Attribute editor
         else if (this.EditorState.editor === "attribute") {
             const ids = Array.isArray(storageIds) ? storageIds : [storageIds]
             ids.forEach((storageId: number) => {
@@ -736,7 +744,7 @@ export default class GridLayer {
                 // Add removable grids
                 removableStorageIds.push(removableStorageId)
 
-                // add subdividable grids
+                // Add subdividable grids
                 subdividableUUIDs.push(this.gridRecorder.getGridInfoByStorageId(removableStorageId).join('-'))
             })
 
@@ -787,14 +795,14 @@ export default class GridLayer {
         this.map.update()
         this.tickGrids()
 
-            // Tick render: Mesh Pass
-            ; (!this.isTransparent) && this.drawGridMeshes()
+        // Tick render
+        if (!this.isTransparent) {
 
-        // Tick render: Line Pass
-        if (this.gridRecorder.edgeNum) {
-            !this.isTransparent && this.drawEdges()
-        } else {
-            !this.isTransparent && this.drawGridLines()
+            // Mesh Pass
+            this.drawGridMeshes()
+
+            // Line or Edge Pass
+            this.gridRecorder.edgeNum ? this.drawEdges() : this.drawGridLines()
         }
 
         // WebGL check
@@ -864,6 +872,7 @@ export default class GridLayer {
 
         const gl = this._gl
 
+        // Draw common edges
         gl.disable(gl.DEPTH_TEST)
 
         gl.enable(gl.BLEND)
@@ -879,13 +888,15 @@ export default class GridLayer {
 
         gl.drawArraysInstanced(gl.LINE_STRIP, 0, 2, this.gridRecorder.edgeNum)
 
-
-        // draw ribboned edges
+        // Draw ribboned edges (edges having been assigned)
         gl.useProgram(this._edgeRibbonedShader)
+
         gl.bindVertexArray(this._edgeRibbonedVAO)
+
         gl.uniform2fv(gl.getUniformLocation(this._edgeRibbonedShader, 'centerLow'), this.map.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this._edgeRibbonedShader, 'centerHigh'), this.map.centerHigh)
         gl.uniformMatrix4fv(gl.getUniformLocation(this._edgeRibbonedShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
+
         gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this._assignedEdges.length)
     }
 
