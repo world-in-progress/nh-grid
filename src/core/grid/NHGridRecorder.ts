@@ -62,15 +62,15 @@ export default class GridRecorder extends UndoRedoManager {
 
     // Grid containers
     storageId_gridInfo_cache: Array<number> // [ level_0, globalId_0, level_1, globalId_1, ... , level_n, globalId_n ]
-    storageId_edgeId_set: Array<[Set<number>, Set<number>, Set<number>, Set<number>]> = []
     grid_attribute_cache: Array<Record<string, any>> = [] // { height: number [-9999], type: number [ 0, 0-10 ] }
+    storageId_edgeId_set: Array<[Set<number>, Set<number>, Set<number>, Set<number>]> = []
 
     // Edge containers
     edgeKeys_cache: string[] = []
     adjGrids_cache: number[][] = []
     edge_attribute_cache: Array<Record<string, any>> = [] // { height: number [-9999], type: number [ 0, 0-10 ] }
 
-    constructor(private _subdivideRules: SubdivideRules, maxGridNum: number, options: GridRecordOptions = {}) {
+    constructor(public subdivideRules: SubdivideRules, maxGridNum: number, options: GridRecordOptions = {}) {
         super(options.operationCapacity || 50)
 
         this.dispatcher = options.dispatcher || new Dispatcher(this, options.workerCount || 4)
@@ -78,11 +78,11 @@ export default class GridRecorder extends UndoRedoManager {
         this.projectLoadCallback = options.projectLoadCallback
 
         // Init projConverter
-        this._projConverter = proj4(this._subdivideRules.srcCS, this._subdivideRules.targetCS)
+        this._projConverter = proj4(this.subdivideRules.srcCS, this.subdivideRules.targetCS)
 
         // Init levelInfos
-        this.levelInfos = new Array<GridLevelInfo>(this._subdivideRules.rules.length)
-        this._subdivideRules.rules.forEach((_, level, rules) => {
+        this.levelInfos = new Array<GridLevelInfo>(this.subdivideRules.rules.length)
+        this.subdivideRules.rules.forEach((_, level, rules) => {
 
             let width: number, height: number
             if (level == 0) {
@@ -116,7 +116,7 @@ export default class GridRecorder extends UndoRedoManager {
 
     init(callback?: Function) {
 
-        this.dispatcher.broadcast('init', this._subdivideRules, () => {
+        this.dispatcher.broadcast('init', this.subdivideRules, () => {
             this.isReady = true
 
             // Create root node in indexedDB
@@ -201,9 +201,9 @@ export default class GridRecorder extends UndoRedoManager {
 
         return {
             levelInfos: this.levelInfos,
-            CRS: this._subdivideRules.srcCS,
-            extent: this._subdivideRules.bBox.boundary,
-            subdivideRules: this._subdivideRules.rules,
+            CRS: this.subdivideRules.srcCS,
+            extent: this.subdivideRules.bBox.boundary,
+            subdivideRules: this.subdivideRules.rules,
             grids: this.storageId_edgeId_set.slice(0, this.gridNum).map((edgeIdSets, index) => {
                 return {
                     index,
@@ -239,37 +239,41 @@ export default class GridRecorder extends UndoRedoManager {
 
         this._nextStorageId = 0
         this.levelInfos = projectInfo.levelInfos
-        this._subdivideRules.srcCS = projectInfo.CRS
-        this._subdivideRules.bBox.reset(...projectInfo.extent)
+        this.subdivideRules.srcCS = projectInfo.CRS
+        this.subdivideRules.bBox.reset(...projectInfo.extent)
+        this.subdivideRules.rules = projectInfo.subdivideRules
         projectInfo.grids.forEach((grid, storageId) => {
             this.storageId_gridInfo_cache[storageId * 2 + 0] = grid.level
             this.storageId_gridInfo_cache[storageId * 2 + 1] = grid.globalId
         })
 
-        // Generate grid render infos
-        if (this.projectLoadCallback) {
-            const grids = projectInfo.grids
-            const gridNum = grids.length
-            const vertices = new Float32Array(8)
-            const vertexBuffer = new Float32Array(gridNum * 8)
-            const levels = new Uint8Array(grids.map(grid => grid.level))
-            grids.forEach((grid, storageId) => {
-                this._createNodeRenderVertices(grid.level, grid.globalId, vertices)
-                vertexBuffer[gridNum * 2 * 0 + storageId * 2 + 0] = vertices[0]
-                vertexBuffer[gridNum * 2 * 0 + storageId * 2 + 1] = vertices[1]
-                vertexBuffer[gridNum * 2 * 1 + storageId * 2 + 0] = vertices[2]
-                vertexBuffer[gridNum * 2 * 1 + storageId * 2 + 1] = vertices[3]
-                vertexBuffer[gridNum * 2 * 2 + storageId * 2 + 0] = vertices[4]
-                vertexBuffer[gridNum * 2 * 2 + storageId * 2 + 1] = vertices[5]
-                vertexBuffer[gridNum * 2 * 3 + storageId * 2 + 0] = vertices[6]
-                vertexBuffer[gridNum * 2 * 3 + storageId * 2 + 1] = vertices[7]
-            })
+        // Update subdivideRules in all workers
+        this.dispatcher.broadcast('updateSubdividerules', this.subdivideRules, () => {
 
-            // Ready to render
-            this._nextStorageId = gridNum
-            this.projectLoadCallback([0, levels, vertexBuffer])
-        }
-
+            // Generate grid render infos
+            if (this.projectLoadCallback) {
+                const grids = projectInfo.grids
+                const gridNum = grids.length
+                const vertices = new Float32Array(8)
+                const vertexBuffer = new Float32Array(gridNum * 8)
+                const levels = new Uint8Array(grids.map(grid => grid.level))
+                grids.forEach((grid, storageId) => {
+                    this._createNodeRenderVertices(grid.level, grid.globalId, vertices)
+                    vertexBuffer[gridNum * 2 * 0 + storageId * 2 + 0] = vertices[0]
+                    vertexBuffer[gridNum * 2 * 0 + storageId * 2 + 1] = vertices[1]
+                    vertexBuffer[gridNum * 2 * 1 + storageId * 2 + 0] = vertices[2]
+                    vertexBuffer[gridNum * 2 * 1 + storageId * 2 + 1] = vertices[3]
+                    vertexBuffer[gridNum * 2 * 2 + storageId * 2 + 0] = vertices[4]
+                    vertexBuffer[gridNum * 2 * 2 + storageId * 2 + 1] = vertices[5]
+                    vertexBuffer[gridNum * 2 * 3 + storageId * 2 + 0] = vertices[6]
+                    vertexBuffer[gridNum * 2 * 3 + storageId * 2 + 1] = vertices[7]
+                })
+    
+                // Ready to render
+                this._nextStorageId = gridNum
+                this.projectLoadCallback([0, levels, vertexBuffer])
+            }
+        })
 
         // Local helper //////////////////////////////////////////////////
 
@@ -333,7 +337,7 @@ export default class GridRecorder extends UndoRedoManager {
         if (level === 0) return 0
 
         const { width } = this.levelInfos[level]
-        const [subWidth, subHeight] = this._subdivideRules.rules[level - 1]
+        const [subWidth, subHeight] = this.subdivideRules.rules[level - 1]
 
         const u = globalId % width
         const v = Math.floor(globalId / width)
@@ -345,7 +349,7 @@ export default class GridRecorder extends UndoRedoManager {
         if (level === 0) return 0
 
         const { width } = this.levelInfos[level]
-        const [subWidth, subHeight] = this._subdivideRules.rules[level - 1]
+        const [subWidth, subHeight] = this.subdivideRules.rules[level - 1]
 
         const u = globalId % width
         const v = Math.floor(globalId / width)
@@ -379,7 +383,7 @@ export default class GridRecorder extends UndoRedoManager {
 
     private _createNodeRenderVertices(level: number, globalId: number, vertices?: Float32Array): Float32Array {
 
-        const bBox = this._subdivideRules.bBox
+        const bBox = this.subdivideRules.bBox
         const { width, height } = this.levelInfos[level]
 
         const globalU = globalId % width
