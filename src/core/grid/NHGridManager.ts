@@ -457,6 +457,27 @@ export default class GridManager {
         })
     }
 
+    set subdivideRules(rules: SubdivideRules) {
+
+        // Update subdivide rules first
+        this._subdivideRules = rules
+
+        // Update level infos then
+        this._levelInfos = [ { width: 1, height: 1 } ]
+        this._subdivideRules.rules.forEach((_, level, rules) => {
+
+            let width: number, height: number
+            if (level == 0) {
+                width = 1
+                height = 1
+            } else {
+                width = this._levelInfos[level - 1].width * rules[level - 1][0]
+                height = this._levelInfos[level - 1].height * rules[level - 1][1]
+            }
+            this._levelInfos[level] = { width, height }
+        })
+    }
+
     getGridLocalId(level: number, globalId: number) {
         if (level === 0) return 0
     

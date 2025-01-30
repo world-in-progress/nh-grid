@@ -2,6 +2,7 @@ import proj4 from 'proj4'
 import { mat4 } from 'gl-matrix'
 import { MapMouseEvent } from 'mapbox-gl'
 import { GUI, GUIController } from 'dat.gui'
+import axios from 'axios'
 
 import '../editor-style.css'
 import gll from './GlLib'
@@ -11,6 +12,10 @@ import GridRecorder from '../../src/core/grid/NHGridRecorder'
 import VibrantColorGenerator from '../../src/core/util/vibrantColorGenerator'
 
 proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
+
+const PROCESS_URL = window.location.origin + '/process' // prod
+// const PROCESS_URL = 'http://127.0.0.1:8000' + '/process' // dev
+
 
 export interface GridLayerOptions {
 
@@ -36,7 +41,7 @@ export default class GridLayer {
     gridRecorder: GridRecorder
     hitFlag = new Uint8Array([1])   // 0 is a special value and means no selection
     projConverter: proj4.Converter
-    subdivideRules: [number, number][]
+    // subdivideRules: [number, number][]
 
     // GPU-related //////////////////////////////////////////////////
 
@@ -147,20 +152,21 @@ export default class GridLayer {
         this.bBox = new BoundingBox2D(...boundaryCondition)
 
         // Set first level rule of subdivide rules by new boundary condition
-        this.subdivideRules = [[
+        const modifiedSubdivideRules: [number, number][] = [[
             (boundaryCondition[2] - boundaryCondition[0]) / this.firstLevelSize[0],
             (boundaryCondition[3] - boundaryCondition[1]) / this.firstLevelSize[1],
         ]]
-        // Add other level rules to subdivide rules
-        this.subdivideRules.push(...subdivideRules)
+        // Add other level rules to modified subdivide rules
+        modifiedSubdivideRules.push(...subdivideRules)
 
         // Create core recorders
-        this.gridRecorder = new GridRecorder({
-            bBox: this.bBox,
-            srcCS: this.srcCS,
-            targetCS: 'EPSG:4326',
-            rules: this.subdivideRules
-        },
+        this.gridRecorder = new GridRecorder(
+            {
+                bBox: this.bBox,
+                srcCS: this.srcCS,
+                targetCS: 'EPSG:4326',
+                rules: modifiedSubdivideRules
+            },
             this.maxGridNum,
             {
                 workerCount: 4,
@@ -211,6 +217,10 @@ export default class GridLayer {
         this.capacityController = this.gui.__controllers[0]
         this.capacityController.setValue(0.0)
         this.capacityController.domElement.style.pointerEvents = 'none'
+    }
+
+    get subdivideRules() {
+        return this.gridRecorder.subdivideRules.rules
     }
 
     // Fast function to upload one grid rendering info to GPU stograge buffer
@@ -469,7 +479,7 @@ export default class GridLayer {
                 })
             }
 
-            // Register SAVE operation
+            // Register Topology-SAVE operation
             if (ctrlOrCmd && e.key.toLocaleLowerCase() === 's') {
                 e.preventDefault()
 
@@ -480,6 +490,30 @@ export default class GridLayer {
                 link.href = URL.createObjectURL(blob)
                 link.download = 'gridInfo.json'
                 link.click()
+                link.remove()
+            }
+
+            // Register Result-ZIP-SAVE operation
+            if (ctrlOrCmd && e.key.toLocaleLowerCase() === 'e') {
+                e.preventDefault()
+                this.showLoading && this.showLoading(true)
+
+                const data = this.gridRecorder.serialize()
+                axios.post(PROCESS_URL, data).then(res => {
+                    
+                    if (res.data.status === 200) {
+                        const downloadUrl = res.data.download_url
+                        const link = document.createElement('a')
+                        link.href = downloadUrl
+                        link.click()
+                        link.remove()
+                        this.showLoading && this.showLoading(false)
+                    } else throw ''
+
+                }).catch(() => {
+                    console.warn(" Flask-Server:: Process Grid Error ")
+                })
+
             }
         })
 
@@ -520,6 +554,9 @@ export default class GridLayer {
         gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 4 * 4, 0)
         gl.enableVertexAttribArray(0)
         gl.vertexAttribDivisor(0, 1)
+
+        gl.bindVertexArray(null)
+        gl.bindBuffer(gl.ARRAY_BUFFER, null)
 
         // Create ribboned edge buffer
         this._edgeRibbonedVAO = gl.createVertexArray()!
@@ -654,7 +691,7 @@ export default class GridLayer {
     }
 
     hit(storageIds: number | number[]) {
-        // topology editor
+        // Topology editor
         if (this.EditorState.editor === "topology") {
             // Delete mode
             if (this.EditorState.mode === 'delete') {
@@ -680,7 +717,7 @@ export default class GridLayer {
                 })
             }
         }
-        // attribute editor
+        // Attribute editor
         else if (this.EditorState.editor === "attribute") {
             const ids = Array.isArray(storageIds) ? storageIds : [storageIds]
             ids.forEach((storageId: number) => {
@@ -736,7 +773,7 @@ export default class GridLayer {
                 // Add removable grids
                 removableStorageIds.push(removableStorageId)
 
-                // add subdividable grids
+                // Add subdividable grids
                 subdividableUUIDs.push(this.gridRecorder.getGridInfoByStorageId(removableStorageId).join('-'))
             })
 
@@ -753,7 +790,6 @@ export default class GridLayer {
         else if (this.EditorState.editor === "attribute") {
 
             if (this.hitSet.size !== 0) {
-
                 // Update hit flag for this current frame
                 this._updateHitFlag()
 
@@ -787,14 +823,14 @@ export default class GridLayer {
         this.map.update()
         this.tickGrids()
 
-            // Tick render: Mesh Pass
-            ; (!this.isTransparent) && this.drawGridMeshes()
+        // Tick render
+        if (!this.isTransparent) {
 
-        // Tick render: Line Pass
-        if (this.gridRecorder.edgeNum) {
-            !this.isTransparent && this.drawEdges()
-        } else {
-            !this.isTransparent && this.drawGridLines()
+            // Mesh Pass
+            this.drawGridMeshes()
+
+            // Line or Edge Pass
+            this.gridRecorder.edgeNum ? this.drawEdges() : this.drawGridLines()
         }
 
         // WebGL check
@@ -833,7 +869,6 @@ export default class GridLayer {
 
         gl.activeTexture(gl.TEXTURE0)
         gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture)
-
         gl.uniform1i(gl.getUniformLocation(this._gridMeshShader, 'hit'), this.hitFlag[0])
         gl.uniform2fv(gl.getUniformLocation(this._gridMeshShader, 'centerLow'), this.map.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this._gridMeshShader, 'centerHigh'), this.map.centerHigh)
@@ -864,6 +899,7 @@ export default class GridLayer {
 
         const gl = this._gl
 
+        // Draw common edges
         gl.disable(gl.DEPTH_TEST)
 
         gl.enable(gl.BLEND)
@@ -879,13 +915,15 @@ export default class GridLayer {
 
         gl.drawArraysInstanced(gl.LINE_STRIP, 0, 2, this.gridRecorder.edgeNum)
 
-
-        // draw ribboned edges
+        // Draw ribboned edges (edges having been assigned)
         gl.useProgram(this._edgeRibbonedShader)
+
         gl.bindVertexArray(this._edgeRibbonedVAO)
+
         gl.uniform2fv(gl.getUniformLocation(this._edgeRibbonedShader, 'centerLow'), this.map.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this._edgeRibbonedShader, 'centerHigh'), this.map.centerHigh)
         gl.uniformMatrix4fv(gl.getUniformLocation(this._edgeRibbonedShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
+
         gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this._assignedEdges.length)
     }
 
@@ -1528,7 +1566,6 @@ export default class GridLayer {
             }
         })
         const ribbonedEdgeBuffer = new Float32Array(tempArray)
-
         const gl = this._gl
         gl.bindBuffer(gl.ARRAY_BUFFER, this._edgeRibbonedBuffer)
         gl.bufferSubData(gl.ARRAY_BUFFER, 0, ribbonedEdgeBuffer)

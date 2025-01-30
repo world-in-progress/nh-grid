@@ -13,6 +13,12 @@ export function init(this: WorkerSelf & Record<'nodeManager', GridManager>, subd
     callback()
 }
 
+export function updateSubdividerules(this: WorkerSelf & Record<'nodeManager', GridManager>, subdivideRules: SubdivideRules, callback: Callback<any>) {
+
+    this.nodeManager.subdivideRules = subdivideRules
+    callback()
+}
+
 export async function subdivideGrid(this: WorkerSelf & Record<'nodeManager', GridManager>, [ level, globalId ]: [ level: number, globalId: number ], callback: Callback<any>) {
 
     callback(null, this.nodeManager.subdivideGrid(level, globalId))
