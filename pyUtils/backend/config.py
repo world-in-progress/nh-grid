@@ -14,3 +14,4 @@ DIR_ROOT                                                =       os.path.dirname(
 DIR_STATIC                                              =       os.path.abspath(os.path.join(DIR_ROOT, '..', 'dist'))    
 DIR_TEMPLATE                                            =       os.path.abspath(os.path.join(DIR_ROOT, '..', 'dist'))    
 DIR_HTML                                                =       os.path.abspath(os.path.join(DIR_ROOT, '..', 'dist', 'index.html'))
+APP_ROOT                                                =       os.path.abspath(os.path.join(DIR_ROOT, '..'))
