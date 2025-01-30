@@ -1,5 +1,7 @@
 from backend.config import DIR_STATIC, DIR_TEMPLATE
 from flask import Flask
+from flask_cors import CORS
+
     
 def create_app():
     
@@ -12,5 +14,7 @@ def create_app():
     
     from backend.app.main import bp as main_bp
     app.register_blueprint(main_bp)
+
+    CORS(app)
 
     return app
