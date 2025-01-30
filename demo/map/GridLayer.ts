@@ -538,8 +538,7 @@ export default class GridLayer {
         gl.uniform1i(gl.getUniformLocation(this._edgeShader, 'paletteTexture'), 0)
 
         gl.useProgram(this._edgeRibbonedShader)
-        gl.uniform1f(gl.getUniformLocation(this._edgeRibbonedShader, 'lineWidth'), 0.00003)
-        gl.uniform2fv(gl.getUniformLocation(this._edgeRibbonedShader, 'viewport'), [gl.canvas.width, gl.canvas.height])
+        gl.uniform1f(gl.getUniformLocation(this._edgeRibbonedShader, 'lineWidth'), 16)
 
         gl.useProgram(null)
 
@@ -920,6 +919,7 @@ export default class GridLayer {
 
         gl.bindVertexArray(this._edgeRibbonedVAO)
 
+        gl.uniform2fv(gl.getUniformLocation(this._edgeRibbonedShader, 'viewport'), [gl.canvas.width, gl.canvas.height])
         gl.uniform2fv(gl.getUniformLocation(this._edgeRibbonedShader, 'centerLow'), this.map.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this._edgeRibbonedShader, 'centerHigh'), this.map.centerHigh)
         gl.uniformMatrix4fv(gl.getUniformLocation(this._edgeRibbonedShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
