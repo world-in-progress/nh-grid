@@ -79,23 +79,12 @@ float stitching(float coord, float minVal, float delta, float edge) {
     return -order * delta;
 }
 
-
 void main() {
 
-    vec2 layerMap[4] = vec2[4](
-        tl,
-        tr,
-        bl,
-        br
-    );
+    vec2 layerMap[4] = vec2[4](tl, tr, bl, br);
 
-    vec2 uvs[4] = vec2[4](
-        vec2(0.0, 1.0),
-        vec2(1.0, 1.0),
-        vec2(0.0, 0.0),
-        vec2(1.0, 0.0)
-    );
-    
+    vec2 uvs[4] = vec2[4](vec2(0.0, 1.0), vec2(1.0, 1.0), vec2(0.0, 0.0), vec2(1.0, 0.0));
+
     vec2 xy = layerMap[gl_VertexID];
 
     u_hit = float(hit);
@@ -110,6 +99,7 @@ void main() {
 
 #ifdef FRAGMENT_SHADER
 
+precision highp int;
 precision highp float;
 
 uniform int hit;
@@ -122,11 +112,25 @@ in float u_assignment;
 
 out vec4 fragColor;
 
+float epsilon(float x) {
+    return 0.00001 * x;
+}
+
+bool isHit() {
+    float tolerence = epsilon(1.0);
+    return abs(float(hit) - u_hit) <= tolerence;
+}
+
+bool isAssigned() {
+    float tolerence = epsilon(1.0);
+    return abs(1.0 - u_assignment) <= tolerence;
+}
+
 void main() {
 
     // Shading in topology editor
     if(mode == 0.0) {
-    
+
         fragColor = vec4(v_color, 0.2);
 
     }
@@ -134,19 +138,22 @@ void main() {
     else {
 
         float distance = uv.x * uv.x + uv.y * uv.y;
-        bool isHit = hit == int(u_hit);
-        bool isAssigned = 1 == int(u_assignment);
-        
-        if (distance <= 0.25 && distance >= 0.2) {
-            if (isHit) fragColor = vec4(1.0, 1.0, 1.0, 0.2);
-            else fragColor = vec4(0.64, 0.09, 0.09, 0.8);
-        }
-        else {
-            if (isHit) fragColor = vec4(0.64, 0.09, 0.09, 0.8);
-            else fragColor = vec4(1.0, 1.0, 1.0, 0.2);
+        bool isHit = isHit();
+        bool isAssigned = isAssigned();
+
+        if(distance <= 0.25 && distance >= 0.2) {
+            if(isHit)
+                fragColor = vec4(1.0, 1.0, 1.0, 0.2);
+            else
+                fragColor = vec4(0.64, 0.09, 0.09, 0.8);
+        } else {
+            if(isHit)
+                fragColor = vec4(0.64, 0.09, 0.09, 0.8);
+            else
+                fragColor = vec4(1.0, 1.0, 1.0, 0.2);
         }
 
-        if (isAssigned) {
+        if(isAssigned) {
             fragColor = vec4(1.0 - fragColor.rgb, fragColor.a);
         }
     }
