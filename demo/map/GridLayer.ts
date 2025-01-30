@@ -2,6 +2,7 @@ import proj4 from 'proj4'
 import { mat4 } from 'gl-matrix'
 import { MapMouseEvent } from 'mapbox-gl'
 import { GUI, GUIController } from 'dat.gui'
+import axios from 'axios'
 
 import '../editor-style.css'
 import gll from './GlLib'
@@ -11,6 +12,10 @@ import GridRecorder from '../../src/core/grid/NHGridRecorder'
 import VibrantColorGenerator from '../../src/core/util/vibrantColorGenerator'
 
 proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
+
+const PROCESS_URL = window.location.origin + '/process' // prod
+// const PROCESS_URL = 'http://127.0.0.1:8000' + '/process' // dev
+
 
 export interface GridLayerOptions {
 
@@ -156,18 +161,18 @@ export default class GridLayer {
 
         // Create core recorders
         this.gridRecorder = new GridRecorder(
-        {
-            bBox: this.bBox,
-            srcCS: this.srcCS,
-            targetCS: 'EPSG:4326',
-            rules: modifiedSubdivideRules
-        },
-        this.maxGridNum,
-        {
-            workerCount: 4,
-            operationCapacity: 200,
-            projectLoadCallback: this._updateGPUGrids.bind(this),
-        })
+            {
+                bBox: this.bBox,
+                srcCS: this.srcCS,
+                targetCS: 'EPSG:4326',
+                rules: modifiedSubdivideRules
+            },
+            this.maxGridNum,
+            {
+                workerCount: 4,
+                operationCapacity: 200,
+                projectLoadCallback: this._updateGPUGrids.bind(this),
+            })
 
         // Set WebGL2 context
         this._gl = this.map.painter.context.gl
@@ -474,7 +479,7 @@ export default class GridLayer {
                 })
             }
 
-            // Register SAVE operation
+            // Register Topology-SAVE operation
             if (ctrlOrCmd && e.key.toLocaleLowerCase() === 's') {
                 e.preventDefault()
 
@@ -485,6 +490,30 @@ export default class GridLayer {
                 link.href = URL.createObjectURL(blob)
                 link.download = 'gridInfo.json'
                 link.click()
+                link.remove()
+            }
+
+            // Register Result-ZIP-SAVE operation
+            if (ctrlOrCmd && e.key.toLocaleLowerCase() === 'e') {
+                e.preventDefault()
+                this.showLoading && this.showLoading(true)
+
+                const data = this.gridRecorder.serialize()
+                axios.post(PROCESS_URL, data).then(res => {
+                    
+                    if (res.data.status === 200) {
+                        const downloadUrl = res.data.download_url
+                        const link = document.createElement('a')
+                        link.href = downloadUrl
+                        link.click()
+                        link.remove()
+                        this.showLoading && this.showLoading(false)
+                    } else throw ''
+
+                }).catch(() => {
+                    console.warn(" Flask-Server:: Process Grid Error ")
+                })
+
             }
         })
 
@@ -761,7 +790,6 @@ export default class GridLayer {
         else if (this.EditorState.editor === "attribute") {
 
             if (this.hitSet.size !== 0) {
-
                 // Update hit flag for this current frame
                 this._updateHitFlag()
 
@@ -841,7 +869,6 @@ export default class GridLayer {
 
         gl.activeTexture(gl.TEXTURE0)
         gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture)
-
         gl.uniform1i(gl.getUniformLocation(this._gridMeshShader, 'hit'), this.hitFlag[0])
         gl.uniform2fv(gl.getUniformLocation(this._gridMeshShader, 'centerLow'), this.map.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this._gridMeshShader, 'centerHigh'), this.map.centerHigh)
@@ -1508,7 +1535,7 @@ export default class GridLayer {
             gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
             IDs.forEach(ID => gl.bufferSubData(gl.ARRAY_BUFFER, this.maxGridNum * 1 + ID, assignedFlag))
             gl.bindBuffer(gl.ARRAY_BUFFER, null)
-            
+
         } else {
             IDs.forEach(ID => {
                 this.gridRecorder.edge_attribute_cache[ID].height = height
@@ -1537,7 +1564,6 @@ export default class GridLayer {
             }
         })
         const ribbonedEdgeBuffer = new Float32Array(tempArray)
-
         const gl = this._gl
         gl.bindBuffer(gl.ARRAY_BUFFER, this._edgeRibbonedBuffer)
         gl.bufferSubData(gl.ARRAY_BUFFER, 0, ribbonedEdgeBuffer)

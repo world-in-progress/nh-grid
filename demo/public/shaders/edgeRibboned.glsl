@@ -93,6 +93,7 @@ void main() {
 
     vec3 view = vec3(0.0, 0.0, 1.0);
     vec2 v_offset = normalize(cross(view, vec3(cn_vector, 0.0))).xy * mix(1.0, -1.0, parity);
+
     vec2 v_pos = xy + v_offset * lineWidth / viewport;
     v_color = vec4(0.25 * float(gl_VertexID), 1, 1, 1);
     gl_Position = uMatrix * vec4(translateRelativeToEye(v_pos, vec2(0.0)), 0.0, 1.0);
