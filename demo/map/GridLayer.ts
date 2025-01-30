@@ -1553,11 +1553,6 @@ export default class GridLayer {
             this.gridRecorder.grid_attribute_cache[ID].height = height
             this.gridRecorder.grid_attribute_cache[ID].type = type
 
-            // Make grid assigned in GPU
-            const gl = this._gl
-            gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
-            gl.bufferSubData(gl.ARRAY_BUFFER, this.maxGridNum * 1 + ID, new Uint8Array([1]))
-            gl.bindBuffer(gl.ARRAY_BUFFER, null)
 
         } else {
             this.gridRecorder.edge_attribute_cache[ID].height = height
@@ -1575,6 +1570,14 @@ export default class GridLayer {
             this._updateRibbonedEdges();
         }
 
+
+        // Make grid assigned in GPU
+        const gl = this._gl
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
+        gl.bufferSubData(gl.ARRAY_BUFFER, this.maxGridNum * 1 + ID, new Uint8Array([1]))
+        gl.bindBuffer(gl.ARRAY_BUFFER, null)
+
+        console.log("assign", ID)
     }
 
     private _setCacheBatchInfo(IDs: number[], T: number = 0, height: number, type: number) {
@@ -1594,6 +1597,7 @@ export default class GridLayer {
             gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
             IDs.forEach(ID => gl.bufferSubData(gl.ARRAY_BUFFER, this.maxGridNum * 1 + ID, assignedFlag))
             gl.bindBuffer(gl.ARRAY_BUFFER, null)
+
 
         } else {
             IDs.forEach(ID => {
