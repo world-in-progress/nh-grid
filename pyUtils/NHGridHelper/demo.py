@@ -1,4 +1,4 @@
-import NHGridHelper as NH
+from GridHelper import NHGridHelper as NH
 
 if __name__ == '__main__':
     

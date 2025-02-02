@@ -1,31 +1,9 @@
 import os
+import util
 import backend.config
+from NHGridHelper import NHGridHelper as NH
 from backend.app.main import bp
 from flask import jsonify, render_template, request, send_file
-
-######################################## Utils ########################################
-
-######################################## Error Handler ########################################
-
-@bp.errorhandler(400)
-def not_found(error):
-    
-    response = jsonify({
-        'status': 400,
-        'error': 'Bad Request',
-        'message': error.description
-    })
-    return response, 400
-
-@bp.errorhandler(404)
-def not_found(error):
-    
-    response = jsonify({
-        'status': 404,
-        'error': 'Not Found',
-        'message': error.description
-    })
-    return response, 404
 
 ######################################## API for NHGrid ########################################
 
@@ -37,40 +15,32 @@ def index():
 @bp.route('/process', methods=[ 'POST' ])
 def grid_info_json_process():
 
-    #  TODO: Process the request
-
-    download_url = f"{request.scheme}://{request.host}/download"
+    # Reset DIR_OUTPUT
+    if (os.path.exists(backend.config.DIR_OUTPUT)):
+        util.delete_folder_contents(backend.config.DIR_OUTPUT)
+    
+    # Process the grid info json by the serialized data
+    serealized_data = request.get_json()
+    helper = NH(serealized_data)
+    helper.export(backend.config.DIR_OUTPUT, backend.config.DIR_DEM)
+    util.create_zip_from_folder(backend.config.DIR_OUTPUT, 'gridInfo.zip')
     
     return jsonify({
         'status': 200,
-        'message': 'Ready for Download',
-        'download_url': download_url
+        'message': 'Ready for Download'
     })     
 
 @bp.route('/download', methods=[ 'GET' ]) 
 def download_processed_zip():
 
-    file_path = os.path.join(backend.config.APP_ROOT, 'output', 'result.zip')
+    # Calc the download path
+    file_path = os.path.join(backend.config.DIR_OUTPUT, 'gridInfo.zip')
+    
+    # Case file not found
     if not os.path.exists(file_path):
         return jsonify({
             'status': 404,
             'message': 'File not found'
         }), 404
     
-    return send_file(file_path, as_attachment=True, download_name='result.zip')
-
-# @bp.route(config.API_VERSION, methods=[ 'GET' ])
-# def get_model_case_status():
-    
-#     case_id = request.args.get('id', type=str)
-    
-#     status, response = api_handlers[config.API_MC_STATUS](case_id)
-#     if status == 200:
-#         return response
-#     if status == 404:
-#         abort(404, description=response)
-
-if __name__ == '__main__':
-
-    print("--------------------------------------")
-    bp.run(host='0.0.0.0', port=config.APP_PORT, debug=config.APP_DEBUG)
+    return send_file(file_path, as_attachment=True, download_name='gridInfo.zip')
