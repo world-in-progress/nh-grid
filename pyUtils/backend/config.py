@@ -13,5 +13,5 @@ API_POST_HYDRODYNAMIC_RESOURCE_GENERATION               =       API_VERSION + '/
 DIR_ROOT                                                =       os.path.dirname(os.path.abspath(__file__))
 DIR_STATIC                                              =       os.path.abspath(os.path.join(DIR_ROOT, '..', 'dist'))    
 DIR_TEMPLATE                                            =       os.path.abspath(os.path.join(DIR_ROOT, '..', 'dist'))    
-DIR_HTML                                                =       os.path.abspath(os.path.join(DIR_ROOT, '..', 'dist', 'index.html'))
-APP_ROOT                                                =       os.path.abspath(os.path.join(DIR_ROOT, '..'))
+DIR_OUTPUT                                              =       os.path.abspath(os.path.join(DIR_ROOT, '..', 'NHGridHelper', 'output'))
+DIR_DEM                                                 =       os.path.abspath(os.path.join(DIR_ROOT, '..', 'NHGridHelper', 'testRes', 'Dem', 'Digital Terrain Model.tif'))
