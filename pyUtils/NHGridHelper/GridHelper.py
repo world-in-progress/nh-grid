@@ -1,8 +1,10 @@
-import os
+import os,sys
 import math
 import json
 from osgeo import ogr, osr
 
+parentdir = os.path.abspath(os.path.dirname(os.path.abspath(__file__))) 
+sys.path.insert(0,parentdir) 
 import utils.DemSampler as DS
 
 # Constants ####################################################################################################

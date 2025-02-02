@@ -7,14 +7,16 @@ import axios from 'axios'
 import '../editor-style.css'
 import gll from './GlLib'
 import NHMap from './NHMap'
+import FileDownloader from '../util/DownloadHelper'
 import BoundingBox2D from '../../src/core/util/boundingBox2D'
 import GridRecorder from '../../src/core/grid/NHGridRecorder'
 import VibrantColorGenerator from '../../src/core/util/vibrantColorGenerator'
 
 proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
 
-const PROCESS_URL = window.location.origin + '/process' // prod
-// const PROCESS_URL = 'http://127.0.0.1:8000' + '/process' // dev
+// const PROCESS_URL = window.location.origin + '/process' // prod
+const PROCESS_URL = 'http://127.0.0.1:8000' + '/process' // dev
+const DOWNLOAD_URL = 'http://127.0.0.1:8000' + '/download'
 
 
 export interface GridLayerOptions {
@@ -500,13 +502,23 @@ export default class GridLayer {
 
                 const data = this.gridRecorder.serialize()
                 axios.post(PROCESS_URL, data).then(res => {
-                    
+
                     if (res.data.status === 200) {
-                        const downloadUrl = res.data.download_url
-                        const link = document.createElement('a')
-                        link.href = downloadUrl
-                        link.click()
-                        link.remove()
+                        // ready for download
+                        const fileDownloader = new FileDownloader({
+                            url: DOWNLOAD_URL,
+                            fileName: 'gridInfo.zip',
+                            chunkSize: 1024 * 1024 * 12,
+                            threadNum: 4,
+                            cb: (done: boolean, current: number, total: number) => {
+                                if (done) {
+                                    console.log('Download complete!'); return
+                                }
+                                console.log(`Downloading... ${Math.round(current / total * 100)}%`)
+                            }
+                        })
+                        fileDownloader.download()
+
                         this.showLoading && this.showLoading(false)
                     } else throw ''
 
@@ -1515,7 +1527,6 @@ export default class GridLayer {
             this._updateRibbonedEdges();
         }
 
-        console.log("assign", ID)
     }
 
     private _setCacheBatchInfo(IDs: number[], T: number = 0, height: number, type: number) {
@@ -1553,7 +1564,6 @@ export default class GridLayer {
             this._updateRibbonedEdges();
         }
 
-        console.log("assign batch", IDs)
     }
 
     private _updateRibbonedEdges() {

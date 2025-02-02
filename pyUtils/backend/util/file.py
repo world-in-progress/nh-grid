@@ -64,10 +64,11 @@ def delete_folder_contents(folder_path):
 
 def create_zip_from_folder(source_folder: str, output_zip_file: str):
     
-    if os.path.exists(output_zip_file + '.zip'):
+    if os.path.exists(output_zip_file):
         return
     
-    shutil.make_archive(output_zip_file, 'zip', source_folder)
+    filePath = output_zip_file.split('.')[0]
+    shutil.make_archive(filePath, 'zip', source_folder)
 
 def generate_large_file(file_path):
     
