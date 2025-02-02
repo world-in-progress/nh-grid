@@ -32,21 +32,18 @@ def distance2D(x1: float, y1: float, x2: float, y2: float):
 
 class NHGridNode:
     
-    def __init__(self, extent: list[float], id: int, x_min_percent: list[int], y_min_percent: list[int], x_max_percent: list[int], y_max_percent: list[int]):
+    def __init__(self, id: int, level: int, global_id: int, type: int, altitude: float, vertices: list[float], edges: list[list[int]]):
         
         self.id = id
-        self.x_min = lerp(extent[0], extent[2], x_min_percent[0] / x_min_percent[1])
-        self.x_max = lerp(extent[0], extent[2], x_max_percent[0] / x_max_percent[1])
-        self.y_min = lerp(extent[1], extent[3], y_min_percent[0] / y_min_percent[1])
-        self.y_max = lerp(extent[1], extent[3], y_max_percent[0] / y_max_percent[1])
-        
-        self.edge_ids = [
-            set(), set(), set(), set()
-        ]
-    
-    def add_edge(self, edge_code: int, edge_id: int):
-        
-        self.edge_ids[edge_code].add(edge_id)
+        self.type = type
+        self.level = level
+        self.edge_ids = edges
+        self.altitude = altitude
+        self.x_min = vertices[0]
+        self.y_min = vertices[1]
+        self.x_max = vertices[2]
+        self.y_max = vertices[3]
+        self.global_id = global_id
         
     def get_bl(self) -> list[float]:
         
@@ -86,19 +83,19 @@ class NHGridNode:
     
     def get_north_edge_ids(self) -> list[int]:
         
-        return list(self.edge_ids[EDGE_CODE_NORTH])
+        return self.edge_ids[EDGE_CODE_NORTH]
     
     def get_west_edge_ids(self) -> list[int]:
         
-        return list(self.edge_ids[EDGE_CODE_WEST])
+        return self.edge_ids[EDGE_CODE_WEST]
     
     def get_south_edge_ids(self) -> list[int]:
         
-        return list(self.edge_ids[EDGE_CODE_SOUTH])
+        return self.edge_ids[EDGE_CODE_SOUTH]
     
     def get_east_edge_ids(self) -> list[int]:
         
-        return list(self.edge_ids[EDGE_CODE_EAST])
+        return self.edge_ids[EDGE_CODE_EAST]
     
     def get_width(self) -> float:
         
@@ -119,40 +116,17 @@ class NHGridNode:
 
 class NHGridEdge:
     
-    def __init__(self, extent: list[float], id: int, adjacent_grids: list[NHGridNode | None], min_percent: list[int], max_percent: list[int], edge_code: int):
+    def __init__(self, id: int, key: str, type: int, altitude: float, adjacent_grids: list[int], vertices: list[float]):
         
         self.id = id
-        self.edge_code = edge_code
-        self.grid_ids: list[int] = [ None, None ]
-        
-        # Add grid id to edge
-        for index, grid in enumerate(adjacent_grids):
-            if grid is not None:
-                self.grid_ids[index] = grid.id
-        
-        # North edge of adjacent_grids[0]
-        if edge_code == EDGE_CODE_NORTH:
-            self.y1 = self.y2 = adjacent_grids[1].y_min if adjacent_grids[0] is None else adjacent_grids[0].y_max
-            self.x1 = lerp(extent[0], extent[2], min_percent[0] / min_percent[1])
-            self.x2 = lerp(extent[0], extent[2], max_percent[0] / max_percent[1])
-        
-        # West edge of adjacent_grids[0]
-        elif edge_code == EDGE_CODE_WEST:
-            self.x1 = self.x2 = adjacent_grids[1].x_max if adjacent_grids[0] is None else adjacent_grids[0].x_min
-            self.y1 = lerp(extent[1], extent[3], min_percent[0] / min_percent[1])
-            self.y2 = lerp(extent[1], extent[3], max_percent[0] / max_percent[1])
-            
-        # South edge of adjacent_grids[0]
-        elif edge_code == EDGE_CODE_SOUTH:
-            self.y1 = self.y2 = adjacent_grids[1].y_max if adjacent_grids[0] is None else adjacent_grids[0].y_min
-            self.x1 = lerp(extent[0], extent[2], min_percent[0] / min_percent[1])
-            self.x2 = lerp(extent[0], extent[2], max_percent[0] / max_percent[1])
-        
-        # East edge of adjacent_grids[0]
-        elif edge_code == EDGE_CODE_EAST:
-            self.x1 = self.x2 = adjacent_grids[1].x_min if adjacent_grids[0] is None else adjacent_grids[0].x_max
-            self.y1 = lerp(extent[1], extent[3], min_percent[0] / min_percent[1])
-            self.y2 = lerp(extent[1], extent[3], max_percent[0] / max_percent[1])
+        self.key = key
+        self.type = type
+        self.x1 = vertices[0]
+        self.y1 = vertices[1]
+        self.x2 = vertices[2]
+        self.y2 = vertices[3]
+        self.altitude = altitude
+        self.grid_ids: list[int | None] = adjacent_grids
             
     def get_p1(self) -> list[float]:
         
@@ -172,46 +146,23 @@ class NHGridEdge:
     
     def get_direction(self) -> int:
         
-        if self.edge_code == EDGE_CODE_NORTH or self.edge_code == EDGE_CODE_SOUTH:
+        direction = self.key[0]
+        if direction == 'h':
             return EDGE_ATTRIBUTE_HORIZONTAL
         else:
             return EDGE_ATTRIBUTE_VERTICAL
     
     def get_north_grid_id(self) -> int | None:
-        
-        if self.edge_code == EDGE_CODE_SOUTH:
-            return self.grid_ids[0]
-        elif self.edge_code == EDGE_CODE_NORTH:
-            return self.grid_ids[1]
-        else:
-            return None
+        return self.grid_ids[EDGE_CODE_NORTH]
     
     def get_west_grid_id(self) -> int | None:
-        
-        if self.edge_code == EDGE_CODE_EAST:
-            return self.grid_ids[0]
-        elif self.edge_code == EDGE_CODE_WEST:
-            return self.grid_ids[1]
-        else:
-            return None
+        return self.grid_ids[EDGE_CODE_WEST]
     
     def get_south_grid_id(self) -> int | None:
-        
-        if self.edge_code == EDGE_CODE_NORTH:
-            return self.grid_ids[0]
-        elif self.edge_code == EDGE_CODE_SOUTH:
-            return self.grid_ids[1]
-        else:
-            return None
+        return self.grid_ids[EDGE_CODE_SOUTH]
             
     def get_east_grid_id(self) -> int | None:
-        
-        if self.edge_code == EDGE_CODE_WEST:
-            return self.grid_ids[0]
-        elif self.edge_code == EDGE_CODE_EAST:
-            return self.grid_ids[1]
-        else:
-            return None
+        return self.grid_ids[EDGE_CODE_EAST]
     
     def get_center(self) -> list[float]:
         
@@ -239,28 +190,44 @@ class NHGridEdge:
 
 class NHGridHelper:
     
-    def __init__(self, path: str):
+    def __init__(self, path_or_json: str | dict):
         
-        self.path = path
-        with open(path, 'r', encoding='utf-8') as file:
-            data = json.load(file)
+        if isinstance(path_or_json, str):
         
-        # Deserialize extent
-        self.extent = data['extent']
+            self.path = path_or_json
+            with open(path_or_json, 'r', encoding='utf-8') as file:
+                data = json.load(file)
+        else:
+            data = path_or_json
+        
+        # Deserialize grid layer attributes
+        self.CRS: str = data['CRS']
+        self.extent: list[float] = data['extent']
+        self.level_infos: list[dict[str, int]] = data['levelInfos']
+        self.subdivide_rules: list[list[float]] = data['subdivideRules']
         
         # Deserialize grids
         self.grids: dict[int, NHGridNode] = {}
         for grid_info in data['grids']:
             
             # Parse info
-            grid_id = grid_info['id']
+            grid_id: int = grid_info['index']
+            grid_type: int = grid_info['type']
+            grid_level: int = grid_info['level']
+            grid_altitude: float = grid_info['height']
+            grid_global_id: int = grid_info['globalId']
+            grid_edges: list[list[int]] = grid_info['edges']
+            grid_vertices: list[float] = self.create_grid_vertices(grid_global_id, self.level_infos[grid_level]['width'], self.level_infos[grid_level]['height'])
             
             # Create grid
             grid = NHGridNode(
-                self.extent,
                 grid_id,
-                grid_info['xMinPercent'], grid_info['yMinPercent'],
-                grid_info['xMaxPercent'], grid_info['yMaxPercent']
+                grid_level,
+                grid_global_id,
+                grid_type,
+                grid_altitude,
+                grid_vertices,
+                grid_edges
             )
             self.grids[grid_id] = grid
             
@@ -269,53 +236,94 @@ class NHGridHelper:
         for edge_info in data['edges']:
             
             # Parse info
-            edge_id = edge_info['id']
-            edge_code = edge_info['edgeCode']
-            op_edge_code = NHGridEdge.get_op_edge_code(edge_code)
-            
-            adj_grids: list[NHGridNode] = [ None, None ]
-            for (index, grid_id) in enumerate(edge_info['adjGrids']):
-                if grid_id is not None:
-                    adj_grids[index] = self.grids[grid_id]
+            edge_id: int = edge_info['index']
+            edge_key: str = edge_info['key']
+            edge_type: int = edge_info['type']
+            edge_altitude: float = edge_info['height']
+            adj_grids: list[int] = edge_info['adjGrids']
+            edge_vertices: list[float] = self.create_edge_vertices(edge_key)
             
             # Create edge
             edge = NHGridEdge(
-                self.extent,
                 edge_id,
+                edge_key,
+                edge_type,
+                edge_altitude,
                 adj_grids,
-                edge_info['minPercent'],
-                edge_info['maxPercent'],
-                edge_code,
+                edge_vertices
             )
+            self.update_adjacent_grids_along_edge(edge)
             self.edges[edge_id] = edge
-            
-            # Add edge id to grids
-            if adj_grids[0] is not None:
-                adj_grids[0].add_edge(edge_code, edge_id)
-            if adj_grids[1] is not None:
-                adj_grids[1].add_edge(op_edge_code, edge_id)
                 
         # Validate edges in grids
-        for grid in self.grids.values():
-            north_edges = [ self.get_edge_by_id(edge_id) for edge_id in grid.edge_ids[EDGE_CODE_NORTH] ]
-            west_edges = [ self.get_edge_by_id(edge_id) for edge_id in grid.edge_ids[EDGE_CODE_WEST] ]
-            south_edges = [ self.get_edge_by_id(edge_id) for edge_id in grid.edge_ids[EDGE_CODE_SOUTH] ]
-            east_edges = [ self.get_edge_by_id(edge_id) for edge_id in grid.edge_ids[EDGE_CODE_EAST] ]
+        # for grid in self.grids.values():
+        #     north_edges = [ self.get_edge_by_id(edge_id) for edge_id in grid.edge_ids[EDGE_CODE_NORTH] ]
+        #     west_edges = [ self.get_edge_by_id(edge_id) for edge_id in grid.edge_ids[EDGE_CODE_WEST] ]
+        #     south_edges = [ self.get_edge_by_id(edge_id) for edge_id in grid.edge_ids[EDGE_CODE_SOUTH] ]
+        #     east_edges = [ self.get_edge_by_id(edge_id) for edge_id in grid.edge_ids[EDGE_CODE_EAST] ]
             
-            invalid_n_edges = self.validate_edges(north_edges)
-            invalid_e_edges = self.validate_edges(west_edges)
-            invalid_s_edges = self.validate_edges(south_edges)
-            invalid_w_edges = self.validate_edges(east_edges)
+        #     invalid_n_edges = self.validate_edges(north_edges)
+        #     invalid_e_edges = self.validate_edges(west_edges)
+        #     invalid_s_edges = self.validate_edges(south_edges)
+        #     invalid_w_edges = self.validate_edges(east_edges)
             
-            if len(invalid_n_edges) != 0:
-                self.process_invalid_edge(invalid_n_edges)
-            if len(invalid_e_edges) != 0:
-                self.process_invalid_edge(invalid_e_edges)
-            if len(invalid_s_edges) != 0:
-                self.process_invalid_edge(invalid_s_edges)
-            if len(invalid_w_edges) != 0:
-                self.process_invalid_edge(invalid_w_edges)
+        #     if len(invalid_n_edges) != 0:
+        #         self.process_invalid_edge(invalid_n_edges)
+        #     if len(invalid_e_edges) != 0:
+        #         self.process_invalid_edge(invalid_e_edges)
+        #     if len(invalid_s_edges) != 0:
+        #         self.process_invalid_edge(invalid_s_edges)
+        #     if len(invalid_w_edges) != 0:
+        #         self.process_invalid_edge(invalid_w_edges)
+    
+    def create_grid_vertices(self, global_id: int, global_width: int, global_height: int) -> list[float]:
+        
+        extent = self.extent
+        global_u = global_id % global_width
+        global_v = math.floor(global_id / global_width)
+        
+        x_min = lerp(extent[0], extent[2], global_u / global_width)
+        y_min = lerp(extent[1], extent[3], global_v / global_height)
+        x_max = lerp(extent[0], extent[2], (global_u + 1) / global_width)
+        y_max = lerp(extent[1], extent[3], (global_v + 1) / global_height)
+        
+        return [ x_min, y_min, x_max, y_max ]
 
+    def create_edge_vertices(self, key: str) -> list[float]:
+        
+        extent = self.extent
+        direction = key[0]
+        pos_info = key[1:].split('-')
+        min = float(pos_info[0]) / float(pos_info[1])
+        max = float(pos_info[2]) / float(pos_info[3])
+        shared = float(pos_info[4]) / float(pos_info[5])
+        
+        if direction == 'h':
+            min = lerp(extent[0], extent[2], min)
+            max = lerp(extent[0], extent[2], max)
+            shared = lerp(extent[1], extent[3], shared)
+            return [ min, shared, max, shared ]
+        else:
+            min = lerp(extent[1], extent[3], min)
+            max = lerp(extent[1], extent[3], max)
+            shared = lerp(extent[0], extent[2], shared)
+            return [ shared, min, shared, max ]
+        
+    def check_edge_code_along_grid(self, edge_id: int, grid: NHGridNode) -> int:
+        
+        for edge_code, edges in enumerate(grid.edge_ids):
+            for _edge_id in edges:
+                if edge_id == _edge_id:
+                    return edge_code
+
+    def update_adjacent_grids_along_edge(self, edge: NHGridEdge) -> None:
+        
+        grids = [ None, None, None, None ]
+        for grid_id in edge.grid_ids:
+            edge_code = self.check_edge_code_along_grid(edge.id, self.grids[grid_id])
+            grids[NHGridEdge.get_op_edge_code(edge_code)] = grid_id
+        edge.grid_ids = grids
+            
     def process_invalid_edge(self, edges: list[NHGridEdge]):
         
         for edge in edges:
@@ -404,9 +412,9 @@ class NHGridHelper:
             top_edge_ids = ', '.join(map(str, [id + 1 for id in grid.get_north_edge_ids()]))
             
             center_point = grid.get_center()
-            center = ', '.join(map(str, [ *center_point, sampler.sampling(*center_point) ]))
+            center = ', '.join(map(str, [ *center_point, sampler.sampling(*center_point) if grid.altitude == invalid_data else grid.altitude ]))
             
-            gridInfo += f'{id + 1}, {left_edge_num}, {right_edge_num}, {bottom_edge_num}, {top_edge_num}, {left_edge_ids}, {right_edge_ids}, {bottom_edge_ids}, {top_edge_ids}, {center}\n'
+            gridInfo += f'{id + 1}, {left_edge_num}, {right_edge_num}, {bottom_edge_num}, {top_edge_num}, {left_edge_ids}, {right_edge_ids}, {bottom_edge_ids}, {top_edge_ids}, {center}, {grid.type}\n'
                 
         with open(os.path.join(output_path, 'ne.txt'), 'w', encoding='utf-8') as file:
             file.write(gridInfo)
@@ -430,11 +438,11 @@ class NHGridHelper:
             bottom_grid_id = south_id + 1 if south_id is not None else 0
             
             center_point = edge.get_center()
-            center = ', '.join(map(str, [ *center_point, sampler.sampling(*center_point) ]))
+            center = ', '.join(map(str, [ *center_point, sampler.sampling(*center_point) if edge.altitude == invalid_data else edge.altitude ]))
             
             distance = edge.get_length()
             
-            edge_info += f'{id + 1}, {direction}, {left_grid_id}, {right_grid_id}, {bottom_grid_id}, {top_grid_id}, {distance}, {center}\n'
+            edge_info += f'{id + 1}, {direction}, {left_grid_id}, {right_grid_id}, {bottom_grid_id}, {top_grid_id}, {distance}, {center}, {edge.type}\n'
         
         with open(os.path.join(output_path, 'ns.txt'), 'w', encoding='utf-8') as file:
             file.write(edge_info)
