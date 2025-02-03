@@ -134,7 +134,7 @@ def contains_extension(directory_path: str, extension: str = '.txt'):
         print(f"An error occurred: {e}", flush=True)
         return False
     
-def remove_ignore_files_and_directories(directory: str = config.DIR_RESOURCE):
+def remove_ignore_files_and_directories(directory: str = config.DIR_OUTPUT):
     
     for dirpath, dirnames, filenames in os.walk(directory):
         
