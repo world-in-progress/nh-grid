@@ -1,4 +1,4 @@
-import os,sys,re
+import os,sys,re,time
 import backend.config
 
 parentdir = os.path.abspath(os.path.join(backend.config.DIR_ROOT)) 
@@ -27,12 +27,16 @@ def grid_info_json_process():
         util.delete_folder_contents(backend.config.DIR_OUTPUT)
     if (os.path.exists(file_path)):
         os.remove(file_path)
-
+    
     # Process the grid info json by the serialized data
+    print("start processing")
+    start = time.time()
     serealized_data = request.get_json()
     helper = NH(serealized_data)
     helper.export(backend.config.DIR_OUTPUT, backend.config.DIR_DEM)
     util.create_zip_from_folder(backend.config.DIR_OUTPUT, file_path)
+    end = time.time()
+    print("time cost : ", end - start)
     
     return jsonify({
         'status': 200,
