@@ -1,7 +1,6 @@
-from backend import create_app, APP_PORT, APP_DEBUG
-    
-if __name__ == '__main__':
+import sbms
 
-    app = create_app()
-    
-    app.run(host = "0.0.0.0", port = APP_PORT, debug = APP_DEBUG)
+if __name__ == '__main__':
+    # sbms.config.MODEL_REGISTRY['/v0/fe/hello'] = 'example/hello.py'
+    sbms.registry.update_registry({'/v0/fe/hello': 'example/hello.py'})
+    sbms.run()
