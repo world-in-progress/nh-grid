@@ -1,0 +1,6 @@
+[submodule "pyUtils/sbms"]
+	path = pyUtils/sbms
+	url = https://github.com/YcSoku/self-bootstrapping-model-service.git
+[submodule "pyUtils/pyUtils/sbms"]
+	path = pyUtils/pyUtils/sbms
+	url = https://github.com/YcSoku/self-bootstrapping-model-service.git
