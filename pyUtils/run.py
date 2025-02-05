@@ -23,4 +23,5 @@ if __name__ == '__main__':
         static_url_path = '/',
         static_folder = DIR_STATIC,
         template_folder = DIR_TEMPLATE,
+        open_browser = True
     )
