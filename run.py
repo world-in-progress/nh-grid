@@ -16,6 +16,9 @@ if __name__ == '__main__':
         '/v0/nh/grid-process': os.path.join(DIR_MODEL_TRIGGER_RESOURCE, 'gridProcess.trigger.py')
     })
     
+    # Set debug mode off
+    sbms.config.APP_DEBUG = False
+    
     # Run SBMS
     sbms.run(
         'LiquorDynamic-GridMan',
