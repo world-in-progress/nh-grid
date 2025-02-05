@@ -1,7 +1,7 @@
 import os
-import sbms
+import pyUtils.sbms as sbms
 
-DIR_ROOT                        =       os.path.dirname(__file__)
+DIR_ROOT                        =       os.path.abspath(os.path.join(os.path.dirname(__file__), 'pyUtils'))
 DIR_STATIC                      =       os.path.abspath(os.path.join(DIR_ROOT, 'dist'))    
 DIR_TEMPLATE                    =       os.path.abspath(os.path.join(DIR_ROOT, 'dist'))    
 DIR_MODEL_TRIGGER_RESOURCE      =       os.path.abspath(os.path.join(DIR_ROOT, 'extension'))
@@ -9,7 +9,7 @@ DIR_MODEL_TRIGGER_RESOURCE      =       os.path.abspath(os.path.join(DIR_ROOT, '
 if __name__ == '__main__':
     
     # Import grid blueprint
-    from extension.gridBP import bp as grid_bp
+    from pyUtils.extension.gridBP import bp as grid_bp
     
     # Set model trigger
     sbms.registry.update_registry({
