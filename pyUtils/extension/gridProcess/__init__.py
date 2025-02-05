@@ -1,6 +1,7 @@
 import os
 import shutil
-from ...NHGridHelper import Helper
+# from ...NHGridHelper import Helper
+from NHGridHelper import Helper
 
 # Helpers ##################################################
 
@@ -20,7 +21,8 @@ def process_grid_info(serealized_data, output_path):
     # Calculate the grid info file path
     zip_name = 'gridInfo.zip'
     file_path = os.path.abspath(os.path.join(output_path, 'gridInfo'))
-    output_zip_file = os.path.join(file_path, zip_name)
+    # output_zip_file = os.path.join(file_path, zip_name)
+    output_zip_file = file_path
     
     # Make directory for file path
     if not os.path.exists(file_path):

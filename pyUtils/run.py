@@ -13,7 +13,6 @@ if __name__ == '__main__':
     
     # Set model trigger
     sbms.registry.update_registry({
-        '/v0/fe/hello': os.path.join(DIR_MODEL_TRIGGER_RESOURCE, 'hello.trigger.py'),
         '/v0/nh/grid-process': os.path.join(DIR_MODEL_TRIGGER_RESOURCE, 'gridProcess.trigger.py')
     })
     

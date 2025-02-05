@@ -15,8 +15,10 @@ import VibrantColorGenerator from '../../src/core/util/vibrantColorGenerator'
 proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
 
 // const PROCESS_URL = window.location.origin + '/process' // prod
-const PROCESS_URL = 'http://127.0.0.1:8000' + '/process' // dev
-const DOWNLOAD_URL = 'http://127.0.0.1:8000' + '/download'
+const PROCESS_URL = 'http://127.0.0.1:8000' + '/v0/nh/grid-process'
+const STATUS_URL = 'http://127.0.0.1:8000' + '/v0/mc/status'
+const RESULT_URL = 'http://127.0.0.1:8000' + '/v0/mc/result'
+const DOWNLOAD_URL = 'http://127.0.0.1:8000' + '/v0/fs/result/zip'
 
 
 export interface GridLayerOptions {
@@ -472,6 +474,10 @@ export default class GridLayer {
                             try {
                                 const data = JSON.parse(reader.result as string)
                                 this.gridRecorder.deserialize(data)
+                                // Checkout to topology-editor
+                                    ; (document.querySelector("#subdivide") as HTMLDivElement).dataset.active = "false"
+                                    ; (document.querySelector("#subdivide") as HTMLDivElement).click() 
+
                             } catch (err) {
                                 console.error('Error parsing JSON file:', err)
                             }
@@ -500,27 +506,72 @@ export default class GridLayer {
                 e.preventDefault()
                 this.showLoading && this.showLoading(true)
 
-                const data = this.gridRecorder.serialize()
-                axios.post(PROCESS_URL, data).then(res => {
+                // Trigger grid-process
+                axios.post(PROCESS_URL, {
+                    "serialization": this.gridRecorder.serialize(),
+                }).then(res => {
 
-                    if (res.data.status === 200) {
-                        // ready for download
+                    const caseID = res.data['case-id']
+                    let timerID = -1
+
+                    // Local helpers for <Status>, <Result> and <ZipFile>
+                    const fetchStatus = async () => {
+
+                        const status = (await axios.get(STATUS_URL, { "params": { "id": caseID } })).data.status
+                        if (status === "RUNNING" || status === "LOCK") return false
+                        else if (status === "COMPLETE") return true
+                        else
+                            throw new Error(`UNKNOWN STATUS: ${status}`);
+                    }
+                    const fetchResultJson = async () => {
+                        const resultJson = (await axios.get(RESULT_URL, { "params": { "id": caseID } })).data.result
+                        return { id: resultJson['case-id'], name: resultJson["result"] }
+                    }
+                    const fetchResultFile = (id: string, name: string) => {
+
+                        const downloadURL = new URL(DOWNLOAD_URL)
+                        downloadURL.searchParams.append("id", id)
+                        downloadURL.searchParams.append("name", name)
+
                         const fileDownloader = new FileDownloader({
-                            url: DOWNLOAD_URL,
+                            url: downloadURL.toString(),
                             fileName: 'gridInfo.zip',
                             chunkSize: 1024 * 1024 * 12,
                             threadNum: 4,
                             cb: (done: boolean, current: number, total: number) => {
                                 if (done) {
-                                    console.log('Download complete!'); return
+                                    console.log('Download complete!');
+                                    this.showLoading && this.showLoading(false)
+                                    return
                                 }
                                 console.log(`Downloading... ${Math.round(current / total * 100)}%`)
+
                             }
                         })
                         fileDownloader.download()
 
-                        this.showLoading && this.showLoading(false)
-                    } else throw ''
+                    }
+
+                    // Core operation of Grid-Process-Model Run
+                    const core = async () => {
+                        try {
+                            const completed = await fetchStatus()
+                            if (completed) {
+                                clearTimeout(timerID)
+                                const { id, name } = await fetchResultJson()
+                                fetchResultFile(id, name)
+                                return
+                            }
+                            timerID = setTimeout(core, 2000);
+                        }
+                        catch (e) {
+                            console.error(e)
+                            clearTimeout(timerID)
+                            this.showLoading && this.showLoading(false)
+                        }
+                    }
+
+                    core()
 
                 }).catch(() => {
                     console.warn(" Flask-Server:: Process Grid Error ")
