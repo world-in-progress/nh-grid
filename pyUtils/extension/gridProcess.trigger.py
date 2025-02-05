@@ -8,17 +8,16 @@ if TYPE_CHECKING:
 # Execution Members #########################################################################################
 
 import os
-from ..extension.gridProcess import process_grid_info
+# from ..extension.gridProcess import process_grid_info
+from extension.gridProcess import process_grid_info
 
 # MCR Runner #########################################################################################
 
 @model.model_status_controller_sync
 def run_(mcr: model.ModelCaseReference):
-    
-    serealized_data = mcr.request_json['serealization']
+    serealized_data = mcr.request_json['serialization']
     output_path = os.path.join(mcr.directory, 'result')
     result_file = process_grid_info(serealized_data, output_path)
-    
     return {
         'case-id': mcr.id,
         'result': result_file
