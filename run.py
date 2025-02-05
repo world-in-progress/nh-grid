@@ -1,5 +1,6 @@
 import os
 import pyUtils.sbms as sbms
+from pyUtils.extension.gridBP import grid_bp
 
 DIR_ROOT                        =       os.path.abspath(os.path.join(os.path.dirname(__file__), 'pyUtils'))
 DIR_STATIC                      =       os.path.abspath(os.path.join(DIR_ROOT, 'dist'))    
@@ -8,8 +9,11 @@ DIR_MODEL_TRIGGER_RESOURCE      =       os.path.abspath(os.path.join(DIR_ROOT, '
 
 if __name__ == '__main__':
     
-    # Import grid blueprint
-    from pyUtils.extension.gridBP import bp as grid_bp
+    # Set application name
+    name = 'LiquorDynamic-GridMan'
+    
+    # Set extention blueprints
+    ex_bps = [ grid_bp ]
     
     # Set model trigger
     sbms.registry.update_registry({
@@ -21,10 +25,10 @@ if __name__ == '__main__':
     
     # Run SBMS
     sbms.run(
-        'LiquorDynamic-GridMan',
-        bps = [ grid_bp ],
+        name,
+        ex_bps,
+        open_browser = True,
         static_url_path = '/',
         static_folder = DIR_STATIC,
-        template_folder = DIR_TEMPLATE,
-        open_browser = True
+        template_folder = DIR_TEMPLATE
     )
