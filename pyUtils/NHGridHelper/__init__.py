@@ -1,1 +1,1 @@
-from .GridHelper import NHGridHelper, NHGridEdge, NHGridNode
+from .GridHelper import NHGridHelper as Helper, NHGridEdge as Edge, NHGridNode as Grid
