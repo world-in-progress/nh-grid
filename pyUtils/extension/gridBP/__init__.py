@@ -1,8 +1,8 @@
 from flask import Blueprint, render_template
 
-bp = Blueprint('grid', __name__)
+grid_bp = Blueprint('grid', __name__)
 
-@bp.route('/')
+@grid_bp.route('/')
 def index():
 
     return render_template('index.html')
