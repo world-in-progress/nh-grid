@@ -14,11 +14,10 @@ import VibrantColorGenerator from '../../src/core/util/vibrantColorGenerator'
 
 proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
 
-// const PROCESS_URL = window.location.origin + '/process' // prod
-const PROCESS_URL = 'http://127.0.0.1:8000' + '/v0/nh/grid-process'
-const STATUS_URL = 'http://127.0.0.1:8000' + '/v0/mc/status'
-const RESULT_URL = 'http://127.0.0.1:8000' + '/v0/mc/result'
-const DOWNLOAD_URL = 'http://127.0.0.1:8000' + '/v0/fs/result/zip'
+const STATUS_URL    = 'http://127.0.0.1:8000' + '/v0/mc/status'
+const RESULT_URL    = 'http://127.0.0.1:8000' + '/v0/mc/result'
+const DOWNLOAD_URL  = 'http://127.0.0.1:8000' + '/v0/fs/result/zip'
+const PROCESS_URL   = 'http://127.0.0.1:8000' + '/v0/nh/grid-process'
 
 
 export interface GridLayerOptions {
@@ -562,7 +561,7 @@ export default class GridLayer {
                                 fetchResultFile(id, name)
                                 return
                             }
-                            timerID = setTimeout(core, 2000);
+                            timerID = window.setTimeout(core, 2000)
                         }
                         catch (e) {
                             console.error(e)
