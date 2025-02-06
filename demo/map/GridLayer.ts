@@ -1559,7 +1559,7 @@ export default class GridLayer {
     }
 
     private _updateRibbonedEdges() {
-        let tempArray: number[] = []
+        let tempArray: number[] = []        // TODO:尽量采用已有动态内存空间，避免过多内存占用
         this._assignedEdges.forEach((ID) => {
             for (let i = 0; i < 4; i++) {
                 tempArray.push(this._vertexBuffer[ID * 4 + i])
