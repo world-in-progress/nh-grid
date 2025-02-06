@@ -1572,17 +1572,6 @@ export default class GridLayer {
             this._updateRibbonedEdges();
         }
 
-<<<<<<< HEAD
-
-        // Make grid assigned in GPU
-        const gl = this._gl
-        gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
-        gl.bufferSubData(gl.ARRAY_BUFFER, this.maxGridNum * 1 + ID, new Uint8Array([1]))
-        gl.bindBuffer(gl.ARRAY_BUFFER, null)
-
-        console.log("assign", ID)
-=======
->>>>>>> d088e8af3b002768c6b1618019cef5f327d2098c
     }
 
     private _setCacheBatchInfo(IDs: number[], T: number = 0, height: number, type: number) {
