@@ -4,3 +4,6 @@
 [submodule "pyUtils/pyUtils/sbms"]
 	path = pyUtils/pyUtils/sbms
 	url = https://github.com/YcSoku/self-bootstrapping-model-service.git
+[submodule "pyUtils/grid"]
+	path = pyUtils/grid
+	url = https://github.com/Liquordynamic/nh-grid-helper.git

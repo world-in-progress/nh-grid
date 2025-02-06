@@ -3,13 +3,12 @@
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from sbms import model
+    from ..sbms import model
     
 # Execution Members #########################################################################################
 
 import os
-# from ..extension.gridProcess import process_grid_info
-from extension.gridProcess import process_grid_info
+from pyUtils.extension.gridProcess import process_grid_info
 
 # MCR Runner #########################################################################################
 
