@@ -7,14 +7,17 @@ import axios from 'axios'
 import '../editor-style.css'
 import gll from './GlLib'
 import NHMap from './NHMap'
+import FileDownloader from '../util/DownloadHelper'
 import BoundingBox2D from '../../src/core/util/boundingBox2D'
 import GridRecorder from '../../src/core/grid/NHGridRecorder'
 import VibrantColorGenerator from '../../src/core/util/vibrantColorGenerator'
 
 proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
 
-const PROCESS_URL = window.location.origin + '/process' // prod
-// const PROCESS_URL = 'http://127.0.0.1:8000' + '/process' // dev
+const STATUS_URL    = 'http://127.0.0.1:8000' + '/v0/mc/status'
+const RESULT_URL    = 'http://127.0.0.1:8000' + '/v0/mc/result'
+const DOWNLOAD_URL  = 'http://127.0.0.1:8000' + '/v0/fs/result/zip'
+const PROCESS_URL   = 'http://127.0.0.1:8000' + '/v0/nh/grid-process'
 
 
 export interface GridLayerOptions {
@@ -470,6 +473,10 @@ export default class GridLayer {
                             try {
                                 const data = JSON.parse(reader.result as string)
                                 this.gridRecorder.deserialize(data)
+                                // Checkout to topology-editor
+                                    ; (document.querySelector("#subdivide") as HTMLDivElement).dataset.active = "false"
+                                    ; (document.querySelector("#subdivide") as HTMLDivElement).click() 
+
                             } catch (err) {
                                 console.error('Error parsing JSON file:', err)
                             }
@@ -498,17 +505,72 @@ export default class GridLayer {
                 e.preventDefault()
                 this.showLoading && this.showLoading(true)
 
-                const data = this.gridRecorder.serialize()
-                axios.post(PROCESS_URL, data).then(res => {
-                    
-                    if (res.data.status === 200) {
-                        const downloadUrl = res.data.download_url
-                        const link = document.createElement('a')
-                        link.href = downloadUrl
-                        link.click()
-                        link.remove()
-                        this.showLoading && this.showLoading(false)
-                    } else throw ''
+                // Trigger grid-process
+                axios.post(PROCESS_URL, {
+                    "serialization": this.gridRecorder.serialize(),
+                }).then(res => {
+
+                    const caseID = res.data['case-id']
+                    let timerID = -1
+
+                    // Local helpers for <Status>, <Result> and <ZipFile>
+                    const fetchStatus = async () => {
+
+                        const status = (await axios.get(STATUS_URL, { "params": { "id": caseID } })).data.status
+                        if (status === "RUNNING" || status === "LOCK") return false
+                        else if (status === "COMPLETE") return true
+                        else
+                            throw new Error(`UNKNOWN STATUS: ${status}`);
+                    }
+                    const fetchResultJson = async () => {
+                        const resultJson = (await axios.get(RESULT_URL, { "params": { "id": caseID } })).data.result
+                        return { id: resultJson['case-id'], name: resultJson["result"] }
+                    }
+                    const fetchResultFile = (id: string, name: string) => {
+
+                        const downloadURL = new URL(DOWNLOAD_URL)
+                        downloadURL.searchParams.append("id", id)
+                        downloadURL.searchParams.append("name", name)
+
+                        const fileDownloader = new FileDownloader({
+                            url: downloadURL.toString(),
+                            fileName: 'gridInfo.zip',
+                            chunkSize: 1024 * 1024 * 12,
+                            threadNum: 4,
+                            cb: (done: boolean, current: number, total: number) => {
+                                if (done) {
+                                    console.log('Download complete!');
+                                    this.showLoading && this.showLoading(false)
+                                    return
+                                }
+                                console.log(`Downloading... ${Math.round(current / total * 100)}%`)
+
+                            }
+                        })
+                        fileDownloader.download()
+
+                    }
+
+                    // Core operation of Grid-Process-Model Run
+                    const core = async () => {
+                        try {
+                            const completed = await fetchStatus()
+                            if (completed) {
+                                clearTimeout(timerID)
+                                const { id, name } = await fetchResultJson()
+                                fetchResultFile(id, name)
+                                return
+                            }
+                            timerID = window.setTimeout(core, 2000)
+                        }
+                        catch (e) {
+                            console.error(e)
+                            clearTimeout(timerID)
+                            this.showLoading && this.showLoading(false)
+                        }
+                    }
+
+                    core()
 
                 }).catch(() => {
                     console.warn(" Flask-Server:: Process Grid Error ")
@@ -538,8 +600,7 @@ export default class GridLayer {
         gl.uniform1i(gl.getUniformLocation(this._edgeShader, 'paletteTexture'), 0)
 
         gl.useProgram(this._edgeRibbonedShader)
-        gl.uniform1f(gl.getUniformLocation(this._edgeRibbonedShader, 'lineWidth'), 0.00003)
-        gl.uniform2fv(gl.getUniformLocation(this._edgeRibbonedShader, 'viewport'), [gl.canvas.width, gl.canvas.height])
+        gl.uniform1f(gl.getUniformLocation(this._edgeRibbonedShader, 'lineWidth'), 16)
 
         gl.useProgram(null)
 
@@ -920,6 +981,7 @@ export default class GridLayer {
 
         gl.bindVertexArray(this._edgeRibbonedVAO)
 
+        gl.uniform2fv(gl.getUniformLocation(this._edgeRibbonedShader, 'viewport'), [gl.canvas.width, gl.canvas.height])
         gl.uniform2fv(gl.getUniformLocation(this._edgeRibbonedShader, 'centerLow'), this.map.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this._edgeRibbonedShader, 'centerHigh'), this.map.centerHigh)
         gl.uniformMatrix4fv(gl.getUniformLocation(this._edgeRibbonedShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
@@ -1510,6 +1572,7 @@ export default class GridLayer {
             this._updateRibbonedEdges();
         }
 
+<<<<<<< HEAD
 
         // Make grid assigned in GPU
         const gl = this._gl
@@ -1518,6 +1581,8 @@ export default class GridLayer {
         gl.bindBuffer(gl.ARRAY_BUFFER, null)
 
         console.log("assign", ID)
+=======
+>>>>>>> d088e8af3b002768c6b1618019cef5f327d2098c
     }
 
     private _setCacheBatchInfo(IDs: number[], T: number = 0, height: number, type: number) {
@@ -1555,7 +1620,6 @@ export default class GridLayer {
             this._updateRibbonedEdges();
         }
 
-        console.log("assign batch", IDs)
     }
 
     private _updateRibbonedEdges() {
