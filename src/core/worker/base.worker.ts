@@ -8,10 +8,13 @@ declare const self: WorkerGlobalScope & Record<string, any>
 
 // Base Worker Members //////////////////////////////////////////////////
 
-self.actor = new Actor(self, globalThis)
+self.actor = new Actor(self, self)
 
 for (const key in func) {
 
     const element = (func as FuncModule)[key]
     if (element) self[key] = element.bind(self)
 }
+
+
+
