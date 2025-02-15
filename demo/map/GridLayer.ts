@@ -423,7 +423,7 @@ export default class GridLayer {
             }
         })
 
-        // [7] init the attrSettor DOM
+        // [7] Init the attrSettor DOM
         this.initAttrSetter({
             top: new Set(),
             left: new Set(),
@@ -431,7 +431,6 @@ export default class GridLayer {
             right: new Set(),
             id: -1
         })
-
 
         // [-1] Add event lister for gridRecorder
         document.addEventListener('keydown', e => {

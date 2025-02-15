@@ -46,7 +46,7 @@ class WorkerPool {
         delete this.active[id]
         if (this.workers && this.numActive() === 0) {
             this.workers.forEach(w => {
-                w.terminate
+                w.terminate()
             })
             this.workers = []
         }
