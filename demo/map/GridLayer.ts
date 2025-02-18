@@ -261,7 +261,6 @@ export default class GridLayer {
         const lengthPerAttribute = 2 * gridCount
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this._gridTlStorageBuffer)
-
         gl.bufferSubData(gl.ARRAY_BUFFER, fromStorageId * vertexByteStride, vertices, lengthPerAttribute * 0, lengthPerAttribute)
         gl.bindBuffer(gl.ARRAY_BUFFER, this._gridTrStorageBuffer)
         gl.bufferSubData(gl.ARRAY_BUFFER, fromStorageId * vertexByteStride, vertices, lengthPerAttribute * 1, lengthPerAttribute)
