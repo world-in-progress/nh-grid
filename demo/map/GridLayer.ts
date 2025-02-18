@@ -413,7 +413,7 @@ export default class GridLayer {
             }
         })
 
-        // [6] Add event listener for <Shift + A> (Console Attribute Type)
+        // [6] Add event listener for <Shift + A> (Console Attributed Type)
         document.addEventListener('keydown', e => {
 
             if (e.shiftKey && e.key === 'A') {
@@ -426,13 +426,15 @@ export default class GridLayer {
 
         // [6.5] Add event listener for <Alt> (Enable multiple choice)
         document.addEventListener('keydown', e => {
+            console.log(e)
             if (e.altKey) {
                 this.isAltClick = true
             }
         })
 
         document.addEventListener('keyup', e => {
-            if (!e.altKey) {
+
+            if (!e.altKey) { 
                 this.isAltClick = false
             }
         })
