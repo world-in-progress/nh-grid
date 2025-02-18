@@ -270,6 +270,13 @@ div#box {
     color: black;
 }
 
+.button-style:hover {
+    background-color: rgb(127, 190, 226);
+}
+
+.button-style:active {
+    background-color: rgb(127, 190, 226);
+}
 
 .f-row {
     display: flex;
