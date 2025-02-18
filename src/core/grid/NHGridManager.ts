@@ -771,6 +771,12 @@ export default class GridManager {
         const shared = (+position[4]) / (+position[5])
 
         const bBox = this._subdivideRules.bBox
+        const center = this._projConverter.forward([
+            (bBox.xMin + bBox.xMax) / 2.0,
+            (bBox.yMin + bBox.yMax) / 2.0,
+        ])
+        const mercatorCenter = MercatorCoordinate.fromLonLat(center as [number, number])
+
         if (direction === 'h') {
 
             const minX = lerp(bBox.xMin, bBox.xMax, min)
@@ -780,10 +786,10 @@ export default class GridManager {
             const start = MercatorCoordinate.fromLonLat(this._projConverter.forward([minX, sharedY]))
             const end = MercatorCoordinate.fromLonLat(this._projConverter.forward([maxX, sharedY]))
 
-            vertexBuffer[index * 4 + 0] = start[0]
-            vertexBuffer[index * 4 + 1] = start[1]
-            vertexBuffer[index * 4 + 2] = end[0]
-            vertexBuffer[index * 4 + 3] = end[1]
+            vertexBuffer[index * 4 + 0] = start[0] - mercatorCenter[0]
+            vertexBuffer[index * 4 + 1] = start[1] - mercatorCenter[1]
+            vertexBuffer[index * 4 + 2] = end[0] - mercatorCenter[0]
+            vertexBuffer[index * 4 + 3] = end[1] - mercatorCenter[1]
 
         } else {
 
@@ -794,10 +800,10 @@ export default class GridManager {
             const start = MercatorCoordinate.fromLonLat(this._projConverter.forward([sharedX, minY]))
             const end = MercatorCoordinate.fromLonLat(this._projConverter.forward([sharedX, maxY]))
 
-            vertexBuffer[index * 4 + 0] = start[0]
-            vertexBuffer[index * 4 + 1] = start[1]
-            vertexBuffer[index * 4 + 2] = end[0]
-            vertexBuffer[index * 4 + 3] = end[1]
+            vertexBuffer[index * 4 + 0] = start[0] - mercatorCenter[0]
+            vertexBuffer[index * 4 + 1] = start[1] - mercatorCenter[1]
+            vertexBuffer[index * 4 + 2] = end[0] - mercatorCenter[0]
+            vertexBuffer[index * 4 + 3] = end[1] - mercatorCenter[1]
         }
     }
 
@@ -842,19 +848,31 @@ export default class GridManager {
             this._projConverter.forward([xMax, yMin]),  // srcBR
         ]
 
+        const center = this._projConverter.forward([
+            (bBox.xMin + bBox.xMax) / 2.0,
+            (bBox.yMin + bBox.yMax) / 2.0,
+        ])
+        const mercatorCenter = MercatorCoordinate.fromLonLat(center as [number, number])
         const renderCoords = targetCoords.map(coord => MercatorCoordinate.fromLonLat(coord as [ number, number ]))
+        
+        const relativeCoords = renderCoords.map(renderCoord => {
+            return [
+                renderCoord[0] - mercatorCenter[0],
+                renderCoord[1] - mercatorCenter[1],
+            ] as [ number, number ]
+        })
 
         infoPack.uuIds[localId] = `${level}-${globalId}`
         const nodeCount = infoPack.vertexBuffer.length / 8
 
-        infoPack.vertexBuffer[nodeCount * 0 + localId * 2 + 0] = renderCoords[0][0]
-        infoPack.vertexBuffer[nodeCount * 0 + localId * 2 + 1] = renderCoords[0][1]
-        infoPack.vertexBuffer[nodeCount * 2 + localId * 2 + 0] = renderCoords[1][0]
-        infoPack.vertexBuffer[nodeCount * 2 + localId * 2 + 1] = renderCoords[1][1]
-        infoPack.vertexBuffer[nodeCount * 4 + localId * 2 + 0] = renderCoords[2][0]
-        infoPack.vertexBuffer[nodeCount * 4 + localId * 2 + 1] = renderCoords[2][1]
-        infoPack.vertexBuffer[nodeCount * 6 + localId * 2 + 0] = renderCoords[3][0]
-        infoPack.vertexBuffer[nodeCount * 6 + localId * 2 + 1] = renderCoords[3][1]
+        infoPack.vertexBuffer[nodeCount * 0 + localId * 2 + 0] = relativeCoords[0][0]
+        infoPack.vertexBuffer[nodeCount * 0 + localId * 2 + 1] = relativeCoords[0][1]
+        infoPack.vertexBuffer[nodeCount * 2 + localId * 2 + 0] = relativeCoords[1][0]
+        infoPack.vertexBuffer[nodeCount * 2 + localId * 2 + 1] = relativeCoords[1][1]
+        infoPack.vertexBuffer[nodeCount * 4 + localId * 2 + 0] = relativeCoords[2][0]
+        infoPack.vertexBuffer[nodeCount * 4 + localId * 2 + 1] = relativeCoords[2][1]
+        infoPack.vertexBuffer[nodeCount * 6 + localId * 2 + 0] = relativeCoords[3][0]
+        infoPack.vertexBuffer[nodeCount * 6 + localId * 2 + 1] = relativeCoords[3][1]
     }
 }
 

@@ -15,6 +15,7 @@ layout(location = 5) in uint assignment;
 uniform mat4 uMatrix;
 uniform vec2 centerLow;
 uniform vec2 centerHigh;
+uniform vec2 relativeCenter;
 // uniform sampler2DArray storageTexture;
 
 const float PI = 3.141592653;
@@ -90,7 +91,7 @@ void main() {
     );
 
     // vec2 xy = texelFetch(storageTexture, ivec3(storage_u, storage_v, layerMap[gl_VertexID]), 0).rg;
-    vec2 xy = layerMap[gl_VertexID];
+    vec2 xy = layerMap[gl_VertexID] + relativeCenter;
     gl_Position = uMatrix * vec4(translateRelativeToEye(xy, vec2(0.0)), 0.0, 1.0);
 }
 

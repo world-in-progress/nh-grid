@@ -37,7 +37,7 @@ const map = new NHMap({
     const gridLayer = new GridLayer(
         map,
         'ESRI:102140',
-        [64, 64],
+        [32, 32],
         [
             [2, 2],
             [2, 2],

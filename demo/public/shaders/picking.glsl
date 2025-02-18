@@ -15,6 +15,7 @@ uniform mat4 uMatrix;
 uniform vec2 centerLow;
 uniform vec2 centerHigh;
 uniform mat4 pickingMatrix;
+uniform vec2 relativeCenter;
 
 out vec4 v_color;
 
@@ -96,7 +97,7 @@ void main() {
         bl,
         br
     );
-    vec2 xy = layerMap[gl_VertexID];
+    vec2 xy = layerMap[gl_VertexID] + relativeCenter;
 
     // vec2 xy = texelFetch(storageTexture, ivec3(storage_u, storage_v, layerMap[gl_VertexID]), 0).rg;
 

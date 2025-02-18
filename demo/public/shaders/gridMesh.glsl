@@ -16,6 +16,7 @@ layout(location = 6) in uint assignment;
 uniform mat4 uMatrix;
 uniform vec2 centerLow;
 uniform vec2 centerHigh;
+uniform vec2 relativeCenter;
 uniform sampler2D paletteTexture;
 
 out vec2 uv;
@@ -85,7 +86,7 @@ void main() {
 
     vec2 uvs[4] = vec2[4](vec2(0.0, 1.0), vec2(1.0, 1.0), vec2(0.0, 0.0), vec2(1.0, 0.0));
 
-    vec2 xy = layerMap[gl_VertexID];
+    vec2 xy = layerMap[gl_VertexID] + relativeCenter;
 
     u_hit = float(hit);
     u_assignment = float(assignment);
