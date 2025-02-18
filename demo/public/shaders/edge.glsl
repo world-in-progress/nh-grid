@@ -10,6 +10,7 @@ layout(location = 0) in vec4 pos;
 uniform mat4 uMatrix;
 uniform vec2 centerLow;
 uniform vec2 centerHigh;
+uniform vec2 relativeCenter;
 uniform sampler2D paletteTexture;
 
 out vec3 v_color;
@@ -85,7 +86,7 @@ void main() {
     // }
 
     v_color = texelFetch(paletteTexture, ivec2(gl_InstanceID % 5, 0), 0).rgb;
-    gl_Position = uMatrix * vec4(translateRelativeToEye(xy, vec2(0.0)), 0.0, 1.0);
+    gl_Position = uMatrix * vec4(translateRelativeToEye(xy + relativeCenter, vec2(0.0)), 0.0, 1.0);
 }
 
 #endif

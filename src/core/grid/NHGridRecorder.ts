@@ -401,10 +401,23 @@ export default class GridRecorder extends UndoRedoManager {
             this._projConverter.forward([xMax, yMin]),  // srcBR
         ]
 
+        const center = this._projConverter.forward([
+            (bBox.xMin + bBox.xMax) / 2.0,
+            (bBox.yMin + bBox.yMax) / 2.0,
+        ])
+        const mercatorCenter = MercatorCoordinate.fromLonLat(center as [number, number])
         const renderCoords = targetCoords.map(coord => MercatorCoordinate.fromLonLat(coord as [number, number]))
+        const relativeCoords = renderCoords.map(renderCoord => {
+            return [
+                renderCoord[0] - mercatorCenter[0],
+                renderCoord[1] - mercatorCenter[1],
+            ] as [ number, number ]
+        })
 
-        if (!vertices) vertices = new Float32Array(renderCoords.flat())
-        else vertices.set(renderCoords.flat(), 0)
+        // if (!vertices) vertices = new Float32Array(renderCoords.flat())
+        // else vertices.set(renderCoords.flat(), 0)
+        if (!vertices) vertices = new Float32Array(relativeCoords.flat())
+        else vertices.set(relativeCoords.flat(), 0)
         return vertices
     }
 
@@ -428,7 +441,6 @@ export default class GridRecorder extends UndoRedoManager {
                 // Replace removable render info with the last render info in the cache
                 this.storageId_gridInfo_cache[storageId * 2 + 0] = lastLevel
                 this.storageId_gridInfo_cache[storageId * 2 + 1] = lastGlobalId
-
                 callback && callback([storageId, lastLevel, this._createNodeRenderVertices(lastLevel, lastGlobalId)])
             },
             inverse: () => {

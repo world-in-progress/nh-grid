@@ -1,7 +1,7 @@
 import proj4 from 'proj4'
 import { mat4 } from 'gl-matrix'
 import { MapMouseEvent } from 'mapbox-gl'
-// import { GUI, GUIController } from 'dat.gui'
+import { GUI, GUIController } from 'dat.gui'
 import axios from 'axios'
 
 import '../editor-style.css'
@@ -10,6 +10,7 @@ import NHMap from './NHMap'
 import FileDownloader from '../util/DownloadHelper'
 import BoundingBox2D from '../../src/core/util/boundingBox2D'
 import GridRecorder from '../../src/core/grid/NHGridRecorder'
+import { MercatorCoordinate } from '../../src/core/math/mercatorCoordinate'
 import VibrantColorGenerator from '../../src/core/util/vibrantColorGenerator'
 
 proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
@@ -44,6 +45,9 @@ export default class GridLayer {
     gridRecorder: GridRecorder
     hitFlag = new Uint8Array([1])   // 0 is a special value and means no selection
     projConverter: proj4.Converter
+
+    // Boundary center
+    relativeCenter = new Float32Array([0.0, 0.0])
 
     // GPU-related //////////////////////////////////////////////////
 
@@ -131,9 +135,9 @@ export default class GridLayer {
     mousemoveHandler: Function
 
     // Dat.GUI
-    // gui: GUI
-    // capacityController: GUIController
-    // uiOption: { capacity: number, level: number }
+    gui: GUI
+    capacityController: GUIController
+    uiOption: { capacity: number, level: number }
 
     constructor(
         public map: NHMap,
@@ -152,6 +156,13 @@ export default class GridLayer {
         boundaryCondition[2] = boundaryCondition[0] + Math.ceil((boundaryCondition[2] - boundaryCondition[0]) / this.firstLevelSize[0]) * this.firstLevelSize[0]
         boundaryCondition[3] = boundaryCondition[1] + Math.ceil((boundaryCondition[3] - boundaryCondition[1]) / this.firstLevelSize[1]) * this.firstLevelSize[1]
         this.bBox = new BoundingBox2D(...boundaryCondition)
+
+        // Calculate relative center
+        const center = this.projConverter.forward([
+            (this.bBox.xMin + this.bBox.xMax) / 2.0,
+            (this.bBox.yMin + this.bBox.yMax) / 2.0,
+        ])
+        this.relativeCenter = new Float32Array(MercatorCoordinate.fromLonLat(center as [number, number]))
 
         // Set first level rule of subdivide rules by new boundary condition
         const modifiedSubdivideRules: [number, number][] = [[
@@ -202,23 +213,23 @@ export default class GridLayer {
         this.mousemoveHandler = this._mousemoveHandler.bind(this)
 
         // Init interaction option
-        // this.uiOption = {
-        //     level: 2,
-        //     capacity: 0.0,
-        // }
+        this.uiOption = {
+            level: 2,
+            capacity: 0.0,
+        }
 
         // Launch Dat.GUI
-        // this.gui = new GUI()
+        this.gui = new GUI()
         // const brushFolder = this.gui.addFolder('Brush')
         // brushFolder.add(this.uiOption, 'level', 1, this.subdivideRules.length - 1, 1)
         // brushFolder.open()
-        // this.gui.add(this.uiOption, 'capacity', 0, this.maxGridNum).name('Capacity').listen()
+        this.gui.add(this.uiOption, 'capacity', 0, this.maxGridNum).name('Capacity').listen()
         // this.gui.close()
         // this.gui.hide()
 
-        // this.capacityController = this.gui.__controllers[0]
-        // this.capacityController.setValue(0.0)
-        // this.capacityController.domElement.style.pointerEvents = 'none'
+        this.capacityController = this.gui.__controllers[0]
+        this.capacityController.setValue(0.0)
+        this.capacityController.domElement.style.pointerEvents = 'none'
     }
 
     get subdivideRules() {
@@ -896,8 +907,8 @@ export default class GridLayer {
         gll.errorCheck(gl)
 
         // Update display of capacity
-        // this.uiOption.capacity = this.gridRecorder.gridNum
-        // this.capacityController.updateDisplay()
+        this.uiOption.capacity = this.gridRecorder.gridNum
+        this.capacityController.updateDisplay()
     }
 
     picking(e: MapMouseEvent, e2: MapMouseEvent | undefined = undefined) {
@@ -931,6 +942,7 @@ export default class GridLayer {
         gl.uniform1i(gl.getUniformLocation(this._gridMeshShader, 'hit'), this.hitFlag[0])
         gl.uniform2fv(gl.getUniformLocation(this._gridMeshShader, 'centerLow'), this.map.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this._gridMeshShader, 'centerHigh'), this.map.centerHigh)
+        gl.uniform2fv(gl.getUniformLocation(this._gridMeshShader, 'relativeCenter'), this.relativeCenter)
         gl.uniform1f(gl.getUniformLocation(this._gridMeshShader, 'mode'), this.isTopologyParsed ? 1.0 : 0.0)
         gl.uniformMatrix4fv(gl.getUniformLocation(this._gridMeshShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
 
@@ -949,6 +961,7 @@ export default class GridLayer {
 
         gl.uniform2fv(gl.getUniformLocation(this._gridLineShader, 'centerLow'), this.map.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this._gridLineShader, 'centerHigh'), this.map.centerHigh)
+        gl.uniform2fv(gl.getUniformLocation(this._gridLineShader, 'relativeCenter'), this.relativeCenter)
         gl.uniformMatrix4fv(gl.getUniformLocation(this._gridLineShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
 
         gl.drawArraysInstanced(gl.LINE_LOOP, 0, 4, this.gridRecorder.gridNum)
@@ -970,6 +983,7 @@ export default class GridLayer {
 
         gl.uniform2fv(gl.getUniformLocation(this._edgeShader, 'centerLow'), this.map.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this._edgeShader, 'centerHigh'), this.map.centerHigh)
+        gl.uniform2fv(gl.getUniformLocation(this._edgeShader, 'relativeCenter'), this.relativeCenter)
         gl.uniformMatrix4fv(gl.getUniformLocation(this._edgeShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
 
         gl.drawArraysInstanced(gl.LINE_STRIP, 0, 2, this.gridRecorder.edgeNum)
@@ -982,6 +996,7 @@ export default class GridLayer {
         gl.uniform2fv(gl.getUniformLocation(this._edgeRibbonedShader, 'viewport'), [gl.canvas.width, gl.canvas.height])
         gl.uniform2fv(gl.getUniformLocation(this._edgeRibbonedShader, 'centerLow'), this.map.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this._edgeRibbonedShader, 'centerHigh'), this.map.centerHigh)
+        gl.uniform2fv(gl.getUniformLocation(this._edgeRibbonedShader, 'relativeCenter'), this.relativeCenter)
         gl.uniformMatrix4fv(gl.getUniformLocation(this._edgeRibbonedShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
 
         gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this._assignedEdges.length)
@@ -1012,6 +1027,7 @@ export default class GridLayer {
 
         gl.uniform2fv(gl.getUniformLocation(this._pickingShader, 'centerLow'), this.map.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this._pickingShader, 'centerHigh'), this.map.centerHigh)
+        gl.uniform2fv(gl.getUniformLocation(this._pickingShader, 'relativeCenter'), this.relativeCenter)
         gl.uniformMatrix4fv(gl.getUniformLocation(this._pickingShader, 'pickingMatrix'), false, pickingMatrix)
         gl.uniformMatrix4fv(gl.getUniformLocation(this._pickingShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
 
@@ -1068,6 +1084,7 @@ export default class GridLayer {
 
         gl.uniform2fv(gl.getUniformLocation(this._pickingShader, 'centerLow'), this.map.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this._pickingShader, 'centerHigh'), this.map.centerHigh)
+        gl.uniform2fv(gl.getUniformLocation(this._pickingShader, 'relativeCenter'), this.relativeCenter)
         gl.uniformMatrix4fv(gl.getUniformLocation(this._pickingShader, 'pickingMatrix'), false, boxPickingMatrix)
         gl.uniformMatrix4fv(gl.getUniformLocation(this._pickingShader, 'uMatrix'), false, this.map.relativeEyeMatrix)
 
