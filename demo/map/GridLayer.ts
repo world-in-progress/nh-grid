@@ -450,7 +450,6 @@ export default class GridLayer {
 
         // [-1] Add event lister for gridRecorder
         document.addEventListener('keydown', e => {
-
             const ctrlOrCmd = isMacOS() ? e.metaKey : e.ctrlKey
 
             // Register UNDO operation

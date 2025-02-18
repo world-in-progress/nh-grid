@@ -125,6 +125,7 @@ export default class GridLayer implements NHCustomLayerInterface {
 
     typeChanged = false
     isShiftClick = false
+    isAltClick = false
     isTransparent = false
 
     resizeHandler: Function
@@ -426,6 +427,22 @@ export default class GridLayer implements NHCustomLayerInterface {
                 this.map.triggerRepaint()
             }
         })
+
+        // [6.5] Add event listener for <Alt> (Enable multiple choice)
+        document.addEventListener('keydown', e => {
+            console.log(e)
+            if (e.altKey) {
+                this.isAltClick = true
+            }
+        })
+
+        document.addEventListener('keyup', e => {
+
+            if (!e.altKey) { 
+                this.isAltClick = false
+            }
+        })
+        
 
         // [7] Init the attrSettor DOM
         this.initAttrSetter({
@@ -752,7 +769,8 @@ export default class GridLayer implements NHCustomLayerInterface {
             .on('resize', this.resizeHandler as any)
     }
 
-    hit(storageIds: number | number[]) {
+
+    hit2(storageIds: number | number[]) {
         // Topology editor
         if (this.EditorState.editor === "topology") {
             // Delete mode
@@ -791,6 +809,21 @@ export default class GridLayer implements NHCustomLayerInterface {
         this.map.triggerRepaint()
     }
 
+    hit(storageIds: number | number[]) {
+        const ids = Array.isArray(storageIds) ? storageIds : [storageIds]
+        ids.forEach((storageId: number) => {
+            if (storageId < 0) return
+            if (this.hitSet.has(storageId)) {
+                if (this.hitSet.size === 1) return
+                this.hitSet.delete(storageId);
+            } else {
+                this.hitSet.add(storageId);
+            }
+        })
+        this.map.triggerRepaint()
+    }
+
+
     hitAttributeEditor() {
 
         if (!this.isTopologyParsed) return
@@ -819,6 +852,29 @@ export default class GridLayer implements NHCustomLayerInterface {
     }
 
     tickGrids() {
+
+        if (this.hitSet.size === 0) return
+
+        if (this.hitSet.size !== 0) {
+            // Update hit flag for this current frame
+            this._updateHitFlag()
+            
+            // Highlight all hit grids
+            const gl = this._gl
+            gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
+            this.hitSet.forEach(hitStorageId => gl.bufferSubData(gl.ARRAY_BUFFER, hitStorageId, this.hitFlag, 0))
+            gl.bindBuffer(gl.ARRAY_BUFFER, null)
+        }
+
+        if (this.EditorState.editor === "attribute") {
+            this.hitAttributeEditor()
+        }
+
+        if (!this.isAltClick) { this.hitSet.clear() }
+        this.typeChanged = false
+    }
+
+    tickGrids2() {
 
         if (this.hitSet.size === 0) return
 
