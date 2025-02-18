@@ -14,10 +14,10 @@ import VibrantColorGenerator from '../../src/core/util/vibrantColorGenerator'
 
 proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
 
-const STATUS_URL    = 'http://127.0.0.1:8000' + '/v0/mc/status'
-const RESULT_URL    = 'http://127.0.0.1:8000' + '/v0/mc/result'
-const DOWNLOAD_URL  = 'http://127.0.0.1:8000' + '/v0/fs/result/zip'
-const PROCESS_URL   = 'http://127.0.0.1:8000' + '/v0/nh/grid-process'
+const STATUS_URL = 'http://127.0.0.1:8000' + '/v0/mc/status'
+const RESULT_URL = 'http://127.0.0.1:8000' + '/v0/mc/result'
+const DOWNLOAD_URL = 'http://127.0.0.1:8000' + '/v0/fs/result/zip'
+const PROCESS_URL = 'http://127.0.0.1:8000' + '/v0/nh/grid-process'
 
 
 export interface GridLayerOptions {
@@ -122,6 +122,7 @@ export default class GridLayer {
 
     typeChanged = false
     isShiftClick = false
+    isAltClick = false
     isTransparent = false
 
     resizeHandler: Function
@@ -402,7 +403,7 @@ export default class GridLayer {
         // [4] Remove Event handler for map boxZoom
         this.map.boxZoom.disable()
 
-        // [5] Add event listner for <Shift + T> (Set grid transparent or not)
+        // [5] Add event listener for <Shift + T> (Set grid transparent or not)
         document.addEventListener('keydown', e => {
 
             if (e.shiftKey && e.key === 'T') {
@@ -412,7 +413,7 @@ export default class GridLayer {
             }
         })
 
-        // [6] Add event listner for <Shift + A> (Console Attribute Type)
+        // [6] Add event listener for <Shift + A> (Console Attribute Type)
         document.addEventListener('keydown', e => {
 
             if (e.shiftKey && e.key === 'A') {
@@ -423,7 +424,20 @@ export default class GridLayer {
             }
         })
 
-        // [7] init the attrSettor DOM
+        // [6.5] Add event listener for <Alt> (Enable multiple choice)
+        document.addEventListener('keydown', e => {
+            if (e.altKey) {
+                this.isAltClick = true
+            }
+        })
+
+        document.addEventListener('keyup', e => {
+            if (!e.altKey) {
+                this.isAltClick = false
+            }
+        })
+
+        // [7] Init the attrSettor DOM
         this.initAttrSetter({
             top: new Set(),
             left: new Set(),
@@ -431,7 +445,6 @@ export default class GridLayer {
             right: new Set(),
             id: -1
         })
-
 
         // [-1] Add event lister for gridRecorder
         document.addEventListener('keydown', e => {
@@ -471,9 +484,9 @@ export default class GridLayer {
                             try {
                                 const data = JSON.parse(reader.result as string)
                                 this.gridRecorder.deserialize(data)
-                                // Checkout to topology-editor
+                                    // Checkout to topology-editor
                                     ; (document.querySelector("#subdivide") as HTMLDivElement).dataset.active = "false"
-                                    ; (document.querySelector("#subdivide") as HTMLDivElement).click() 
+                                    ; (document.querySelector("#subdivide") as HTMLDivElement).click()
 
                             } catch (err) {
                                 console.error('Error parsing JSON file:', err)
@@ -749,7 +762,7 @@ export default class GridLayer {
             .on('resize', this.resizeHandler as any)
     }
 
-    hit(storageIds: number | number[]) {
+    hit2(storageIds: number | number[]) {
         // Topology editor
         if (this.EditorState.editor === "topology") {
             // Delete mode
@@ -788,6 +801,20 @@ export default class GridLayer {
         this.map.triggerRepaint()
     }
 
+    hit(storageIds: number | number[]) {
+        const ids = Array.isArray(storageIds) ? storageIds : [storageIds]
+        ids.forEach((storageId: number) => {
+            if (storageId < 0) return
+            if (this.hitSet.has(storageId)) {
+                if (this.hitSet.size === 1) return
+                this.hitSet.delete(storageId);
+            } else {
+                this.hitSet.add(storageId);
+            }
+        })
+        this.map.triggerRepaint()
+    }
+
     hitAttributeEditor() {
 
         if (!this.isTopologyParsed) return
@@ -816,6 +843,29 @@ export default class GridLayer {
     }
 
     tickGrids() {
+
+        if (this.hitSet.size === 0) return
+
+        if (this.hitSet.size !== 0) {
+            // Update hit flag for this current frame
+            this._updateHitFlag()
+            
+            // Highlight all hit grids
+            const gl = this._gl
+            gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
+            this.hitSet.forEach(hitStorageId => gl.bufferSubData(gl.ARRAY_BUFFER, hitStorageId, this.hitFlag, 0))
+            gl.bindBuffer(gl.ARRAY_BUFFER, null)
+        }
+
+        if (this.EditorState.editor === "attribute") {
+            this.hitAttributeEditor()
+        }
+
+        if (!this.isAltClick) { this.hitSet.clear() }
+        this.typeChanged = false
+    }
+
+    tickGrids2() {
 
         if (this.hitSet.size === 0) return
 
@@ -1229,6 +1279,7 @@ export default class GridLayer {
                 drawRectangle(this._ctx!, box)
             }
         }
+
         else if (this.EditorState.editor === "attribute") {
             if (this.isShiftClick && this.EditorState.tool === 'box' && this._boxPickingStart) {
                 // Render the picking box
@@ -1553,11 +1604,6 @@ export default class GridLayer {
             this.gridRecorder.grid_attribute_cache[ID].height = height
             this.gridRecorder.grid_attribute_cache[ID].type = type
 
-            // Make grid assigned in GPU
-            const gl = this._gl
-            gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
-            gl.bufferSubData(gl.ARRAY_BUFFER, this.maxGridNum * 1 + ID, new Uint8Array([1]))
-            gl.bindBuffer(gl.ARRAY_BUFFER, null)
 
         } else {
             this.gridRecorder.edge_attribute_cache[ID].height = height
@@ -1615,7 +1661,7 @@ export default class GridLayer {
     }
 
     private _updateRibbonedEdges() {
-        let tempArray: number[] = []
+        let tempArray: number[] = []        // TODO:尽量采用已有动态内存空间，避免过多内存占用
         this._assignedEdges.forEach((ID) => {
             for (let i = 0; i < 4; i++) {
                 tempArray.push(this._vertexBuffer[ID * 4 + i])
