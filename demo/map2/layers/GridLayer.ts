@@ -438,11 +438,11 @@ export default class GridLayer implements NHCustomLayerInterface {
 
         document.addEventListener('keyup', e => {
 
-            if (!e.altKey) { 
+            if (!e.altKey) {
                 this.isAltClick = false
             }
         })
-        
+
 
         // [7] Init the attrSettor DOM
         this.initAttrSetter({
@@ -858,7 +858,7 @@ export default class GridLayer implements NHCustomLayerInterface {
         if (this.hitSet.size !== 0) {
             // Update hit flag for this current frame
             this._updateHitFlag()
-            
+
             // Highlight all hit grids
             const gl = this._gl
             gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
@@ -992,7 +992,8 @@ export default class GridLayer implements NHCustomLayerInterface {
         gl.uniform1i(gl.getUniformLocation(this._gridMeshShader, 'hit'), this.hitFlag[0])
         gl.uniform2fv(gl.getUniformLocation(this._gridMeshShader, 'centerLow'), this.layerGroup.centerLow)
         gl.uniform2fv(gl.getUniformLocation(this._gridMeshShader, 'centerHigh'), this.layerGroup.centerHigh)
-        gl.uniform1f(gl.getUniformLocation(this._gridMeshShader, 'mode'), this.isTopologyParsed ? 1.0 : 0.0)
+        // gl.uniform1f(gl.getUniformLocation(this._gridMeshShader, 'mode'), this.isTopologyParsed ? 1.0 : 0.0)
+        gl.uniform1f(gl.getUniformLocation(this._gridMeshShader, 'mode'), 1.0)
         gl.uniformMatrix4fv(gl.getUniformLocation(this._gridMeshShader, 'uMatrix'), false, this.layerGroup.relativeEyeMatrix)
 
         gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.gridRecorder.gridNum)
@@ -1285,12 +1286,15 @@ export default class GridLayer implements NHCustomLayerInterface {
         }
     }
 
+    lastPickedId: number = -1
     private _mousemoveHandler(e: MapMouseEvent) {
 
         if (this.EditorState.editor === "topology") {
             if (this.isShiftClick && this.EditorState.tool === 'brush') {
                 this.map.dragPan.disable()
                 const storageId = this.picking(e) as number
+                if (this.lastPickedId === storageId) return
+                this.lastPickedId = storageId
                 this.hit(storageId)
             }
 
