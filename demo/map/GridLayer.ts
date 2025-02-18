@@ -1229,6 +1229,7 @@ export default class GridLayer {
                 drawRectangle(this._ctx!, box)
             }
         }
+        
         else if (this.EditorState.editor === "attribute") {
             if (this.isShiftClick && this.EditorState.tool === 'box' && this._boxPickingStart) {
                 // Render the picking box
