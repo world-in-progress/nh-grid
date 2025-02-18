@@ -8,4 +8,4 @@ Examples of `NHGrid` is built by [Vite](https://vitejs.dev/). Trying examples pr
 requires an installation of [Node.js](https://nodejs.org/en/).
 
 - Install dependencies: `npm install`.
-- Run demo: `npm run demo`.
+- Run demo: `npm run dev`.

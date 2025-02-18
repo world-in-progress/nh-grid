@@ -176,7 +176,7 @@ export default class GridRecorder extends UndoRedoManager {
             this.adjGrids_cache = topologyInfo[1]
             this.storageId_edgeId_set = topologyInfo[2]
 
-            // init attribute cache 
+            // Init attribute cache 
             this.edge_attribute_cache = Array.from({ length: this.edgeNum }, () => { return { height: -9999, type: 0 } })
 
             let preparedChunkNum = 0

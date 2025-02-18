@@ -1,7 +1,7 @@
 import proj4 from 'proj4'
 import { mat4 } from 'gl-matrix'
 import { MapMouseEvent } from 'mapbox-gl'
-import { GUI, GUIController } from 'dat.gui'
+// import { GUI, GUIController } from 'dat.gui'
 import axios from 'axios'
 
 import '../editor-style.css'
@@ -44,7 +44,6 @@ export default class GridLayer {
     gridRecorder: GridRecorder
     hitFlag = new Uint8Array([1])   // 0 is a special value and means no selection
     projConverter: proj4.Converter
-    // subdivideRules: [number, number][]
 
     // GPU-related //////////////////////////////////////////////////
 
@@ -132,9 +131,9 @@ export default class GridLayer {
     mousemoveHandler: Function
 
     // Dat.GUI
-    gui: GUI
-    capacityController: GUIController
-    uiOption: { capacity: number, level: number }
+    // gui: GUI
+    // capacityController: GUIController
+    // uiOption: { capacity: number, level: number }
 
     constructor(
         public map: NHMap,
@@ -203,23 +202,23 @@ export default class GridLayer {
         this.mousemoveHandler = this._mousemoveHandler.bind(this)
 
         // Init interaction option
-        this.uiOption = {
-            level: 2,
-            capacity: 0.0,
-        }
+        // this.uiOption = {
+        //     level: 2,
+        //     capacity: 0.0,
+        // }
 
         // Launch Dat.GUI
-        this.gui = new GUI()
-        const brushFolder = this.gui.addFolder('Brush')
-        brushFolder.add(this.uiOption, 'level', 1, this.subdivideRules.length - 1, 1)
-        brushFolder.open()
-        this.gui.add(this.uiOption, 'capacity', 0, this.maxGridNum).name('Capacity').listen()
+        // this.gui = new GUI()
+        // const brushFolder = this.gui.addFolder('Brush')
+        // brushFolder.add(this.uiOption, 'level', 1, this.subdivideRules.length - 1, 1)
+        // brushFolder.open()
+        // this.gui.add(this.uiOption, 'capacity', 0, this.maxGridNum).name('Capacity').listen()
         // this.gui.close()
         // this.gui.hide()
 
-        this.capacityController = this.gui.__controllers[0]
-        this.capacityController.setValue(0.0)
-        this.capacityController.domElement.style.pointerEvents = 'none'
+        // this.capacityController = this.gui.__controllers[0]
+        // this.capacityController.setValue(0.0)
+        // this.capacityController.domElement.style.pointerEvents = 'none'
     }
 
     get subdivideRules() {
@@ -425,7 +424,7 @@ export default class GridLayer {
             }
         })
 
-        // [7] init the attrSettor DOM
+        // [7] Init the attrSettor DOM
         this.initAttrSetter({
             top: new Set(),
             left: new Set(),
@@ -433,7 +432,6 @@ export default class GridLayer {
             right: new Set(),
             id: -1
         })
-
 
         // [-1] Add event lister for gridRecorder
         document.addEventListener('keydown', e => {
@@ -898,8 +896,8 @@ export default class GridLayer {
         gll.errorCheck(gl)
 
         // Update display of capacity
-        this.uiOption.capacity = this.gridRecorder.gridNum
-        this.capacityController.updateDisplay()
+        // this.uiOption.capacity = this.gridRecorder.gridNum
+        // this.capacityController.updateDisplay()
     }
 
     picking(e: MapMouseEvent, e2: MapMouseEvent | undefined = undefined) {
