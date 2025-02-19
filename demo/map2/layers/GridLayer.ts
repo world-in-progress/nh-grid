@@ -112,7 +112,8 @@ export default class GridLayer implements NHCustomLayerInterface {
     private _EditorState: Record<string, string> = {
         editor: 'none',   // 'none' | 'topology' | 'attribute'
         tool: 'none',     // 'none' | 'brush' | 'box'
-        mode: 'none'      // 'none' | 'subdivide' | 'delete' | 'check'
+        // mode: 'none'      // 'none' | 'subdivide' | 'delete' | 'check'
+        mode: 'none'      // 'none' | 'check'
     }
     EditorState: Record<string, string> = {}
 
@@ -122,6 +123,7 @@ export default class GridLayer implements NHCustomLayerInterface {
     edgeDom: HTMLDivElement | null = null
     isTopologyParsed = false
     showLoading: Function | null = null
+    isClearing: boolean = false
 
     typeChanged = false
     isShiftClick = false
@@ -307,6 +309,7 @@ export default class GridLayer implements NHCustomLayerInterface {
                 <div class="tool-content f-row">
                   <div class="tool-item pic" id="brush" data-active="false" data-type="tool" data-val="brush"></div>
                   <div class="tool-item pic" id="box"   data-active="false" data-type="tool" data-val="box"></div>
+                  <div class="tool-item pic button-style" id="clear" data-val="clear"></div>
                 </div>
               </div>
               <div class="editor-container f-row">
@@ -315,8 +318,8 @@ export default class GridLayer implements NHCustomLayerInterface {
                   <div class="editor-item p0_0_1_0" id="topology" data-active="false" data-type="editor" data-val="topology">
                     <div class="f-center p5_0 f1 editor-name">Topology-Editor</div>
                     <div class="f-row f-even">
-                      <div class="f0 sub-item p0_5" id="subdivide" data-active="false" data-type="mode" data-val="subdivide">Subdivide</div>
-                      <div class="f0 sub-item p0_5" id="delete"    data-active="false" data-type="mode" data-val="delete">Delete</div>
+                      <div class="f0 sub-item p0_5 button-style" id="subdivide" data-active="false" data-type="mode" data-val="subdivide">Subdivide</div>
+                      <div class="f0 sub-item p0_5 button-style" id="delete"    data-active="false" data-type="mode" data-val="delete">Delete</div>
                     </div>
                   </div>
                   <div class="editor-item" id="attribute" data-active="false" data-type="editor" data-val="attribute">
@@ -329,11 +332,21 @@ export default class GridLayer implements NHCustomLayerInterface {
         document.body.appendChild(pannel)
 
         // [2] Setup Control Panne Surface Interaction
-        const ids = ['box', 'brush', 'topology', 'attribute', 'subdivide', 'delete']
+        const ids = ['box', 'brush', 'clear', 'topology', 'attribute', 'subdivide', 'delete']
         const doms = ids.map(id => document.querySelector(`#${id}`)! as HTMLDivElement)
 
         const handleClick = (dom: HTMLDivElement) => {
             const { type, val, active } = dom.dataset as { type: string, val: string, active: string }
+            if (type === 'mode') {
+                if (val === 'subdivide') this.subdivideActiveGrids()
+                else if (val === 'delete') this.deleteActiveGrids()
+                return
+            }
+            if (val === 'clear') {
+                this.clearActiveGrids() 
+                return
+            }
+            
             if (active === 'true' && val === 'topology') {
                 for (let dom of doms) {
                     if (dom.dataset.type === 'mode' && dom.dataset.active === 'true') {
@@ -344,7 +357,6 @@ export default class GridLayer implements NHCustomLayerInterface {
             else if (active === 'true') {
                 dom.dataset.active = 'false' //only cancel the active
                 this.EditorState[type] = 'none'
-                val === 'attribute' && (this.EditorState.mode = 'none')
                 return
             }
             deactivate(type)
@@ -353,20 +365,11 @@ export default class GridLayer implements NHCustomLayerInterface {
 
             // Local helper
             function deactivate(type: string) {
-                doms.forEach(d => d.dataset.type === type && (d.dataset.active = 'false'))
-                requestAnimationFrame(() => {
-                    type === "editor" && deactivate("mode")
-                })
+                if (type !== 'mode') doms.forEach(d => d.dataset.type === type && (d.dataset.active = 'false'))
             }
 
             function activate(this: GridLayer, dom: HTMLDivElement) {
-                dom.dataset.active = 'true'
-                if (dom.dataset.val === "topology") {
-                    requestAnimationFrame(() => {
-                        const modeDom = doms.find(d => d.dataset.val === this.EditorState.mode)
-                        modeDom && (modeDom!.dataset.active = 'true')
-                    })
-                }
+                if (type !== 'mode') dom.dataset.active = 'true'
             }
         }
 
@@ -400,7 +403,7 @@ export default class GridLayer implements NHCustomLayerInterface {
         initState(/* defaultState */ {
             editor: 'topology',
             tool: 'brush',
-            mode: 'subdivide'
+            mode: 'none'
         })
 
         // [4] Remove Event handler for map boxZoom
@@ -426,6 +429,16 @@ export default class GridLayer implements NHCustomLayerInterface {
                 this.map.triggerRepaint()
             }
         })
+
+        // [6.5] Add event listener for <Esc> (Clear hitset)
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                this.hitSet.clear()
+                this.isClearing = true
+                this.map.triggerRepaint()
+            }
+        });
+
 
         // [7] Init the attrSettor DOM
         this.initAttrSetter({
@@ -752,7 +765,8 @@ export default class GridLayer implements NHCustomLayerInterface {
             .on('resize', this.resizeHandler as any)
     }
 
-    hit(storageIds: number | number[]) {
+
+    hit2(storageIds: number | number[]) {
         // Topology editor
         if (this.EditorState.editor === "topology") {
             // Delete mode
@@ -791,11 +805,28 @@ export default class GridLayer implements NHCustomLayerInterface {
         this.map.triggerRepaint()
     }
 
+    hit(storageIds: number | number[]) {
+        const ids = Array.isArray(storageIds) ? storageIds : [storageIds]
+        ids.forEach((storageId: number) => {
+            if (storageId < 0) return
+            if (this.hitSet.has(storageId)) {
+                if (this.hitSet.size === 1) return
+                this.hitSet.delete(storageId);
+            } else {
+                this.hitSet.add(storageId);
+            }
+        })
+        this.map.triggerRepaint()
+    }
+
+
     hitAttributeEditor() {
 
         if (!this.isTopologyParsed) return
-        if (this.EditorState.tool === "brush") this._hitAttribute()
-        else if (this.EditorState.tool === "box") this._hitAttributes()
+        // if (this.EditorState.tool === "brush") this._hitAttribute()
+        // else if (this.EditorState.tool === "box") this._hitAttributes()
+        if (this.hitSet.size === 1) this._hitAttribute()
+        else if (this.hitSet.size > 1) this._hitAttributes()
     }
 
     removeGrid(storageId: number) {
@@ -818,7 +849,63 @@ export default class GridLayer implements NHCustomLayerInterface {
         this.gridRecorder.subdivideGrids(infos, this.updateGPUGrids)
     }
 
+    subdivideActiveGrids() {
+        // Parse hitSet
+        const subdividableUUIDs = new Array<string>()
+        const removableStorageIds = new Array<number>()
+        this.hitSet.forEach(removableStorageId => {
+            // Add removable grids
+            removableStorageIds.push(removableStorageId)
+
+            // Add subdividable grids
+            subdividableUUIDs.push(this.gridRecorder.getGridInfoByStorageId(removableStorageId).join('-'))
+        })
+
+        if (subdividableUUIDs.length === 1) {
+            this.removeGrid(removableStorageIds[0])
+            this.subdivideGrid(subdividableUUIDs[0])
+        }
+        else {
+            this.removeGrids(removableStorageIds)
+            this.subdivideGrids(subdividableUUIDs)
+        }
+        this.hitSet.clear()
+    }
+
+    deleteActiveGrids() {
+        this.removeGrids(Array.from(this.hitSet))
+        this.hitSet.clear()
+    }
+
+    clearActiveGrids() {
+        this.hitSet.clear()
+        this.isClearing = true
+        this.map.triggerRepaint()
+    }
+
     tickGrids() {
+        if (this.hitSet.size === 0 && !this.isClearing) return
+        // Update hit flag for this current frame
+        this._updateHitFlag()
+
+        // Highlight all hit grids
+        const gl = this._gl
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._gridSignalBuffer)
+        this.hitSet.forEach(hitStorageId => gl.bufferSubData(gl.ARRAY_BUFFER, hitStorageId, this.hitFlag, 0))
+        gl.bindBuffer(gl.ARRAY_BUFFER, null)
+
+        if (this.isClearing) {
+            this.isClearing = false
+        }
+
+        if (this.EditorState.editor === "attribute") {
+            this.hitAttributeEditor()
+        }
+
+        this.typeChanged = false
+    }
+
+    tickGrids2() {
 
         if (this.hitSet.size === 0) return
 
@@ -1229,12 +1316,15 @@ export default class GridLayer implements NHCustomLayerInterface {
         }
     }
 
+    lastPickedId: number = -1
     private _mousemoveHandler(e: MapMouseEvent) {
 
         if (this.EditorState.editor === "topology") {
             if (this.isShiftClick && this.EditorState.tool === 'brush') {
                 this.map.dragPan.disable()
                 const storageId = this.picking(e) as number
+                if (this.lastPickedId === storageId) return
+                this.lastPickedId = storageId
                 this.hit(storageId)
             }
 
@@ -1360,7 +1450,7 @@ export default class GridLayer implements NHCustomLayerInterface {
                 // do nothing extra
                 break
             case 'mode':
-                console.log('set mode ', value)
+                // console.log('set mode ', value)
                 // do nothing extra
                 break
         }
@@ -1465,7 +1555,7 @@ export default class GridLayer implements NHCustomLayerInterface {
 
     private updateAttrSetter(info: any) {
 
-        if (this.EditorState.tool === 'box') {
+        if (this.hitSet.size > 1) {
             const gridStorageIds = info.gridStorageId
 
             this.activeAttrFeature.id = gridStorageIds
@@ -1496,7 +1586,7 @@ export default class GridLayer implements NHCustomLayerInterface {
                 ; (document.querySelector('#height') as HTMLInputElement).value = -9999 + ''
                 ; (document.querySelector('#type') as HTMLInputElement).value = 0 + ''
 
-        } else if (this.EditorState.tool === 'brush') {
+        } else if (this.hitSet.size === 1) {
 
             //////// parse grid and edge info
             const { top, left, bottom, right, gridStorageId } = info

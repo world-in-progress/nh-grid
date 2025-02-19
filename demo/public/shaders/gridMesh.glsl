@@ -129,17 +129,20 @@ bool isAssigned() {
 
 void main() {
 
+    bool isHit = isHit();
+    
     // Shading in topology editor
     if(mode == 0.0) {
-
-        fragColor = vec4(v_color, 0.2);
-
+        if(isHit)
+            fragColor = vec4(0.64, 0.09, 0.09, 0.8);
+        else
+            fragColor = vec4(v_color, 0.2);
     }
     // Shading in attribute editor
     else {
 
         float distance = uv.x * uv.x + uv.y * uv.y;
-        bool isHit = isHit();
+
         bool isAssigned = isAssigned();
 
         if(distance <= 0.25 && distance >= 0.2) {
