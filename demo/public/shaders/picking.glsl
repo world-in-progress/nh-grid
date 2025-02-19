@@ -52,7 +52,7 @@ float nan() {
 vec2 translateRelativeToEye(vec2 high, vec2 low) {
     vec2 highDiff = high - centerHigh;
     vec2 lowDiff = low - centerLow;
-    return highDiff;
+    return highDiff + lowDiff;
 }
 
 float altitude2Mercator(float lat, float alt) {

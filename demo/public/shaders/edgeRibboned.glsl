@@ -17,7 +17,7 @@ uniform vec2 relativeCenter;
 vec2 translateRelativeToEye(vec2 high, vec2 low) {
     vec2 highDiff = high - centerHigh;
     vec2 lowDiff = low - centerLow;
-    return highDiff;
+    return highDiff + lowDiff;
 }
 
 vec2 get_vector(vec2 beginVertex, vec2 endVertex) {
@@ -28,7 +28,7 @@ void main() {
     vec2 xy = vec2(0.0);
     vec4 xy_CS = vec4(0.0);
     vec2 xy_SS = vec2(0.0);
-    vec2 p1 = pos.xy
+    vec2 p1 = pos.xy;
     vec2 p2 = pos.zw;
     float parity = float(gl_VertexID % 2);
     bool isPositive = gl_VertexID / 2 == 0;
