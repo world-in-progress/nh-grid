@@ -309,6 +309,7 @@ export default class GridLayer implements NHCustomLayerInterface {
                 <div class="tool-content f-row">
                   <div class="tool-item pic" id="brush" data-active="false" data-type="tool" data-val="brush"></div>
                   <div class="tool-item pic" id="box"   data-active="false" data-type="tool" data-val="box"></div>
+                  <div class="tool-item pic button-style" id="clear" data-val="clear"></div>
                 </div>
               </div>
               <div class="editor-container f-row">
@@ -331,15 +332,19 @@ export default class GridLayer implements NHCustomLayerInterface {
         document.body.appendChild(pannel)
 
         // [2] Setup Control Panne Surface Interaction
-        const ids = ['box', 'brush', 'topology', 'attribute', 'subdivide', 'delete']
+        const ids = ['box', 'brush', 'clear', 'topology', 'attribute', 'subdivide', 'delete']
         const doms = ids.map(id => document.querySelector(`#${id}`)! as HTMLDivElement)
 
         const handleClick = (dom: HTMLDivElement) => {
             const { type, val, active } = dom.dataset as { type: string, val: string, active: string }
             if (type === 'mode') {
-                console.log(val)
                 if (val === 'subdivide') this.subdivideActiveGrids()
                 else if (val === 'delete') this.deleteActiveGrids()
+                return
+            }
+            if (val === 'clear') {
+                this.clearActiveGrids() 
+                return
             }
             
             if (active === 'true' && val === 'topology') {
@@ -870,6 +875,12 @@ export default class GridLayer implements NHCustomLayerInterface {
     deleteActiveGrids() {
         this.removeGrids(Array.from(this.hitSet))
         this.hitSet.clear()
+    }
+
+    clearActiveGrids() {
+        this.hitSet.clear()
+        this.isClearing = true
+        this.map.triggerRepaint()
     }
 
     tickGrids() {
