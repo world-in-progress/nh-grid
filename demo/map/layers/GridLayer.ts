@@ -773,15 +773,14 @@ export default class GridLayer implements NHCustomLayerInterface {
             .on('resize', this.resizeHandler as any)
     }
 
-    hit(storageIds: number | number[], isMaintained = false) {
+    hit(storageIds: number | number[]) {
 
         const ids = Array.isArray(storageIds) ? storageIds : [storageIds]
         ids.forEach(storageId => {
             if (storageId < 0) return
 
-            if (!isMaintained && this.hitSet.has(storageId)) {
+            if (this.hitSet.has(storageId)) {
 
-                if (this.hitSet.size === 1) return
                 this.hitSet.delete(storageId)
 
             } else {
@@ -819,7 +818,7 @@ export default class GridLayer implements NHCustomLayerInterface {
     }
 
     subdivideActiveGrids() {
-
+        if (this.hitSet.size === 0) return
         // Parse hitSet
         const subdividableUUIDs = new Array<string>()
         const removableStorageIds = new Array<number>()
@@ -849,6 +848,7 @@ export default class GridLayer implements NHCustomLayerInterface {
     }
 
     deleteActiveGrids() {
+        if (this.hitSet.size === 0) return
         this.removeGrids(Array.from(this.hitSet))
         this.hitSet.clear()
     }
@@ -1236,7 +1236,7 @@ export default class GridLayer implements NHCustomLayerInterface {
 
                 } else {
 
-                    this.hit(storageIds, true)
+                    this.EditorState.tool === 'box' && this.hit(storageIds, true)
                 }
 
                 clear(this._ctx!)
