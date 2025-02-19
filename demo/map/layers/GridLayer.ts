@@ -15,7 +15,6 @@ import { MercatorCoordinate } from '../../../src/core/math/mercatorCoordinate'
 import VibrantColorGenerator from '../../../src/core/util/vibrantColorGenerator'
 
 proj4.defs("ESRI:102140", "+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs")
-proj4.defs("EPSG:2326","+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +towgs84=-162.619,-276.959,-161.764,-0.067753,2.243648,1.158828,-1.094246 +units=m +no_defs +type=crs")
 
 const STATUS_URL = 'http://127.0.0.1:8000' + '/v0/mc/status'
 const RESULT_URL = 'http://127.0.0.1:8000' + '/v0/mc/result'
@@ -773,14 +772,15 @@ export default class GridLayer implements NHCustomLayerInterface {
             .on('resize', this.resizeHandler as any)
     }
 
-    hit(storageIds: number | number[]) {
+    hit(storageIds: number | number[], isMaintained = false) {
 
         const ids = Array.isArray(storageIds) ? storageIds : [storageIds]
         ids.forEach(storageId => {
             if (storageId < 0) return
 
-            if (this.hitSet.has(storageId)) {
+            if (!isMaintained && this.hitSet.has(storageId)) {
 
+                if (this.hitSet.size === 1) return
                 this.hitSet.delete(storageId)
 
             } else {
@@ -818,7 +818,7 @@ export default class GridLayer implements NHCustomLayerInterface {
     }
 
     subdivideActiveGrids() {
-        if (this.hitSet.size === 0) return
+
         // Parse hitSet
         const subdividableUUIDs = new Array<string>()
         const removableStorageIds = new Array<number>()
@@ -848,7 +848,6 @@ export default class GridLayer implements NHCustomLayerInterface {
     }
 
     deleteActiveGrids() {
-        if (this.hitSet.size === 0) return
         this.removeGrids(Array.from(this.hitSet))
         this.hitSet.clear()
     }
@@ -1236,7 +1235,7 @@ export default class GridLayer implements NHCustomLayerInterface {
 
                 } else {
 
-                    this.EditorState.tool === 'box' && this.hit(storageIds, true)
+                    this.hit(storageIds, true)
                 }
 
                 clear(this._ctx!)
@@ -1329,7 +1328,7 @@ export default class GridLayer implements NHCustomLayerInterface {
                         this.attrSetter!.style.display = 'none'
                         const pannel = document.querySelector('#pannel') as HTMLDivElement
                         pannel.style.height = '200px'
-
+                        
                         // Reset state, attr cache, gridSignalBuffer
                         this.isTopologyParsed = false
                         this.gridRecorder.resetEdges()
