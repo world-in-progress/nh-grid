@@ -1,5 +1,21 @@
 import axios from "axios"
 
+/**  
+* Example:
+* const fileDownloader = new FileDownloader({
+*     url: 'http.....',
+*     fileName: 'res.zip',
+*     chunkSize: 1024 * 1024 * 128,
+*     cb: (done: boolean, current: number, total: number) => {
+*         if (done) {
+*             console.log('Download complete!')
+*             return;
+*         }
+*         console.log(`Downloading... ${Math.round(current / total * 100)}%`)
+*     }
+* })
+* fileDownloader.download()
+*/
 export default class FileDownloader {
 
     url: string
@@ -55,9 +71,11 @@ export default class FileDownloader {
     }
 
     async download() {
+
         console.time("download")
+
         await this.prepare()
-        this.intervalID = setInterval(async () => {
+        this.intervalID = window.setInterval(async () => {
             this.callback && this.callback(!(this.downloadedSize < this.fileSize), this.downloadedSize, this.fileSize)
         }, 1000)
         for (let i = 0; i < this.threadNum && i < this.chunkNum; i++) {
@@ -66,6 +84,7 @@ export default class FileDownloader {
     }
 
     async prepare() {
+        
         try {
             const res = await axios.head(this.url, { signal: this.abortController.signal })
             this.fileSize = parseInt(res.headers['content-length'])
@@ -147,23 +166,5 @@ export default class FileDownloader {
         this.downloadedSize = 0
         this.intervalID && clearInterval(this.intervalID)
         this.abortController.abort()
-        // console.log("FileDownloader resources cleaned up and destroy.");
     }
 }
-
-/*  
-// Example:
-// const fileDownloader = new FileDownloader({
-//     url: 'http.....',
-//     fileName: 'res.zip',
-//     chunkSize: 1024 * 1024 * 128,
-//     cb: (done: boolean, current: number, total: number) => {
-//         if (done) {
-//             console.log('Download complete!')
-//             return;
-//         }
-//         console.log(`Downloading... ${Math.round(current / total * 100)}%`)
-//     }
-// })
-// fileDownloader.download()
-*/

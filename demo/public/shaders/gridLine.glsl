@@ -16,7 +16,6 @@ uniform mat4 uMatrix;
 uniform vec2 centerLow;
 uniform vec2 centerHigh;
 uniform vec2 relativeCenter;
-// uniform sampler2DArray storageTexture;
 
 const float PI = 3.141592653;
 
@@ -78,11 +77,6 @@ float stitching(float coord, float minVal, float delta, float edge) {
 
 void main() {
 
-    // ivec2 dim = textureSize(storageTexture, 0).xy;
-
-    // int storage_u = gl_InstanceID % dim.x;
-    // int storage_v = gl_InstanceID / dim.x;
-
     vec2 layerMap[4] = vec2[4](
         tl,
         tr,
@@ -104,7 +98,7 @@ precision highp float;
 out vec4 fragColor;
 
 void main() {
-    fragColor = vec4(1.0);
+    fragColor = vec4(1.0, 1.0, 1.0, 0.2);
 }
 
 #endif
