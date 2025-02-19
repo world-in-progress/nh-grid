@@ -8,6 +8,7 @@ import UndoRedoManager, { UndoRedoOperation } from '../util/undoRedoManager'
 import { EdgeRenderInfoPack, GridNodeRenderInfoPack, GridTopologyInfo, SubdivideRules } from './NHGrid'
 
 proj4.defs('ESRI:102140', '+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs')
+proj4.defs("EPSG:2326","+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +towgs84=-162.619,-276.959,-161.764,-0.067753,2.243648,1.158828,-1.094246 +units=m +no_defs +type=crs")
 
 interface GridLevelInfo {
 
@@ -156,20 +157,25 @@ export default class GridRecorder extends UndoRedoManager {
 
     subdivideGrids(subdivideInfos: Array<[level: number, globalId: number]>, callback?: Function): void {
 
-        const renderInfoPackArray = new Array<{ level: number, pack: GridNodeRenderInfoPack }>()
-        subdivideInfos.forEach(([level, globalId]) => {
+        const actorNum = WorkerPool.workerCount - 1
+        const subdivideChunk = Math.ceil(subdivideInfos.length / actorNum)
+        const renderInfoPacks = new Array<GridNodeRenderInfoPack>(actorNum)
 
-            // Dispatch a worker to subdivide the grid
-            this._actor.send('subdivideGrid', [level, globalId], (_, renderInfos: GridNodeRenderInfoPack) => {
+        let preparedChunkNum = 0
+        for (let actorIndex = 0; actorIndex < actorNum; actorIndex++) {
+            this._actor.send(
+                'subdivideGrids',
+                subdivideInfos.slice(actorIndex * subdivideChunk, Math.min(subdivideInfos.length, (actorIndex + 1) * subdivideChunk)),
+                (_, renderInfoPack: GridNodeRenderInfoPack) => {
 
-                renderInfoPackArray.push({ level: level + 1, pack: renderInfos })
-                if (renderInfoPackArray.length === subdivideInfos.length) {
-
-                    const multiSubdivideOperation = this._generateSubdivideGridsOperation(renderInfoPackArray, callback)
-                    this.execute(multiSubdivideOperation)
+                    renderInfoPacks[preparedChunkNum++] = renderInfoPack
+                    if (preparedChunkNum === actorNum) {
+                        const multiSubdivideOperation = this._generateSubdivideGridsOperation(renderInfoPacks, callback)
+                        this.execute(multiSubdivideOperation)
+                    }
                 }
-            })
-        })
+            )
+        }
     }
 
     parseGridTopology(callback?: (isCompleted: boolean, fromStorageId: number, vertexBuffer: Float32Array) => any): void {
@@ -418,8 +424,6 @@ export default class GridRecorder extends UndoRedoManager {
             ] as [ number, number ]
         })
 
-        // if (!vertices) vertices = new Float32Array(renderCoords.flat())
-        // else vertices.set(renderCoords.flat(), 0)
         if (!vertices) vertices = new Float32Array(relativeCoords.flat())
         else vertices.set(relativeCoords.flat(), 0)
         return vertices
@@ -514,7 +518,6 @@ export default class GridRecorder extends UndoRedoManager {
 
                 this._nextStorageId -= removableGridNum
 
-                // let lastStorageId = this._nextStorageId
                 removableStorageIds.forEach((storageId, index) => {
                     if (index > replacedGridInfo.length - 1) return
 
@@ -595,20 +598,37 @@ export default class GridRecorder extends UndoRedoManager {
         return subdivideOperation
     }
 
-    private _generateSubdivideGridsOperation(infoPackArray: Array<{ level: number, pack: GridNodeRenderInfoPack }>, callback?: Function): UndoRedoRecordOperation {
-
-        const subdivideOperationList = new Array<UndoRedoRecordOperation>(infoPackArray.length)
-        for (let i = 0; i < infoPackArray.length; i++) {
-            subdivideOperationList[i] = this._generateSubdivideGridOperation(infoPackArray[i].level, infoPackArray[i].pack, callback)
-        }
+    private _generateSubdivideGridsOperation(infoPacks: Array<GridNodeRenderInfoPack>, callback?: Function): UndoRedoRecordOperation {
 
         const multiSubdivideOperation: UndoRedoRecordOperation = {
             action: 'SubdivideGrids',
             apply: () => {
-                subdivideOperationList.forEach(operation => operation.apply())
+
+                for (const pack of infoPacks) {
+
+                    const packLength = pack.uuIds.length
+                    const levels = new Uint8Array(packLength)
+                    pack.uuIds.forEach((uuId, index) => {
+
+                        const storageId = this._nextStorageId + index
+                        const [level, globalId] = uuId.split('-').map(key => +key)
+    
+                        levels[index] = level
+                        this.storageId_gridInfo_cache[storageId * 2 + 0] = level
+                        this.storageId_gridInfo_cache[storageId * 2 + 1] = globalId
+                    })
+
+                    callback && callback([this._nextStorageId, levels, pack.vertexBuffer])
+                    this._nextStorageId += packLength
+                }
             },
             inverse: () => {
-                subdivideOperationList.forEach(operation => operation.inverse())
+
+                for (const pack of infoPacks) {
+
+                    this._nextStorageId -= pack.uuIds.length
+                    callback && callback(null)
+                }
             }
         }
 
