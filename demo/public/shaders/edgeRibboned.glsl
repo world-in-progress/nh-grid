@@ -28,13 +28,13 @@ void main() {
     vec2 xy = vec2(0.0);
     vec4 xy_CS = vec4(0.0);
     vec2 xy_SS = vec2(0.0);
-    vec2 p1 = pos.xy + relativeCenter;
-    vec2 p2 = pos.zw + relativeCenter;
+    vec2 p1 = pos.xy
+    vec2 p2 = pos.zw;
     float parity = float(gl_VertexID % 2);
     bool isPositive = gl_VertexID / 2 == 0;
 
-    vec4 p1_CS = uMatrix * vec4(translateRelativeToEye(p1, vec2(0.0)), 0.0, 1.0);
-    vec4 p2_CS = uMatrix * vec4(translateRelativeToEye(p2, vec2(0.0)), 0.0, 1.0);
+    vec4 p1_CS = uMatrix * vec4(translateRelativeToEye(relativeCenter, p1), 0.0, 1.0);
+    vec4 p2_CS = uMatrix * vec4(translateRelativeToEye(relativeCenter, p2), 0.0, 1.0);
     vec2 p1_SS = p1_CS.xy / p1_CS.w;
     vec2 p2_SS = p2_CS.xy / p2_CS.w;
 
