@@ -29,7 +29,6 @@ vec2 uvCorrection(vec2 uv, vec2 dim) {
     return clamp(uv, vec2(0.0), dim - vec2(1.0));
 }
 
-
 vec4 linearSampling(sampler2D texture, vec2 uv, vec2 dim) {
     vec4 tl = textureLod(texture, uv / dim, 0.0);
     vec4 tr = textureLod(texture, uvCorrection(uv + vec2(1.0, 0.0), dim) / dim, 0.0);
@@ -51,7 +50,7 @@ float nan() {
 vec2 translateRelativeToEye(vec2 high, vec2 low) {
     vec2 highDiff = high - centerHigh;
     vec2 lowDiff = low - centerLow;
-    return highDiff;
+    return highDiff + lowDiff;
 }
 
 float altitude2Mercator(float lat, float alt) {
@@ -84,9 +83,8 @@ void main() {
         bl
     );
 
-    // vec2 xy = texelFetch(storageTexture, ivec3(storage_u, storage_v, layerMap[gl_VertexID]), 0).rg;
-    vec2 xy = layerMap[gl_VertexID] + relativeCenter;
-    gl_Position = uMatrix * vec4(translateRelativeToEye(xy, vec2(0.0)), 0.0, 1.0);
+    vec2 xy = layerMap[gl_VertexID];
+    gl_Position = uMatrix * vec4(translateRelativeToEye(relativeCenter, xy), 0.0, 1.0);
 }
 
 #endif

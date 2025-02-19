@@ -92,11 +92,9 @@ void main() {
         bl,
         br
     );
-    vec2 xy = layerMap[gl_VertexID] + relativeCenter;
+    vec2 xy = layerMap[gl_VertexID];
 
-    // vec2 xy = texelFetch(storageTexture, ivec3(storage_u, storage_v, layerMap[gl_VertexID]), 0).rg;
-
-    gl_Position = pickingMatrix * uMatrix * vec4(translateRelativeToEye(xy, vec2(0.0)), 0.0, 1.0);
+    gl_Position = pickingMatrix * uMatrix * vec4(translateRelativeToEye(relativeCenter, xy), 0.0, 1.0);
 
     uvec4 id = idToRGBA(uint(gl_InstanceID));
     v_color = vec4(id) / 255.0;

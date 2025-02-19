@@ -81,7 +81,7 @@ void main() {
     }
 
     v_color = texelFetch(paletteTexture, ivec2(gl_InstanceID % 5, 0), 0).rgb;
-    gl_Position = uMatrix * vec4(translateRelativeToEye(xy + relativeCenter, vec2(0.0)), 0.0, 1.0);
+    gl_Position = uMatrix * vec4(translateRelativeToEye(relativeCenter, xy), 0.0, 1.0);
 }
 
 #endif

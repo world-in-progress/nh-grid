@@ -57,7 +57,7 @@ float nan() {
 vec2 translateRelativeToEye(vec2 high, vec2 low) {
     vec2 highDiff = high - centerHigh;
     vec2 lowDiff = low - centerLow;
-    return highDiff;
+    return highDiff + lowDiff;
 }
 
 float altitude2Mercator(float lat, float alt) {
@@ -86,14 +86,14 @@ void main() {
 
     vec2 uvs[4] = vec2[4](vec2(0.0, 1.0), vec2(1.0, 1.0), vec2(0.0, 0.0), vec2(1.0, 0.0));
 
-    vec2 xy = layerMap[gl_VertexID] + relativeCenter;
+    vec2 xy = layerMap[gl_VertexID];
 
     u_hit = float(hit);
     u_assignment = float(assignment);
 
     uv = uvs[gl_VertexID] * 2.0 - 1.0;
     v_color = texelFetch(paletteTexture, ivec2(level, 0), 0).rgb;
-    gl_Position = uMatrix * vec4(translateRelativeToEye(xy, vec2(0.0)), 0.0, 1.0);
+    gl_Position = uMatrix * vec4(translateRelativeToEye(relativeCenter, xy), 0.0, 1.0);
 }
 
 #endif
