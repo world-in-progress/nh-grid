@@ -134,9 +134,9 @@ void main() {
     // Shading in topology editor
     if(mode == 0.0) {
         if(isHit)
-            fragColor = vec4(0.64, 0.09, 0.09, 0.2);
+            fragColor = vec4(0.64, 0.09, 0.09, 0.5);
         else
-            fragColor = vec4(v_color, 0.1);
+            fragColor = vec4(0.1);
     }
     // Shading in attribute editor
     else {

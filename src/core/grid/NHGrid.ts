@@ -4,6 +4,7 @@ import BoundingBox2D from '../util/boundingBox2D'
 import { MercatorCoordinate } from '../math/mercatorCoordinate'
 
 proj4.defs('ESRI:102140', '+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs')
+proj4.defs("EPSG:2326","+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +towgs84=-162.619,-276.959,-161.764,-0.067753,2.243648,1.158828,-1.094246 +units=m +no_defs +type=crs")
 
 export const EDGE_CODE_INVALID = -1
 export const EDGE_CODE_NORTH   = 0b00
