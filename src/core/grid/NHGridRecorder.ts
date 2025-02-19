@@ -114,6 +114,10 @@ export default class GridRecorder extends UndoRedoManager {
         return this._nextStorageId
     }
 
+    get maxLevel() {
+        return this.levelInfos.length - 1
+    }
+
     init(callback?: Function) {
 
         this.dispatcher.broadcast('init', this.subdivideRules, () => {

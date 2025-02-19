@@ -86,11 +86,6 @@ uvec4 idToRGBA(uint id) {
 
 void main() {
 
-    // ivec2 dim = textureSize(storageTexture, 0).xy;
-
-    // int storage_u = gl_InstanceID % dim.x;
-    // int storage_v = gl_InstanceID / dim.x;
-
     vec2 layerMap[4] = vec2[4](
         tl,
         tr,
