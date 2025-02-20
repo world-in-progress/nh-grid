@@ -818,6 +818,7 @@ export default class GridLayer implements NHCustomLayerInterface {
     }
 
     subdivideActiveGrids() {
+        if (this.hitSet.size === 0) return
 
         // Parse hitSet
         const subdividableUUIDs = new Array<string>()
@@ -848,11 +849,13 @@ export default class GridLayer implements NHCustomLayerInterface {
     }
 
     deleteActiveGrids() {
+
         this.removeGrids(Array.from(this.hitSet))
         this.hitSet.clear()
     }
 
     clearActiveGrids() {
+
         this.hitSet.clear()
         this._updateHitFlag()
         this.map.triggerRepaint()
@@ -863,6 +866,7 @@ export default class GridLayer implements NHCustomLayerInterface {
         // Highlight all hit grids //////////////////////////////
 
         if (this.hitSet.size === 0) return
+
         // Update hit flag for this current frame
         this._updateHitFlag()
 
