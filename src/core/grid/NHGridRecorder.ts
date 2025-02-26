@@ -246,6 +246,7 @@ export default class GridRecorder extends UndoRedoManager {
         this.storageId_edgeId_set = []
 
         const projectInfo = data as GridLayerSerializedInfo
+        this._projConverter = proj4(projectInfo.CRS, 'EPSG:4326')
 
         this._nextStorageId = 0
         this.levelInfos = projectInfo.levelInfos

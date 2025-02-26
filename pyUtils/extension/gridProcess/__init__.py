@@ -27,8 +27,8 @@ def process_grid_info(serealized_data, output_path):
         os.makedirs(file_path)
     
     # Process the grid info json by the serialized data to file path
-    helper = NHGridHelper(serealized_data)
-    helper.export(file_path, DIR_DEM_RESOURCE)
+    helper = NHGridHelper(serealized_data, DIR_DEM_RESOURCE)
+    helper.export(file_path)
     create_zip_from_folder(file_path, output_zip_file)
     
     return zip_name
