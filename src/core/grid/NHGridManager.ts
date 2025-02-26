@@ -460,6 +460,9 @@ export default class GridManager {
 
     set subdivideRules(rules: SubdivideRules) {
 
+        // Update projection converter
+        this._projConverter = proj4(rules.srcCS, rules.targetCS)
+
         // Update subdivide rules first
         this._subdivideRules = rules
 
