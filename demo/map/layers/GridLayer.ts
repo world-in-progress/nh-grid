@@ -496,6 +496,19 @@ export default class GridLayer implements NHCustomLayerInterface {
                             try {
                                 const data = JSON.parse(reader.result as string)
                                 this.gridRecorder.deserialize(data)
+
+                                // Update relative center //////////
+                                this.srcCS = this.gridRecorder.srcCRS
+                                this.projConverter = proj4(this.srcCS, 'EPSG:4326')
+                                this.bBox = new BoundingBox2D(...this.gridRecorder.bBox.boundary)
+        
+                                // Calculate relative center
+                                const center = this.projConverter.forward([
+                                    (this.bBox.xMin + this.bBox.xMax) / 2.0,
+                                    (this.bBox.yMin + this.bBox.yMax) / 2.0,
+                                ])
+                                this.relativeCenter = new Float32Array(MercatorCoordinate.fromLonLat(center as [number, number]))
+
                                     // Checkout to topology-editor
                                     ; (document.querySelector("#subdivide") as HTMLDivElement).dataset.active = "false"
                                     ; (document.querySelector("#subdivide") as HTMLDivElement).click()
