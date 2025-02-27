@@ -34,8 +34,8 @@ const map = new mapboxgl.Map({
 
     const gridLayer = new GridLayer(
         map,
-        // 'EPSG:2326',
-        'ESRI:102140',
+        'EPSG:2326',
+        // 'ESRI:102140',
         [64, 64],
         [
             [2, 2],

@@ -119,6 +119,14 @@ export default class GridRecorder extends UndoRedoManager {
         return this.levelInfos.length - 1
     }
 
+    get bBox() {
+        return this.subdivideRules.bBox
+    }
+
+    get srcCRS() {
+        return this.subdivideRules.srcCS
+    }
+
     init(callback?: Function) {
 
         this.dispatcher.broadcast('init', this.subdivideRules, () => {
@@ -181,7 +189,9 @@ export default class GridRecorder extends UndoRedoManager {
     parseGridTopology(callback?: (isCompleted: boolean, fromStorageId: number, vertexBuffer: Float32Array) => any): void {
 
         // Dispatch a worker to parse the topology about all grids
-        this._actor.send('parseTopology', this.storageId_gridInfo_cache.slice(0, this._nextStorageId * 2), (_, topologyInfo: GridTopologyInfo) => {
+        const storageId_gridInfo_cache = this.storageId_gridInfo_cache.slice()
+        this.wrap(storageId_gridInfo_cache)
+        this._actor.send('parseTopology', storageId_gridInfo_cache.slice(0, this._nextStorageId * 2), (_, topologyInfo: GridTopologyInfo) => {
             this.edgeKeys_cache = topologyInfo[0]
             this.adjGrids_cache = topologyInfo[1]
             this.storageId_edgeId_set = topologyInfo[2]
@@ -207,7 +217,48 @@ export default class GridRecorder extends UndoRedoManager {
         })
     }
 
+    // Fix offset in ESRI:102140
+    wrap(storageId_gridInfo_cache: number[]) {
+
+        if (this.srcCRS !== "ESRI:102140") return
+
+        const bBox = this.subdivideRules.bBox
+        const converter2326 = proj4("EPSG:2326", this.subdivideRules.targetCS)
+        for (let i = 0; i < this.gridNum; i++) {
+            const level = storageId_gridInfo_cache[i * 2 + 0]
+            const globalId_102140 = storageId_gridInfo_cache[i * 2 + 1]
+            
+            const width = this.levelInfos[level].width
+            const height = this.levelInfos[level].height
+
+            const globalU = globalId_102140 % width
+            const globalV = Math.floor(globalId_102140 / width)
+
+            const xMin = lerp(bBox.xMin, bBox.xMax, globalU / width)
+            const yMin = lerp(bBox.yMin, bBox.yMax, globalV / height)
+            const xMax = lerp(bBox.xMin, bBox.xMax, (globalU + 1) / width)
+            const yMax = lerp(bBox.yMin, bBox.yMax, (globalV + 1) / height)
+            const center_102140 = [(xMin + xMax) / 2.0, (yMin + yMax) / 2.0]
+            const [ lon, lat ] = this._projConverter.forward(center_102140)
+            const [ x, y ] = converter2326.inverse([lon, lat])
+
+            const normalizedX = (x - this.bBox.xMin) / (this.bBox.xMax - this.bBox.xMin)
+            const normalizedY = (y - this.bBox.yMin) / (this.bBox.yMax - this.bBox.yMin)
+            if (normalizedX < 0 || normalizedX > 1 || normalizedY < 0 || normalizedY > 1) continue
+
+            const col = Math.floor(normalizedX * width)
+            const row = Math.floor(normalizedY * height)
+            const globalID = row * width + col
+            if (globalID !== globalId_102140) {
+                console.log('Error GlobalId Fixed: ', globalID, globalId_102140)
+            }
+            storageId_gridInfo_cache[i * 2 + 1] = globalID
+        }
+    }
+
     serialize(): GridLayerSerializedInfo {
+
+        this.wrap(this.storageId_gridInfo_cache)
 
         return {
             levelInfos: this.levelInfos,
