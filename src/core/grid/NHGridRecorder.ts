@@ -7,8 +7,7 @@ import { MercatorCoordinate } from '../math/mercatorCoordinate'
 import UndoRedoManager, { UndoRedoOperation } from '../util/undoRedoManager'
 import { EdgeRenderInfoPack, GridNodeRenderInfoPack, GridTopologyInfo, SubdivideRules } from './NHGrid'
 
-proj4.defs('ESRI:102140', '+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +units=m +no_defs +type=crs')
-proj4.defs("EPSG:2326","+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +towgs84=-162.619,-276.959,-161.764,-0.067753,2.243648,1.158828,-1.094246 +units=m +no_defs +type=crs")
+proj4.defs('EPSG:2326',"+proj=tmerc +lat_0=22.3121333333333 +lon_0=114.178555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +towgs84=-162.619,-276.959,-161.764,0.067753,-2.243649,-1.158827,-1.094246 +units=m +no_defs")
 
 interface GridLevelInfo {
 
@@ -189,9 +188,7 @@ export default class GridRecorder extends UndoRedoManager {
     parseGridTopology(callback?: (isCompleted: boolean, fromStorageId: number, vertexBuffer: Float32Array) => any): void {
 
         // Dispatch a worker to parse the topology about all grids
-        const storageId_gridInfo_cache = this.storageId_gridInfo_cache.slice()
-        this.wrap(storageId_gridInfo_cache)
-        this._actor.send('parseTopology', storageId_gridInfo_cache.slice(0, this._nextStorageId * 2), (_, topologyInfo: GridTopologyInfo) => {
+        this._actor.send('parseTopology', this.storageId_gridInfo_cache.slice(0, this._nextStorageId * 2), (_, topologyInfo: GridTopologyInfo) => {
             this.edgeKeys_cache = topologyInfo[0]
             this.adjGrids_cache = topologyInfo[1]
             this.storageId_edgeId_set = topologyInfo[2]
@@ -257,8 +254,6 @@ export default class GridRecorder extends UndoRedoManager {
     }
 
     serialize(): GridLayerSerializedInfo {
-
-        this.wrap(this.storageId_gridInfo_cache)
 
         return {
             levelInfos: this.levelInfos,
